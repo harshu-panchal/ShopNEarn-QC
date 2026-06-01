@@ -1,0 +1,87 @@
+# =============================================================================
+#  Netlify build & runtime configuration for the ShopAndEarn web SPA
+# =============================================================================
+#
+#  This file lives at `frontend/netlify.toml`. To use it with Netlify:
+#
+#    1.  In the Netlify UI, create a new site from this Git repository.
+#    2.  When prompted for the "Base directory", enter:    frontend
+#        (Netlify will pick this file up automatically once base is set.)
+#    3.  Leave "Build command" and "Publish directory" blank — they are
+#        defined below.
+#    4.  Add the environment variables listed in `.env.example`
+#        (Site settings → Environment variables).
+#
+#  Local emulation:
+#
+#    npm i -g netlify-cli
+#    netlify dev   # from inside the `frontend/` folder
+#
+# =============================================================================
+
+[build]
+  # `command` and `publish` are resolved relative to the Netlify base dir
+  # (i.e. `frontend/`), so these read as `frontend/dist` once deployed.
+  command  = "npm run build"
+  publish  = "dist"
+
+[build.environment]
+  # Vite 7 + React 19 require Node 20.19+ or 22.12+. Pinning the major
+  # version keeps the Netlify build deterministic across image rolls.
+  NODE_VERSION = "20"
+  # `--no-audit --no-fund` strips noisy npm output from the build log.
+  NPM_FLAGS    = "--no-audit --no-fund"
+  # Treat Netlify's CI signal as production for Vite's default mode.
+  CI           = "true"
+
+# -----------------------------------------------------------------------------
+#  Redirects
+# -----------------------------------------------------------------------------
+#  Order matters — Netlify evaluates these top-down and stops at the first
+#  match. Anything we want the CDN to serve as-is (the Firebase messaging
+#  service worker) must precede the SPA catch-all.
+
+# 1. Firebase Cloud Messaging service worker — must be served verbatim from
+#    the site root so the browser scope matches `/`. We restate the route
+#    explicitly so the SPA fallback below cannot swallow it.
+[[redirects]]
+  from   = "/firebase-messaging-sw.js"
+  to     = "/firebase-messaging-sw.js"
+  status = 200
+  force  = false
+
+# 2. SPA catch-all — every path that does NOT resolve to a real static asset
+#    is rewritten to /index.html so React Router can handle it client-side.
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+# -----------------------------------------------------------------------------
+#  Security & permission headers
+# -----------------------------------------------------------------------------
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # The customer flow needs the browser geolocation API for nearby-seller
+    # detection. Anything else stays disabled by default.
+    Permissions-Policy     = "geolocation=(self)"
+    Referrer-Policy        = "strict-origin-when-cross-origin"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options        = "SAMEORIGIN"
+
+# Vite emits content-hashed assets under /assets/* — those filenames change
+# whenever the bundle changes, so it's safe to cache them forever.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Do NOT cache the service worker. Browsers must revalidate it on every
+# load so push-notification updates ship as soon as the next visit occurs.
+[[headers]]
+  for = "/firebase-messaging-sw.js"
+  [headers.values]
+    Cache-Control          = "no-cache"
+    Service-Worker-Allowed = "/"

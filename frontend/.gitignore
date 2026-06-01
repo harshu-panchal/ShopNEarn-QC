@@ -6,32 +6,30 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-node_modules/
-.env
-.env.example
-.env.local
-.env.test
-.env.development
-.env.production
-.env.staging
-.env.test
-.env.local
-.env.development
-.env.production
-.env.staging
-.env.test
-.env.local
-.env.development
-.env.production
-.env.staging
-    
 
+# Dependencies & build output
 node_modules
 dist
 dist-ssr
 *.local
 
-# Editor directories and files
+# Local env files (NEVER commit secrets). `.env.example` is the public
+# template and is intentionally tracked.
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.staging
+.env.staging.local
+.env.production
+.env.production.local
+
+# Netlify CLI state
+.netlify
+
+# Editor / OS noise
 .vscode/*
 !.vscode/extensions.json
 .idea
