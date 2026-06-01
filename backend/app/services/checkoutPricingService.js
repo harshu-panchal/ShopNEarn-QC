@@ -15,22 +15,26 @@ import { computeOrderDiscount } from "./finance/couponService.js";
 import { getMlmConfig } from "./mlm/mlmConfigService.js";
 
 /**
- * MLM-specific carve-out: the joining-package and home-shopping SKUs
- * are digital products — no rider is dispatched, no delivery fee
- * applies. We detect them by matching cart items against the
- * admin-configured Product IDs in `Setting.mlm.*`. When the entire
- * cart is digital, we reuse the same per-seller transform the
+ * MLM-specific carve-out: the home-shopping SKU is a digital product
+ * — no rider is dispatched, no delivery fee applies. We detect it by
+ * matching cart items against the admin-configured Product ID in
+ * `Setting.mlm.homeShoppingProductId`. When the entire cart is the
+ * digital SKU, we reuse the same per-seller transform the
  * free-delivery coupon path uses (`applyFreeDeliveryToSellerBreakdowns`)
  * to zero out `deliveryFeeCharged` and re-balance the platform
  * margin. Returns `true` when the rebate was applied so the
  * snapshot can flag the order accordingly.
+ *
+ * Joining-package purchases are NOT Orders any more (they live in the
+ * dedicated `MlmJoiningPayment` collection) so they never reach this
+ * pricing path.
  */
 async function isDigitalOnlyMlmCart(hydratedItems) {
   if (!Array.isArray(hydratedItems) || hydratedItems.length === 0) return false;
   try {
     const cfg = await getMlmConfig();
     const digitalIds = new Set(
-      [cfg?.joiningPackageProductId, cfg?.homeShoppingProductId]
+      [cfg?.homeShoppingProductId]
         .filter(Boolean)
         .map((id) => String(id)),
     );

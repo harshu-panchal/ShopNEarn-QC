@@ -102,8 +102,10 @@ export const ALL_MLM_RETURN_CLAWBACK_MODES = Object.values(MLM_RETURN_CLAWBACK_M
 export const MLM_DEFAULTS = Object.freeze({
   enabled: false,
 
-  // Joining package
-  joiningPackageProductId: null,
+  // Joining package — direct payment + activation (no Product/Order).
+  // Lifecycle lives in `MlmJoiningPayment`; price + credit are
+  // snapshotted at intent time so mid-flight admin edits don't cheat
+  // customers.
   joiningPackagePrice: 2999,
   joiningPackageShoppingWalletCredit: 5000,
 

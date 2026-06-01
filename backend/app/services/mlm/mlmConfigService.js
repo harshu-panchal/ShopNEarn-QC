@@ -64,11 +64,6 @@ export async function isMlmEnabled(opts) {
   return Boolean(cfg.enabled);
 }
 
-export async function getJoiningPackageProductId(opts) {
-  const cfg = await getMlmConfig(opts);
-  return cfg.joiningPackageProductId || null;
-}
-
 export async function getHomeShoppingProductId(opts) {
   const cfg = await getMlmConfig(opts);
   return cfg.homeShoppingProductId || null;

@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
-import Order from "../../models/order.js";
 import Customer from "../../models/customer.js";
+import MlmJoiningPayment from "../../models/mlmJoiningPayment.js";
 import MlmMembership from "../../models/mlmMembership.js";
 import {
   LEDGER_TRANSACTION_TYPE,
@@ -23,14 +23,14 @@ import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.co
 
 /**
  * mlmActivationService — orchestrates everything that happens between
- * "a customer's joining-package order is paid" and "the customer has
- * an active Plan A membership with shopping-wallet seed and sponsor
+ * "a customer's joining-payment is captured" and "the customer has an
+ * active Plan A membership with shopping-wallet seed and sponsor
  * milestone bonus paid".
  *
  * Two entry points:
- *   1. `activatePlanAOnJoiningPackagePaid(orderId)` — called from the
- *      payment-CAPTURED hook (online) and the COD-collected hook.
- *      Idempotent via `Order.mlmActivationApplied`.
+ *   1. `activateMembershipFromJoiningPayment(paymentId)` — called from
+ *      the joining-payment CAPTURED hook (webhook + client verify).
+ *      Idempotent via `MlmJoiningPayment.activationApplied`.
  *   2. `upgradeToPlanBIfEligible(userId)` — called after every Plan A
  *      bonus credit to check the auto-upgrade trigger.
  *
@@ -55,61 +55,67 @@ async function runInSession(externalSession, fn) {
 }
 
 /**
- * Activate Plan A membership for the customer of `orderOrId`.
+ * Activate Plan A membership for the customer of `joiningPaymentId`.
  *
  * Operations (all inside one session):
- *   1. Reload the order; short-circuit if `mlmActivationApplied` is true.
- *   2. Ensure MlmMembership exists for the customer (lazy-create).
- *   3. If the customer captured a `pendingSponsorReferralCode` at signup
- *      and the membership has no sponsor yet, assign the sponsor edge
- *      (this builds sponsorChain, places into binary tree, bumps
- *      counters, etc).
- *   4. Credit the joining-package shopping-wallet seed (admin-configured
- *      amount; default ₹5000) to the customer's `shoppingBalance`.
- *   5. Fire the direct-referral milestone bonus for the sponsor (if any).
- *   6. Mark `Order.mlmActivationApplied = true`.
- *   7. Resync the customer's denormalised `Customer.mlm` projection.
+ *   1. Reload the MlmJoiningPayment; short-circuit if `activationApplied` is true.
+ *   2. Refuse to activate unless the payment is CAPTURED (defence-in-depth).
+ *   3. Ensure MlmMembership exists for the customer (lazy-create).
+ *   4. If the payment carries a `sponsorReferralCodeSnapshot` and the
+ *      membership has no sponsor yet, assign the sponsor edge (this
+ *      builds sponsorChain, places into binary tree, bumps counters,
+ *      etc). Falls back to `Customer.pendingSponsorReferralCode` for
+ *      payments minted before the snapshot field was introduced.
+ *   5. Credit the joining-package shopping-wallet seed (using the
+ *      payment's snapshot value — NOT the live config — so admins
+ *      can't cheat mid-flight customers) to `shoppingBalance`.
+ *   6. Fire the direct-referral milestone bonus for the sponsor (if any).
+ *   7. Mark `MlmJoiningPayment.activationApplied = true`.
+ *   8. Resync the customer's denormalised `Customer.mlm` projection.
  *
  * Returns `{ membership, sponsorMembership, shoppingCreditAmount,
  * milestoneEvent }` on success.
  *
- * Idempotent: re-running the function on an already-activated order is
- * a no-op (returns the existing membership + zero new credits).
+ * Idempotent: re-running the function on an already-activated payment
+ * is a no-op (returns the existing membership + zero new credits).
  */
-export async function activatePlanAOnJoiningPackagePaid(
-  orderOrId,
+export async function activateMembershipFromJoiningPayment(
+  paymentOrId,
   { correlationId = null, session: externalSession } = {},
 ) {
   return runInSession(externalSession, async (session) => {
-    const cfg = await getMlmConfig();
+    const payment = await (paymentOrId instanceof mongoose.Model
+      ? Promise.resolve(paymentOrId)
+      : MlmJoiningPayment.findById(paymentOrId).session(session));
 
-    const order = await (orderOrId instanceof mongoose.Model
-      ? Promise.resolve(orderOrId)
-      : Order.findById(orderOrId).session(session));
-
-    if (!order) {
-      throw new Error(`Order not found for MLM activation: ${orderOrId}`);
+    if (!payment) {
+      throw new Error(
+        `MlmJoiningPayment not found for activation: ${paymentOrId}`,
+      );
     }
 
-    if (!order.isJoiningPackageOrder) {
-      return {
-        skipped: true,
-        reason: "not_a_joining_package_order",
-        orderId: order._id,
-      };
-    }
-
-    if (order.mlmActivationApplied) {
+    if (payment.activationApplied) {
       return {
         skipped: true,
         reason: "already_activated",
-        orderId: order._id,
+        paymentId: payment._id,
       };
     }
 
-    const customerId = order.customer;
+    // Defence-in-depth: the side-effect dispatcher only invokes us on
+    // CAPTURED, but reload-safe.
+    if (payment.status !== "CAPTURED") {
+      return {
+        skipped: true,
+        reason: "payment_not_captured",
+        paymentId: payment._id,
+        currentStatus: payment.status,
+      };
+    }
+
+    const customerId = payment.customer;
     if (!customerId) {
-      throw new Error(`Order ${order._id} has no customer to activate`);
+      throw new Error(`MlmJoiningPayment ${payment._id} has no customer`);
     }
 
     const customer = await Customer.findById(customerId, null, { session });
@@ -117,16 +123,23 @@ export async function activatePlanAOnJoiningPackagePaid(
       throw new Error(`Customer ${customerId} not found for MLM activation`);
     }
 
-    // 1. Ensure membership exists
     const { membership } = await createOrGetMembership(customerId, { session });
 
-    // 2. Assign sponsor if a pending referral code was captured at signup
+    // Prefer the snapshot taken at intent time; fall back to the live
+    // pendingSponsorReferralCode for payments minted before the
+    // snapshot field existed (or in case the snapshot was empty and
+    // the customer entered a code afterwards).
+    const sponsorCodeForActivation =
+      payment.sponsorReferralCodeSnapshot ||
+      customer.pendingSponsorReferralCode ||
+      null;
+
     let sponsorMembership = null;
-    if (!membership.sponsorId && customer.pendingSponsorReferralCode) {
+    if (!membership.sponsorId && sponsorCodeForActivation) {
       try {
         const updated = await assignSponsor({
           membership,
-          sponsorReferralCode: customer.pendingSponsorReferralCode,
+          sponsorReferralCode: sponsorCodeForActivation,
           session,
         });
         if (updated && updated.sponsorId) {
@@ -137,7 +150,6 @@ export async function activatePlanAOnJoiningPackagePaid(
           );
         }
       } catch (error) {
-        // self-referral or schema errors are non-fatal — log and continue.
         if (typeof console !== "undefined" && console.warn) {
           console.warn(
             "[mlmActivationService] assignSponsor failed; continuing without sponsor",
@@ -153,8 +165,7 @@ export async function activatePlanAOnJoiningPackagePaid(
       );
     }
 
-    // 3. Credit the joining-package shopping-wallet seed
-    const shoppingCreditAmount = Number(cfg.joiningPackageShoppingWalletCredit) || 0;
+    const shoppingCreditAmount = Number(payment.shoppingCreditSnapshot) || 0;
     let shoppingCreditResult = null;
     if (shoppingCreditAmount > 0) {
       shoppingCreditResult = await creditWallet({
@@ -164,20 +175,18 @@ export async function activatePlanAOnJoiningPackagePaid(
         bucket: "shopping",
         session,
         ledgerType: LEDGER_TRANSACTION_TYPE.MLM_JOINING_PACKAGE_SHOPPING_CREDIT,
-        ledgerReference: `${MLM_IDEMPOTENCY_PREFIX.JOINING_PACKAGE_CREDIT}-${order._id}`,
+        ledgerReference: `${MLM_IDEMPOTENCY_PREFIX.JOINING_PACKAGE_CREDIT}-${payment._id}`,
         ledgerDescription: "MLM joining package shopping wallet seed",
-        orderId: order._id,
-        idempotencyKey: `${MLM_IDEMPOTENCY_PREFIX.JOINING_PACKAGE_CREDIT}-${order._id}`,
+        idempotencyKey: `${MLM_IDEMPOTENCY_PREFIX.JOINING_PACKAGE_CREDIT}-${payment._id}`,
         correlationId,
         metadata: {
           mlmEvent: "JOINING_PACKAGE_ACTIVATED",
-          orderId: String(order._id),
+          paymentId: String(payment._id),
         },
-        syncUserWalletBalance: false, // shopping bucket is separate from legacy mirror
+        syncUserWalletBalance: false,
       });
     }
 
-    // 4. Fire direct-referral milestone bonus for the sponsor
     let milestoneEvent = null;
     if (sponsorMembership) {
       const sponsorUserId = sponsorMembership.userId;
@@ -196,22 +205,18 @@ export async function activatePlanAOnJoiningPackagePaid(
       });
     }
 
-    // 5. Mark activation applied (idempotency guard) and persist
-    order.mlmActivationApplied = true;
-    await order.save({ session });
+    payment.activationApplied = true;
+    payment.activationCompletedAt = new Date();
+    payment.activationError = null;
+    await payment.save({ session });
 
-    // 6. Clear pendingSponsorReferralCode so re-runs don't try to re-assign
     if (customer.pendingSponsorReferralCode) {
       customer.pendingSponsorReferralCode = null;
       await customer.save({ session });
     }
 
-    // 7. Final projection resync
     await syncCustomerMlmProjection(customerId, { session });
 
-    // 8. Fire the membership-activated notification AFTER the
-    //    transaction commits (emitter uses `setImmediate` internally
-    //    so this is safe to call from inside the txn body).
     try {
       emitNotificationEvent(NOTIFICATION_EVENTS.MLM_MEMBERSHIP_ACTIVATED, {
         userId: String(customerId),

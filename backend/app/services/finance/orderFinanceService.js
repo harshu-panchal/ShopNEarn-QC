@@ -19,7 +19,6 @@ import {
   updateCashInHand,
 } from "./walletService.js";
 import { createPendingPayoutForOrder } from "./payoutService.js";
-import { activatePlanAOnJoiningPackagePaid } from "../mlm/mlmActivationService.js";
 
 function toOrderIdQuery(orderOrId) {
   if (!orderOrId) return null;
@@ -537,27 +536,10 @@ export async function handleCodOrderFinance(
 
     await order.save({ session });
 
-    // MLM Phase 1: COD joining-package activation hook. Fired inside
-    // the same Mongoose session so the activation rolls back together
-    // with the COD finance entry on failure. Idempotency guarded by
-    // `Order.mlmActivationApplied`.
-    if (order.isJoiningPackageOrder) {
-      try {
-        await activatePlanAOnJoiningPackagePaid(order._id, {
-          correlationId: `cod-${order._id}`,
-          session,
-        });
-      } catch (mlmError) {
-        // Non-fatal: keep the COD collection committed even if MLM
-        // activation fails; admin compensation tool can re-run later.
-        if (typeof console !== "undefined" && console.error) {
-          console.error("[orderFinanceService] MLM COD activation failed (non-fatal)", {
-            orderId: String(order._id),
-            error: mlmError.message,
-          });
-        }
-      }
-    }
+    // Note: the legacy COD activation hook for joining-package Orders
+    // was removed in the direct-join refactor. Joining is now ONLINE-only
+    // and goes through `mlmJoiningPaymentService` — never through the
+    // Order pipeline.
 
     await session.commitTransaction();
     return order;

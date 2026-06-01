@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import Order from "../models/order.js";
 import CheckoutGroup from "../models/checkoutGroup.js";
 import Payment from "../models/payment.js";
+import MlmJoiningPayment from "../models/mlmJoiningPayment.js";
 import PaymentWebhookEvent from "../models/paymentWebhookEvent.js";
 import { ORDER_PAYMENT_STATUS } from "../constants/finance.js";
 import {
@@ -12,7 +13,11 @@ import {
   canTransitionPaymentStatus,
 } from "../constants/payment.js";
 import { handleOnlineOrderFinance } from "./finance/orderFinanceService.js";
-import { activatePlanAOnJoiningPackagePaid } from "./mlm/mlmActivationService.js";
+import {
+  isJoiningMerchantOrderId,
+  processJoiningPaymentWebhook,
+  verifyJoiningPaymentStatus,
+} from "./mlm/mlmJoiningPaymentService.js";
 import { DEFAULT_SELLER_TIMEOUT_MS, WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import { afterPlaceOrderV2 } from "./orderWorkflowService.js";
 import { releaseReservedStockForOrder } from "./stockService.js";
@@ -374,26 +379,6 @@ async function handleOrderSideEffectsFromPaymentStatus(payment, nextStatus, reas
         },
       });
 
-      // MLM Phase 1: if this order is a joining-package purchase,
-      // activate the Plan A membership atomically. Idempotency is
-      // guarded by `Order.mlmActivationApplied`. Failures here MUST
-      // NOT abort the rest of the order finance pipeline — they're
-      // logged and reattempted by the admin compensation tool.
-      if (order.isJoiningPackageOrder) {
-        try {
-          await activatePlanAOnJoiningPackagePaid(order._id, {
-            correlationId: payment._id?.toString() || null,
-          });
-        } catch (mlmError) {
-          if (typeof console !== "undefined" && console.error) {
-            console.error("[paymentService] MLM activation failed (non-fatal)", {
-              orderId: String(order._id),
-              error: mlmError.message,
-            });
-          }
-        }
-      }
-
       await moveOrderToSellerPendingAfterPayment(order._id);
       emitNotificationEvent(NOTIFICATION_EVENTS.PAYMENT_SUCCESS, {
         orderId: order.orderId,
@@ -599,6 +584,17 @@ export async function verifyPhonePePaymentStatus({
   userId,
   correlationId = null,
 }) {
+  // Fork: MLM joining payments live in a separate collection and have
+  // their own state machine + activation hook. They are detected by
+  // the `MLM-JOIN-` prefix on the merchantOrderId minted at intent time.
+  if (isJoiningMerchantOrderId(merchantOrderId)) {
+    return verifyJoiningPaymentStatus({
+      merchantOrderId,
+      userId,
+      correlationId,
+    });
+  }
+
   const payment = await Payment.findOne({ gatewayOrderId: merchantOrderId });
   if (!payment) {
     const err = new Error("Payment attempt not found");
@@ -642,10 +638,8 @@ export async function verifyPhonePePaymentStatus({
   });
 
   // Classify the underlying order so the frontend can route the
-  // customer to the right destination (MLM dashboard vs. regular order
-  // detail) and render a context-appropriate success message. Defaults
-  // to "regular" for every existing order path so non-MLM checkouts are
-  // bit-for-bit unaffected.
+  // customer to the right destination. MLM joining payments take the
+  // fork above; this branch only sees regular and home-shopping orders.
   const orderKind = await classifyOrderKindForPayment(payment);
 
   return {
@@ -658,13 +652,11 @@ export async function verifyPhonePePaymentStatus({
 /**
  * Look up the Order(s) linked to a payment and return a stable
  * discriminator the frontend can branch on. Returns one of:
- *   - "mlm_joining"        — joining-package order (Plan A activation)
  *   - "mlm_home_shopping"  — Plan B exclusive home-shopping order
  *   - "regular"            — every other order
  *
- * The MLM kinds win when ANY linked order carries the flag; in practice
- * the joining/home-shopping carts are always single-line so this is the
- * exact-match path.
+ * MLM joining payments are routed via the dedicated MlmJoiningPayment
+ * collection and never reach this function.
  */
 async function classifyOrderKindForPayment(payment) {
   const orderIds = Array.isArray(payment?.orderIds) && payment.orderIds.length > 0
@@ -676,10 +668,9 @@ async function classifyOrderKindForPayment(payment) {
 
   const orders = await Order.find(
     { _id: { $in: orderIds } },
-    { isJoiningPackageOrder: 1, isHomeShoppingOrder: 1 },
+    { isHomeShoppingOrder: 1 },
   ).lean();
 
-  if (orders.some((o) => o.isJoiningPackageOrder)) return "mlm_joining";
   if (orders.some((o) => o.isHomeShoppingOrder)) return "mlm_home_shopping";
   return "regular";
 }
@@ -722,6 +713,44 @@ export async function processPhonePeWebhook({
   }
 
   const merchantOrderId = decoded.merchantOrderId;
+
+  // Fork: MLM joining payments are processed via a dedicated service
+  // that owns its own collection, state machine, and activation hook.
+  if (isJoiningMerchantOrderId(merchantOrderId)) {
+    const joiningPayment = await MlmJoiningPayment.findOne({
+      gatewayOrderId: merchantOrderId,
+    });
+    if (!joiningPayment) {
+      return {
+        accepted: true,
+        ignored: true,
+        reason: "Joining payment not found",
+      };
+    }
+
+    const result = await processJoiningPaymentWebhook({
+      payment: joiningPayment,
+      decoded,
+      correlationId,
+    });
+
+    await PaymentWebhookEvent.updateOne(
+      { eventId },
+      {
+        $set: {
+          publicOrderId: merchantOrderId,
+        },
+      },
+    );
+
+    return {
+      accepted: true,
+      duplicate: false,
+      paymentStatus: result.paymentStatus,
+      publicOrderId: merchantOrderId,
+    };
+  }
+
   const payment = await Payment.findOne({ gatewayOrderId: merchantOrderId });
   if (!payment) {
     return { accepted: true, ignored: true, reason: "Payment attempt not found" };

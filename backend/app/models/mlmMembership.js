@@ -9,10 +9,10 @@ import {
 /**
  * MlmMembership — one row per customer who has joined the MLM program.
  *
- * Created by `mlmActivationService.activatePlanAOnJoiningPackagePaid`
- * when a customer's joining-package order is CAPTURED (online) or
- * COD-collected. NEVER auto-created for non-MLM customers — a missing
- * membership row is the canonical signal for "not an MLM member".
+ * Created by `mlmActivationService.activateMembershipFromJoiningPayment`
+ * when a customer's `MlmJoiningPayment` is CAPTURED. NEVER auto-created
+ * for non-MLM customers — a missing membership row is the canonical
+ * signal for "not an MLM member".
  *
  * Fields are denormalised aggressively (sponsorChain[], counters,
  * lifetime earnings) so the most common reads — upline chain walk,

@@ -457,26 +457,25 @@ export async function placeOrderAtomic({
     const sellerTimeoutMs = DEFAULT_SELLER_TIMEOUT_MS();
     const shouldStartSellerWorkflow = paymentMode === "COD";
 
-    // MLM Phase 1: detect special-purpose orders (joining package,
-    // home-shopping, premium upgrade) by matching cart items against
-    // the admin-configured Product IDs. The flags drive activation +
-    // commission disbursement hooks downstream. When MLM is disabled
-    // or no product IDs are configured, every flag stays false.
+    // MLM: detect Plan B exclusive home-shopping orders by matching
+    // cart items against the admin-configured Product ID. The flag
+    // drives the commission disbursement hooks downstream.
+    //
+    // Joining-package purchases are NOT modelled as Orders any more —
+    // they live in the dedicated `MlmJoiningPayment` collection routed
+    // through `mlmJoiningPaymentService`.
     const mlmCfg = await getMlmConfig();
-    const joiningProductId = mlmCfg.joiningPackageProductId ? String(mlmCfg.joiningPackageProductId) : null;
     const homeShoppingProductId = mlmCfg.homeShoppingProductId ? String(mlmCfg.homeShoppingProductId) : null;
     function detectOrderKind(orderItems) {
       if (!Array.isArray(orderItems) || orderItems.length === 0) {
-        return { isJoiningPackageOrder: false, isHomeShoppingOrder: false };
+        return { isHomeShoppingOrder: false };
       }
-      let isJoining = false;
       let isHome = false;
       for (const item of orderItems) {
         const productId = item?.product ? String(item.product) : null;
-        if (joiningProductId && productId === joiningProductId) isJoining = true;
         if (homeShoppingProductId && productId === homeShoppingProductId) isHome = true;
       }
-      return { isJoiningPackageOrder: isJoining, isHomeShoppingOrder: isHome };
+      return { isHomeShoppingOrder: isHome };
     }
 
     for (let index = 0; index < pricingSnapshot.sellerBreakdownEntries.length; index += 1) {
@@ -530,10 +529,8 @@ export async function placeOrderAtomic({
         seller: entry.sellerId,
         items: orderItemsForKindCheck,
         address: normalizedAddress,
-        // MLM Phase 1: tags consumed by the payment-CAPTURED hook + COD
-        // collection hook to fire MLM activation, and (Phase 2+) by
-        // settleDeliveredOrder to fire bonus chains.
-        isJoiningPackageOrder: orderKind.isJoiningPackageOrder,
+        // MLM Phase 2+: tag consumed by settleDeliveredOrder to fire
+        // home-shopping bonus chains.
         isHomeShoppingOrder: orderKind.isHomeShoppingOrder,
         paymentMode,
         paymentStatus:

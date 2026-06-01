@@ -408,14 +408,17 @@ export async function getCustomerOrders(customerId, pagination) {
   return getOrSet(
     cacheKey,
     async () => {
-      // MLM digital subscriptions (joining-package, home-shopping) are
-      // accounting-only orders. The customer interacts with them
-      // through the Rewards Program UI, not the Orders list — so they
-      // are explicitly excluded here. The filter is applied to both
-      // `find` and `countDocuments` so pagination math stays honest.
+      // MLM home-shopping subscriptions are accounting-only Orders.
+      // The customer interacts with them through the Rewards Program
+      // UI, not the Orders list — so they are explicitly excluded
+      // here. The filter is applied to both `find` and
+      // `countDocuments` so pagination math stays honest.
+      //
+      // Joining-package purchases no longer live as Orders at all
+      // (they're in the dedicated `MlmJoiningPayment` collection), so
+      // no extra filter is needed for them here.
       const baseQuery = {
         customer: customerId,
-        isJoiningPackageOrder: { $ne: true },
         isHomeShoppingOrder: { $ne: true },
       };
       const [orders, total] = await Promise.all([
@@ -464,15 +467,16 @@ export async function getOrderWithAccess(orderId, userId, role) {
     .populate("seller", "shopName name address phone location")
     .lean();
 
-  // MLM-internal orders (joining package, home-shopping) are hidden
-  // accounting records, not customer-facing receipts. Hide them from
-  // the customer order-detail surface so the storefront UI never lands
-  // on the "Order Cancelled / Order Items / Bill Summary" page for a
-  // membership purchase. Admins/support staff still see them for
-  // reconciliation. This mirrors the list-side filter in
-  // `getCustomerOrders` and gives belt-and-braces coverage when a deep
-  // link slips through (e.g. an old payment-status redirect).
-  if (order && (order.isJoiningPackageOrder || order.isHomeShoppingOrder)) {
+  // MLM home-shopping orders are hidden accounting records, not
+  // customer-facing receipts. Hide them from the customer
+  // order-detail surface so the storefront UI never lands on the
+  // generic Bill Summary page for a Plan B membership product.
+  // Admins/support staff still see them for reconciliation. This
+  // mirrors the list-side filter in `getCustomerOrders` and gives
+  // belt-and-braces coverage when a deep link slips through.
+  //
+  // Joining-package purchases no longer exist as Orders.
+  if (order && order.isHomeShoppingOrder) {
     const roleNorm = String(role || "").toLowerCase();
     if (roleNorm === "customer" || roleNorm === "user") {
       throw svcErr("Order not found", 404);

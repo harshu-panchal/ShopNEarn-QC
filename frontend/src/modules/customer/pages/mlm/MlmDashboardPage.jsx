@@ -97,8 +97,15 @@ const NotMemberView = ({ data, navigate }) => {
   const cfg = data.config || {};
   const [joining, setJoining] = useState(false);
 
+  const joiningPriceConfigured = Number(cfg.joiningPackagePrice) > 0;
+  const canJoin = joiningPriceConfigured;
+
   const handleJoin = async () => {
     if (joining) return;
+    if (!canJoin) {
+      toast.error("Joining is not configured yet. Please contact support.");
+      return;
+    }
     setJoining(true);
     try {
       const res = await mlmApi.initiateJoin();
@@ -117,13 +124,12 @@ const NotMemberView = ({ data, navigate }) => {
         err?.message ||
         "Failed to start joining payment";
       const code = err?.response?.data?.result?.code;
-      if (code === "ADDRESS_REQUIRED") {
-        toast.error(message, {
-          action: {
-            label: "Add address",
-            onClick: () => navigate("/addresses"),
-          },
-        });
+      if (code === "ALREADY_MEMBER") {
+        toast.error(message);
+        // Refresh the dashboard so the now-member view appears.
+        navigate(0);
+      } else if (code === "JOINING_PRICE_UNCONFIGURED" || code === "MLM_DISABLED") {
+        toast.error(message);
       } else {
         toast.error(message);
       }
@@ -149,7 +155,7 @@ const NotMemberView = ({ data, navigate }) => {
           </p>
           <button
             onClick={handleJoin}
-            disabled={joining}
+            disabled={joining || !canJoin}
             className="mt-5 w-full bg-white text-indigo-700 font-bold py-3 rounded-xl flex items-center justify-center gap-2 text-sm hover:bg-indigo-50 transition-colors disabled:opacity-70 disabled:cursor-not-allowed">
             {joining ? (
               <>
@@ -162,6 +168,11 @@ const NotMemberView = ({ data, navigate }) => {
               </>
             )}
           </button>
+          {!canJoin && (
+            <p className="mt-2 text-[11px] opacity-90">
+              Joining is being set up. Please check back soon.
+            </p>
+          )}
         </div>
 
         <BenefitsCard cfg={cfg} />

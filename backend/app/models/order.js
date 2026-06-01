@@ -409,30 +409,14 @@ const orderSchema = new mongoose.Schema(
       enum: ["Direct", "Search", "Social", "Referral"],
       default: "Direct",
     },
-    // MLM Phase 1: order-type flags consumed by the payment CAPTURED
-    // hook + the COD finance branch to fire MLM activation / Plan B
-    // commission paths. Default false makes every existing order
-    // untouched. Set at order placement when the cart contains the
-    // configured joining-package / premium / home-shopping product SKU.
-    isJoiningPackageOrder: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-    isPremiumUpgradeOrder: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
+    // MLM Phase 4+: order-type flag for the home-shopping Plan B
+    // exclusive flow. Joining-package purchases are no longer modelled
+    // as Orders — they live in the dedicated `MlmJoiningPayment`
+    // collection. The `isJoiningPackageOrder` and `mlmActivationApplied`
+    // fields previously here were removed in the direct-join refactor;
+    // the migrate-mlm-joining-cleanup script archives any pre-existing
+    // values into MlmJoiningPayment before this schema drop.
     isHomeShoppingOrder: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-    // MLM Phase 1: idempotency guard for the activation hook. Set true
-    // when `mlmActivationService.activatePlanAOnJoiningPackagePaid`
-    // commits successfully. Subsequent webhook re-deliveries short-circuit.
-    mlmActivationApplied: {
       type: Boolean,
       default: false,
       index: true,

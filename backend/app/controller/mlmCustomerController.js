@@ -18,7 +18,7 @@ import {
   createWithdrawalRequest,
   listWithdrawalsForCustomer,
 } from "../services/mlm/mlmWithdrawalService.js";
-import { initiateJoinPayment } from "../services/mlm/mlmJoinService.js";
+import { initiateJoiningPayment } from "../services/mlm/mlmJoiningPaymentService.js";
 import {
   createWithdrawalRequestSchema,
   validateMlmSchema,
@@ -77,7 +77,6 @@ export const getMyMembership = async (req, res) => {
       config: {
         joiningPackagePrice: cfg.joiningPackagePrice,
         joiningPackageShoppingWalletCredit: cfg.joiningPackageShoppingWalletCredit,
-        joiningPackageProductId: cfg.joiningPackageProductId,
         withdrawalMinAmount: cfg.withdrawalMinAmount,
         withdrawalAdminChargePercent: cfg.withdrawalAdminChargePercent,
         withdrawalGstOnAdminChargePercent: cfg.withdrawalGstOnAdminChargePercent,
@@ -337,21 +336,22 @@ export const claimHomeShopping = async (req, res) => {
 /**
  * POST /api/customer/mlm/join/initiate
  *
- * One-click MLM joining: creates the joining-package Order on the
- * customer's behalf and returns a payment-gateway redirect URL so the
- * frontend can open PhonePe directly without sending the user through
- * cart + checkout + address picker UI.
+ * One-click MLM joining: creates a dedicated MlmJoiningPayment row,
+ * initiates the PhonePe checkout, and returns a redirect URL. No
+ * Order or Product is involved — joining is a direct subscription
+ * purchase whose lifecycle lives entirely in `MlmJoiningPayment`.
  *
- * Activation still happens via the existing payment-CAPTURED webhook
- * (`paymentService.processPhonePeWebhook` →
- * `activatePlanAOnJoiningPackagePaid`) — this endpoint only fast-tracks
- * the user from intent to gateway.
+ * Activation happens via the payment-CAPTURED hook
+ * (`processPhonePeWebhook` / `verifyPhonePePaymentStatus` →
+ * `mlmJoiningPaymentService` → `activateMembershipFromJoiningPayment`).
+ *
+ * Response: `{ paymentId, merchantOrderId, redirectUrl, duplicate }`.
  */
 export const initiateJoin = async (req, res) => {
   try {
     const userId = req.user.id;
     const idempotencyKey = req.headers["idempotency-key"] || req.body?.idempotencyKey || null;
-    const result = await initiateJoinPayment({ userId, idempotencyKey });
+    const result = await initiateJoiningPayment({ userId, idempotencyKey });
     return handleResponse(res, 200, "Joining payment initiated", result);
   } catch (error) {
     return handleResponse(

@@ -42,7 +42,6 @@ const MlmSettings = () => {
             // Only send writable fields; the backend will strip unknowns.
             const payload = {
                 enabled: !!cfg.enabled,
-                joiningPackageProductId: cfg.joiningPackageProductId || null,
                 joiningPackagePrice: Number(cfg.joiningPackagePrice) || 0,
                 joiningPackageShoppingWalletCredit: Number(cfg.joiningPackageShoppingWalletCredit) || 0,
                 premiumUpgradeShoppingWalletTopup: Number(cfg.premiumUpgradeShoppingWalletTopup) || 0,
@@ -112,12 +111,11 @@ const MlmSettings = () => {
                     <NumField label="Price (₹)" value={cfg.joiningPackagePrice} onChange={(v) => setCfg({ ...cfg, joiningPackagePrice: v })} />
                     <NumField label="Shopping wallet credit on join (₹)" value={cfg.joiningPackageShoppingWalletCredit} onChange={(v) => setCfg({ ...cfg, joiningPackageShoppingWalletCredit: v })} />
                 </div>
-                <TextField
-                    label="Product ID (Mongo ObjectId)"
-                    value={cfg.joiningPackageProductId || ''}
-                    onChange={(v) => setCfg({ ...cfg, joiningPackageProductId: v.trim() || null })}
-                    hint="Create the Product in Admin > Products and paste its _id here, or run the seed script."
-                />
+                <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                    Joining is a direct payment subscription — no product or order is created.
+                    The price and shopping credit are snapshotted when the customer clicks
+                    "Join Now", so mid-flight edits never cheat in-flight customers.
+                </p>
             </Section>
 
             <Section title="Plan A → Plan B Auto-Upgrade">

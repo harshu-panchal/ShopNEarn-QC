@@ -178,11 +178,6 @@ const settingSchema = new mongoose.Schema(
                 type: Boolean,
                 default: MLM_DEFAULTS.enabled,
             },
-            joiningPackageProductId: {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: "Product",
-                default: null,
-            },
             joiningPackagePrice: {
                 type: Number,
                 default: MLM_DEFAULTS.joiningPackagePrice,
