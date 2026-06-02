@@ -126,8 +126,9 @@ export async function getMentorRoyaltyRate(level, opts) {
 }
 
 /**
- * Look up the direct-referral milestone bonus payable when a sponsor
- * reaches `atDirectCount` directs. Returns null if no rule matches.
+ * DEPRECATED: replaced by `getPlanAPairBonusForPairIndex` after the
+ * Plan A binary pair-matching refactor. Retained so older imports do
+ * not break compilation; no runtime path consumes it.
  */
 export async function getDirectReferralMilestoneBonus(atDirectCount, opts) {
   const cfg = await getMlmConfig(opts);
@@ -135,4 +136,43 @@ export async function getDirectReferralMilestoneBonus(atDirectCount, opts) {
     (row) => Number(row.atDirectCount) === Number(atDirectCount),
   );
   return entry ? Number(entry.bonusAmount) : null;
+}
+
+/**
+ * Look up the Plan A binary pair-match bonus payable when the sponsor
+ * completes their `pairIndex`-th matched pair (1-based).
+ *
+ * Resolution order:
+ *   1. If `planAPairBonusTiers` contains an explicit row for
+ *      `pairIndex`, return its `bonusAmount`.
+ *   2. Otherwise, if `pairIndex > planAPairBonusFixedAfterPair`,
+ *      return `planAPairBonusFixedAmount`.
+ *   3. Otherwise return 0 (no bonus configured for this pair).
+ *
+ * Returns a Number (never null) so callers can short-circuit on `<=0`.
+ */
+export async function getPlanAPairBonusForPairIndex(pairIndex, opts) {
+  const cfg = await getMlmConfig(opts);
+  const idx = Number(pairIndex);
+  if (!Number.isFinite(idx) || idx < 1) return 0;
+
+  const tier = (cfg.planAPairBonusTiers || []).find(
+    (row) => Number(row.pairIndex) === idx,
+  );
+  if (tier) return Number(tier.bonusAmount) || 0;
+
+  const fixedAfter = Number(cfg.planAPairBonusFixedAfterPair) || 0;
+  if (idx > fixedAfter) return Number(cfg.planAPairBonusFixedAmount) || 0;
+
+  return 0;
+}
+
+/**
+ * Cooldown days a `BINARY_PAIR_MATCH` event sits in `pending` before
+ * `mlmJoiningCooldownReleaseJob` promotes it to `earnings`.
+ */
+export async function getPlanAPairBonusReleaseCooldownDays(opts) {
+  const cfg = await getMlmConfig(opts);
+  const days = Number(cfg.planAPairBonusReleaseCooldownDays);
+  return Number.isFinite(days) && days >= 0 ? days : 0;
 }

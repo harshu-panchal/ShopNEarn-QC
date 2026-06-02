@@ -10,12 +10,12 @@ import { adminMlmApi } from '../../services/api/mlmApi';
  *
  * Sections:
  *   - Toggle + joining package
- *   - Plan A direct-referral milestone table (editable rows)
+ *   - Plan A binary pair bonus tiers + fixed-after fallback + cooldown
  *   - Plan B repurchase bonus levels (editable rows)
  *   - Mentor royalty levels
  *   - Withdrawal charges
  *   - Daily earning cap + behaviour
- *   - Home shopping commissions (Phase 4-ready, editable now)
+ *   - Home shopping commissions
  */
 const MlmSettings = () => {
     const [cfg, setCfg] = useState(null);
@@ -42,15 +42,18 @@ const MlmSettings = () => {
             // Only send writable fields; the backend will strip unknowns.
             const payload = {
                 enabled: !!cfg.enabled,
+                signupRequiresReferralCode: cfg.signupRequiresReferralCode !== false,
                 joiningPackagePrice: Number(cfg.joiningPackagePrice) || 0,
                 joiningPackageShoppingWalletCredit: Number(cfg.joiningPackageShoppingWalletCredit) || 0,
                 premiumUpgradeShoppingWalletTopup: Number(cfg.premiumUpgradeShoppingWalletTopup) || 0,
                 planBAutoUpgradeAtPlanALifetimeEarnings: Number(cfg.planBAutoUpgradeAtPlanALifetimeEarnings) || 0,
-                directReferralMilestones: (cfg.directReferralMilestones || []).map((m) => ({
-                    atDirectCount: Number(m.atDirectCount) || 1,
-                    bonusAmount: Number(m.bonusAmount) || 0,
-                    planRequired: m.planRequired || 'A',
+                planAPairBonusTiers: (cfg.planAPairBonusTiers || []).map((t) => ({
+                    pairIndex: Number(t.pairIndex) || 1,
+                    bonusAmount: Number(t.bonusAmount) || 0,
                 })),
+                planAPairBonusFixedAfterPair: Number(cfg.planAPairBonusFixedAfterPair) || 0,
+                planAPairBonusFixedAmount: Number(cfg.planAPairBonusFixedAmount) || 0,
+                planAPairBonusReleaseCooldownDays: Number(cfg.planAPairBonusReleaseCooldownDays) || 0,
                 repurchaseBonusLevels: (cfg.repurchaseBonusLevels || []).map((l) => ({
                     level: Number(l.level) || 1,
                     ratePercent: Number(l.ratePercent) || 0,
@@ -104,6 +107,20 @@ const MlmSettings = () => {
             <Section title="Program Toggle">
                 <Toggle label="MLM Enabled" value={cfg.enabled} onChange={(v) => setCfg({ ...cfg, enabled: v })} />
                 <p className="text-xs text-slate-500 mt-2">When disabled, signup referral codes are still captured but no bonuses fire and the customer dashboard shows a "coming soon" placeholder.</p>
+                <div className="mt-4 pt-4 border-t border-slate-200">
+                    <Toggle
+                        label="Require referral code at signup"
+                        value={cfg.signupRequiresReferralCode !== false}
+                        onChange={(v) => setCfg({ ...cfg, signupRequiresReferralCode: v })}
+                    />
+                    <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                        When ON, no new customer can create an account without
+                        a valid sponsor referral code. The signup OTP endpoint
+                        rejects the request before sending an SMS. Toggle OFF
+                        only to bootstrap the very first member of the system,
+                        then turn it back ON.
+                    </p>
+                </div>
             </Section>
 
             <Section title="Joining Package (Plan A entry)">
@@ -125,16 +142,46 @@ const MlmSettings = () => {
                 </div>
             </Section>
 
-            <Section title="Plan A: Direct Referral Milestone Bonuses">
+            <Section title="Plan A: Binary Pair Bonus Tiers">
+                <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
+                    Plan A pays a bonus every time a sponsor completes a new
+                    matched pair of direct referrals — one personally referred
+                    member in the LEFT subtree and one in the RIGHT subtree
+                    of their binary tree. Each row below sets the payout for
+                    a specific pair index (1st pair, 2nd pair, ...). Pairs
+                    beyond the table fall back to the fixed amount below.
+                </p>
                 <RuleEditor
-                    rows={cfg.directReferralMilestones || []}
+                    rows={cfg.planAPairBonusTiers || []}
                     columns={[
-                        { key: 'atDirectCount', label: 'At Directs', type: 'number', min: 1 },
+                        { key: 'pairIndex', label: 'Pair #', type: 'number', min: 1 },
                         { key: 'bonusAmount', label: 'Bonus (₹)', type: 'number', min: 0 },
                     ]}
-                    defaults={{ atDirectCount: 1, bonusAmount: 0, planRequired: 'A' }}
-                    onChange={(rows) => setCfg({ ...cfg, directReferralMilestones: rows })}
+                    defaults={{ pairIndex: (cfg.planAPairBonusTiers?.length || 0) + 1, bonusAmount: 0 }}
+                    onChange={(rows) => setCfg({ ...cfg, planAPairBonusTiers: rows })}
                 />
+                <div className="grid grid-cols-3 gap-3 mt-4">
+                    <NumField
+                        label="Fixed amount kicks in AFTER pair #"
+                        value={cfg.planAPairBonusFixedAfterPair}
+                        onChange={(v) => setCfg({ ...cfg, planAPairBonusFixedAfterPair: v })}
+                        min={0}
+                    />
+                    <NumField
+                        label="Fixed bonus amount (₹)"
+                        value={cfg.planAPairBonusFixedAmount}
+                        onChange={(v) => setCfg({ ...cfg, planAPairBonusFixedAmount: v })}
+                        min={0}
+                    />
+                    <NumField
+                        label="Pending → Earnings cooldown (days)"
+                        value={cfg.planAPairBonusReleaseCooldownDays}
+                        onChange={(v) => setCfg({ ...cfg, planAPairBonusReleaseCooldownDays: v })}
+                        min={0}
+                        max={365}
+                    />
+                </div>
+                <PairBonusPreview cfg={cfg} />
             </Section>
 
             <Section title="Plan B: Repurchase Bonus Levels (% of grandTotal)">
@@ -269,6 +316,58 @@ const SelectField = ({ label, value, onChange, options }) => (
         </select>
     </label>
 );
+
+/**
+ * Inline preview of the resulting pair bonus payouts so admins can
+ * verify their tier table at a glance. Shows pairs 1..min(8, fixedAfterPair+3)
+ * with their resolved amount (per-tier override or fixed-amount fallback).
+ */
+const PairBonusPreview = ({ cfg }) => {
+    const tiers = (cfg.planAPairBonusTiers || []).reduce((acc, t) => {
+        if (t && Number.isFinite(Number(t.pairIndex))) {
+            acc[Number(t.pairIndex)] = Number(t.bonusAmount) || 0;
+        }
+        return acc;
+    }, {});
+    const fixedAfter = Math.max(0, Number(cfg.planAPairBonusFixedAfterPair) || 0);
+    const fixedAmount = Math.max(0, Number(cfg.planAPairBonusFixedAmount) || 0);
+    const explicitMax = Object.keys(tiers).reduce(
+        (m, k) => Math.max(m, Number(k) || 0),
+        0,
+    );
+    const previewMax = Math.max(explicitMax, fixedAfter + 2, 5);
+
+    const resolve = (idx) => {
+        if (Object.prototype.hasOwnProperty.call(tiers, idx)) return tiers[idx];
+        if (idx > fixedAfter) return fixedAmount;
+        return 0;
+    };
+
+    return (
+        <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-3">
+            <div className="text-[10px] uppercase font-bold text-slate-500 mb-2">Preview</div>
+            <div className="flex flex-wrap gap-2">
+                {Array.from({ length: previewMax }, (_, i) => i + 1).map((idx) => {
+                    const amount = resolve(idx);
+                    const isFixed = idx > fixedAfter && !Object.prototype.hasOwnProperty.call(tiers, idx);
+                    return (
+                        <div
+                            key={idx}
+                            className={`text-xs font-mono px-2 py-1 rounded ${isFixed ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}
+                            title={isFixed ? 'Fixed amount fallback' : 'From tier table'}
+                        >
+                            Pair {idx}: ₹{amount}
+                            {isFixed ? ' (fixed)' : ''}
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="text-[10px] text-slate-500 mt-2">
+                Indigo = explicit tier row · Emerald = fixed-amount fallback (pairs &gt; {fixedAfter})
+            </div>
+        </div>
+    );
+};
 
 const RuleEditor = ({ rows, columns, defaults, onChange }) => {
     const handleAdd = () => onChange([...rows, { ...defaults }]);

@@ -41,6 +41,11 @@ import {
   isMlmWalletLedgerVerifierJobEnabled,
 } from "./app/jobs/mlmWalletLedgerVerifierJob.js";
 import {
+  getMlmJoiningCooldownReleaseJobHandler,
+  getMlmJoiningCooldownReleaseJobIntervalMs,
+  isMlmJoiningCooldownReleaseJobEnabled,
+} from "./app/jobs/mlmJoiningCooldownReleaseJob.js";
+import {
   getPayoutBatchJobHandler,
   getPayoutBatchJobInterval,
   isPayoutBatchJobEnabled
@@ -369,6 +374,18 @@ async function startScheduler() {
     );
   }
 
+  // Plan A binary pair bonus cooldown release. Promotes pair-match
+  // events from `pending` to `earnings` after `Setting.mlm.
+  // planAPairBonusReleaseCooldownDays`. Default cadence 1h. Toggle via
+  // ENABLE_MLM_JOINING_COOLDOWN_RELEASE_JOB (default true).
+  if (isMlmJoiningCooldownReleaseJobEnabled()) {
+    registerScheduledJob(
+      'mlmJoiningCooldownReleaseJob',
+      getMlmJoiningCooldownReleaseJobIntervalMs(),
+      getMlmJoiningCooldownReleaseJobHandler()
+    );
+  }
+
   // Firebase RTDB tracking cleanup — safety net for rider-presence nodes
   // that escape the synchronous lifecycle hooks (force-quit, network drop).
   // Per-order tracking is cleaned by hooks; this job only sweeps stale
@@ -390,6 +407,7 @@ async function startScheduler() {
   if (isWalletLedgerVerifierEnabled()) scheduledJobs.push('walletLedgerVerifierJob');
   if (isMlmDailyCapRolloverJobEnabled()) scheduledJobs.push('mlmDailyCapRolloverJob');
   if (isMlmWalletLedgerVerifierJobEnabled()) scheduledJobs.push('mlmWalletLedgerVerifierJob');
+  if (isMlmJoiningCooldownReleaseJobEnabled()) scheduledJobs.push('mlmJoiningCooldownReleaseJob');
   if (isFirebaseTrackingCleanupJobEnabled()) scheduledJobs.push('firebaseTrackingCleanupJob');
   logger.info('Scheduler started', {
     jobs: scheduledJobs,

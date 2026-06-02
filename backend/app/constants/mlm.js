@@ -36,7 +36,18 @@ export const ALL_MLM_BINARY_PLACEMENT_STRATEGIES = Object.values(MLM_BINARY_PLAC
 
 /** Per-bonus event type tag — used on MlmCommissionEvent + audit reports. */
 export const MLM_BONUS_TYPE = {
+  // Legacy: direct-referral count milestone (replaced by BINARY_PAIR_MATCH
+  // for new credits). The constant is retained so historical
+  // MlmCommissionEvent rows continue to deserialise; no runtime code
+  // path emits new credits of this type after the binary-pair refactor.
   DIRECT_REFERRAL_MILESTONE: "DIRECT_REFERRAL_MILESTONE",
+  // Plan A binary pair-matching bonus — paid every time the sponsor
+  // completes a new pair of direct referrals
+  // (min(leftLegDirectCount, rightLegDirectCount) increments by 1).
+  // Amount comes from `Setting.mlm.planAPairBonusTiers` per pair index,
+  // falling back to `planAPairBonusFixedAmount` for pairs beyond
+  // `planAPairBonusFixedAfterPair`.
+  BINARY_PAIR_MATCH: "BINARY_PAIR_MATCH",
   REPURCHASE_BONUS: "REPURCHASE_BONUS",
   MENTOR_ROYALTY: "MENTOR_ROYALTY",
   HOME_SHOPPING_SALES: "HOME_SHOPPING_SALES",
@@ -102,6 +113,15 @@ export const ALL_MLM_RETURN_CLAWBACK_MODES = Object.values(MLM_RETURN_CLAWBACK_M
 export const MLM_DEFAULTS = Object.freeze({
   enabled: false,
 
+  // Gatekeeper for new customer signup. When `true`, the
+  // /customer/send-otp endpoint refuses to issue an OTP unless the
+  // payload carries a `referralCode` that resolves to an ACTIVE
+  // MlmMembership. The first member of the system bootstraps via a
+  // seed script (or by toggling this OFF temporarily). When `false`,
+  // the referral code stays optional and the legacy capture-on-signup
+  // behaviour is preserved.
+  signupRequiresReferralCode: true,
+
   // Joining package — direct payment + activation (no Product/Order).
   // Lifecycle lives in `MlmJoiningPayment`; price + credit are
   // snapshotted at intent time so mid-flight admin edits don't cheat
@@ -113,14 +133,48 @@ export const MLM_DEFAULTS = Object.freeze({
   planBAutoUpgradeAtPlanALifetimeEarnings: 30000,
   premiumUpgradeShoppingWalletTopup: 10000,
 
-  // Plan A: Direct Referral Milestone Bonus (cumulative table — paid when
-  // sponsor reaches each direct-referral count threshold).
-  // Default: at 2 directs => ₹200, at 3 => ₹150, at 4 => ₹100.
+  // Plan A: Direct Referral Milestone Bonus — DEPRECATED in favour of
+  // `planAPairBonusTiers` (binary pair-matching). The shape is kept so
+  // existing Setting rows don't lose data, but no runtime code path
+  // reads from it for new credits.
   directReferralMilestones: [
     { atDirectCount: 2, bonusAmount: 200, planRequired: MLM_PLAN_TYPE.A },
     { atDirectCount: 3, bonusAmount: 150, planRequired: MLM_PLAN_TYPE.A },
     { atDirectCount: 4, bonusAmount: 100, planRequired: MLM_PLAN_TYPE.A },
   ],
+
+  // Plan A: Binary Pair Bonus — paid every time the sponsor completes a
+  // new pair of direct referrals matched across legs (one personally
+  // referred member in the left subtree, one in the right subtree).
+  // `pairIndex` is 1-based.
+  // Default flow (matches the v2 product spec):
+  //   Pair 1 -> ₹200 (200)
+  //   Pair 2 -> ₹350 (200 + 150)
+  //   Pair 3 -> ₹300 (200 + 100)
+  //   Pair 4 -> ₹250 (200 + 50)
+  //   Pair 5+ -> ₹400 fixed (planAPairBonusFixedAmount).
+  // Admin can edit every entry, add/remove tiers, change the
+  // `fixedAfterPair` cutover point, and the `fixedAmount`.
+  planAPairBonusTiers: [
+    { pairIndex: 1, bonusAmount: 200 },
+    { pairIndex: 2, bonusAmount: 350 },
+    { pairIndex: 3, bonusAmount: 300 },
+    { pairIndex: 4, bonusAmount: 250 },
+  ],
+  // Pair index after which `planAPairBonusFixedAmount` applies. Set to
+  // 0 to apply the fixed amount to ALL pairs not explicitly listed in
+  // `planAPairBonusTiers`. Default 4 means: pairs 5, 6, 7, ... pay the
+  // fixed amount.
+  planAPairBonusFixedAfterPair: 4,
+  // Fixed bonus paid for every pair beyond `planAPairBonusFixedAfterPair`
+  // when the pair index is not explicitly listed in
+  // `planAPairBonusTiers`. Set to 0 to disable fixed-mode payouts.
+  planAPairBonusFixedAmount: 400,
+  // Number of days a `BINARY_PAIR_MATCH` event sits in the recipient's
+  // `pending` wallet bucket before `mlmJoiningCooldownReleaseJob`
+  // promotes it to `earnings` (withdrawable). Cooldown protects against
+  // joining-payment refunds. Set to 0 to release immediately.
+  planAPairBonusReleaseCooldownDays: 7,
 
   // Plan B: Repurchase Bonus on every paid+delivered downline order.
   // Base = grandTotal. Walked 6 levels deep via sponsorChain.
@@ -173,6 +227,14 @@ export const MLM_DEFAULTS = Object.freeze({
 /** Idempotency-key prefixes for ledger replay protection. */
 export const MLM_IDEMPOTENCY_PREFIX = {
   DIRECT_REFERRAL_MILESTONE: "MLM-DRM",
+  // Plan A binary pair-match bonus credit. Key shape:
+  //   `MLM-BPM-<sponsorUserId>-P<pairIndex>` — one row per (sponsor, pair).
+  BINARY_PAIR_MATCH: "MLM-BPM",
+  // Pending->earnings release for a `BINARY_PAIR_MATCH` event that has
+  // sat in pending for `planAPairBonusReleaseCooldownDays`. Key shape:
+  //   `MLM-BPR-<commissionEventId>` (suffixed `-D` and `-C` for the
+  //   debit/credit pair inside the release job).
+  PAIR_BONUS_RELEASE: "MLM-BPR",
   REPURCHASE_BONUS: "MLM-RB",
   MENTOR_ROYALTY: "MLM-MR",
   HOME_SHOPPING_SALES: "MLM-HSS",

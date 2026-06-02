@@ -19,8 +19,10 @@ import {
   getDirectReferralMilestoneBonus,
   getMentorRoyaltyRate,
   getMlmConfig,
+  getPlanAPairBonusForPairIndex,
   getRepurchaseBonusRate,
 } from "./mlmConfigService.js";
+import MlmMembership from "../../models/mlmMembership.js";
 import {
   getMembershipByUserId,
   getUplineChain,
@@ -101,6 +103,8 @@ function ledgerTypeForBonusType(bonusType) {
   switch (bonusType) {
     case MLM_BONUS_TYPE.DIRECT_REFERRAL_MILESTONE:
       return LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_MILESTONE;
+    case MLM_BONUS_TYPE.BINARY_PAIR_MATCH:
+      return LEDGER_TRANSACTION_TYPE.MLM_BINARY_PAIR_MATCH;
     case MLM_BONUS_TYPE.REPURCHASE_BONUS:
       return LEDGER_TRANSACTION_TYPE.MLM_REPURCHASE_BONUS;
     case MLM_BONUS_TYPE.MENTOR_ROYALTY:
@@ -402,15 +406,15 @@ export async function creditBonusToEarningsWallet({
 }
 
 /**
- * Plan A direct-referral milestone bonus.
+ * @deprecated since the Plan A binary pair-matching refactor.
  *
- * Fires when a sponsor reaches a new direct-referral count (post-
- * increment). Looks up the bonus rule in admin settings and credits
- * the sponsor if a matching milestone exists. Idempotent: re-running
- * with the same (sponsorUserId, atDirectCount, newReferralUserId)
- * derives the same idempotencyKey and short-circuits.
+ * The direct-referral COUNT milestone has been replaced by the
+ * binary-pair-matching bonus. New activations call
+ * `computeAndCreditBinaryPairBonus` instead. This function is kept
+ * exported only to avoid breaking any external code that still
+ * imports it; runtime activation no longer calls it.
  *
- * Returns the persisted MlmCommissionEvent or null if no bonus applies.
+ * Removing this stub is safe once no caller imports it.
  */
 export async function computeAndCreditDirectReferralMilestone({
   sponsorUserId,
@@ -446,6 +450,112 @@ export async function computeAndCreditDirectReferralMilestone({
     correlationId,
     session,
   });
+}
+
+/**
+ * Plan A binary pair-matching bonus.
+ *
+ * Called from `mlmActivationService.activateMembershipFromJoiningPayment`
+ * after the new direct referral has been placed in the sponsor's
+ * binary tree and the sponsor's `leftLegDirectCount` /
+ * `rightLegDirectCount` counters have been bumped accordingly.
+ *
+ * Algorithm:
+ *   1. Reload the sponsor's membership inside the session to read the
+ *      freshly bumped leg counters.
+ *   2. Compute `newPairCount = min(leftLegDirectCount, rightLegDirectCount)`.
+ *   3. If `newPairCount > lastPaidPairIndex`, credit one BINARY_PAIR_MATCH
+ *      event for every pair in `(lastPaidPairIndex, newPairCount]`. This
+ *      catch-up loop covers rare scenarios where multiple directs land in
+ *      sequence but the bonus check ran only at the last activation.
+ *   4. Persist `lastPaidPairIndex` and `pairsCompleted` on the sponsor's
+ *      membership inside the same session.
+ *
+ * Idempotency:
+ *   - Each per-pair credit uses key
+ *     `MLM-BPM-<sponsorUserId>-P<pairIndex>` so re-running activation
+ *     for the same triggering member never double-credits.
+ *   - The `lastPaidPairIndex` $set is monotonic: a re-run that finds
+ *     no new pairs is a no-op.
+ *
+ * Returns the array of persisted `MlmCommissionEvent` rows
+ * (zero-length if no new pair was completed). Pair amounts come from
+ * `Setting.mlm.planAPairBonusTiers` with fallback to
+ * `planAPairBonusFixedAmount` for pair indexes beyond
+ * `planAPairBonusFixedAfterPair`.
+ */
+export async function computeAndCreditBinaryPairBonus({
+  sponsorUserId,
+  newReferralUserId,
+  session,
+  correlationId = null,
+}) {
+  if (!sponsorUserId) return [];
+
+  const sponsor = await getMembershipByUserId(sponsorUserId, { session });
+  if (!sponsor) return [];
+
+  const leftLeg = Number(sponsor.leftLegDirectCount) || 0;
+  const rightLeg = Number(sponsor.rightLegDirectCount) || 0;
+  const newPairCount = Math.min(leftLeg, rightLeg);
+  const lastPaid = Number(sponsor.lastPaidPairIndex) || 0;
+
+  if (newPairCount <= lastPaid) {
+    return [];
+  }
+
+  const events = [];
+  for (let p = lastPaid + 1; p <= newPairCount; p += 1) {
+    const bonusAmount = await getPlanAPairBonusForPairIndex(p);
+    if (!bonusAmount || bonusAmount <= 0) {
+      // No payout configured for this pair index; still mark the
+      // pair as "paid" so we never re-evaluate it in the future
+      // (otherwise the catch-up loop would always replay it on next
+      // activation, which is wasted work).
+      continue;
+    }
+
+    const idempotencyKey = `${MLM_IDEMPOTENCY_PREFIX.BINARY_PAIR_MATCH}-${sponsorUserId}-P${p}`;
+
+    const event = await creditBonusToEarningsWallet({
+      recipientUserId: sponsorUserId,
+      bonusType: MLM_BONUS_TYPE.BINARY_PAIR_MATCH,
+      planType: MLM_PLAN_TYPE.A,
+      bonusAmount,
+      level: null,
+      baseAmount: 0,
+      ratePercent: null,
+      sourceUserId: newReferralUserId,
+      sourceOrderId: null,
+      bucket: "pending",
+      description: `Plan A binary pair bonus #${p}`,
+      meta: {
+        pairIndex: p,
+        leftLegDirectCount: leftLeg,
+        rightLegDirectCount: rightLeg,
+      },
+      idempotencyKey,
+      correlationId,
+      session,
+    });
+    if (event) events.push(event);
+  }
+
+  // Persist progress markers regardless of whether any pair had a
+  // configured payout — that way a subsequent re-run with non-zero
+  // settings still only emits truly new pairs.
+  await MlmMembership.updateOne(
+    { userId: sponsorUserId },
+    {
+      $set: {
+        lastPaidPairIndex: newPairCount,
+        pairsCompleted: newPairCount,
+      },
+    },
+    { session },
+  );
+
+  return events;
 }
 
 /**

@@ -81,6 +81,12 @@ export const LEDGER_TRANSACTION_TYPE = {
   // wallet seed, withdrawal charge and reversal gets its own ledger
   // type so the admin audit ledger can filter & reconcile cleanly.
   MLM_DIRECT_REFERRAL_MILESTONE: "MLM_DIRECT_REFERRAL_MILESTONE",
+  // Plan A binary pair-matching bonus — paid every time the sponsor
+  // completes a new pair of direct referrals (one in left subtree, one
+  // in right subtree). Replaces the legacy
+  // `MLM_DIRECT_REFERRAL_MILESTONE` payout for new credits; that ledger
+  // type is retained only so historical rows continue to deserialise.
+  MLM_BINARY_PAIR_MATCH: "MLM_BINARY_PAIR_MATCH",
   MLM_REPURCHASE_BONUS: "MLM_REPURCHASE_BONUS",
   MLM_MENTOR_ROYALTY: "MLM_MENTOR_ROYALTY",
   MLM_HOME_SHOPPING_SALES: "MLM_HOME_SHOPPING_SALES",

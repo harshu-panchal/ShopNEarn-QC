@@ -138,6 +138,13 @@ const MlmReferralPage = () => {
                     </div>
                 </div>
 
+                {membership.membership?.planType === 'A' && (
+                    <LegBalanceCard
+                        membership={membership.membership}
+                        config={membership.config}
+                    />
+                )}
+
                 <div className="bg-white rounded-2xl border border-slate-200 p-5">
                     <h3 className="text-sm font-bold uppercase tracking-wide text-slate-600 mb-3 flex items-center gap-2">
                         <QrCode size={16} /> Scan & Join
@@ -191,6 +198,66 @@ const MlmReferralPage = () => {
                         </ul>
                     )}
                 </div>
+            </div>
+        </div>
+    );
+};
+
+/**
+ * LegBalanceCard — surfaces left-leg-direct vs right-leg-direct counts
+ * and the next pair's payout. Helps the customer see exactly where to
+ * place their next referral to unlock the next pair-match bonus.
+ */
+const LegBalanceCard = ({ membership, config }) => {
+    const left = Number(membership.leftLegDirectCount) || 0;
+    const right = Number(membership.rightLegDirectCount) || 0;
+    const pairs = Number(membership.pairsCompleted) || 0;
+    const nextAmount = Number(membership.nextPairBonusAmount) || 0;
+    const nextIdx = Number(membership.nextPairIndex) || pairs + 1;
+    const cooldown = Number(config?.planAPairBonusReleaseCooldownDays) || 0;
+    const weakerLeg = left <= right ? 'left' : 'right';
+
+    return (
+        <div className="bg-white rounded-2xl border border-slate-200 p-5">
+            <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold uppercase tracking-wide text-slate-600">
+                    Binary Tree Balance
+                </h3>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">
+                    Plan A
+                </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mb-3">
+                <div className={`rounded-xl border p-3 text-center ${weakerLeg === 'left' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+                    <p className={`text-xl font-black ${weakerLeg === 'left' ? 'text-amber-700' : 'text-slate-900'}`}>{left}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mt-1">Left Leg</p>
+                </div>
+                <div className="rounded-xl border bg-indigo-50 border-indigo-200 p-3 text-center">
+                    <p className="text-xl font-black text-indigo-700">{pairs}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mt-1">Pairs Done</p>
+                </div>
+                <div className={`rounded-xl border p-3 text-center ${weakerLeg === 'right' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+                    <p className={`text-xl font-black ${weakerLeg === 'right' ? 'text-amber-700' : 'text-slate-900'}`}>{right}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mt-1">Right Leg</p>
+                </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl px-4 py-3 border border-slate-200">
+                <div className="flex items-baseline justify-between">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                        Next Pair Payout
+                    </p>
+                    <span className="text-base font-black text-slate-900">
+                        {nextAmount > 0 ? formatINR(nextAmount) : '—'}
+                    </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                    Refer one more friend on your <strong>{weakerLeg} leg</strong> to complete pair #{nextIdx}.
+                    {cooldown > 0 && (
+                        <> Pair bonuses unlock for withdrawal after {cooldown} days.</>
+                    )}
+                </p>
             </div>
         </div>
     );

@@ -11,7 +11,11 @@ const formatDate = (d) => new Date(d).toLocaleString('en-IN', {
 
 const bonusTypeLabel = (t) => {
     const map = {
-        DIRECT_REFERRAL_MILESTONE: 'Referral Milestone',
+        // Legacy direct-referral milestone (no longer credited; kept so
+        // historical rows render with a friendly name).
+        DIRECT_REFERRAL_MILESTONE: 'Referral Milestone (legacy)',
+        // Plan A binary pair-match bonus — current Plan A payout.
+        BINARY_PAIR_MATCH: 'Pair Match Bonus',
         REPURCHASE_BONUS: 'Repurchase Bonus',
         MENTOR_ROYALTY: 'Mentor Royalty',
         HOME_SHOPPING_SALES: 'Home Shopping Sales',
@@ -111,7 +115,7 @@ const MlmEarningsPage = () => {
 
                 {/* Filter */}
                 <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                    {['', 'DIRECT_REFERRAL_MILESTONE', 'REPURCHASE_BONUS', 'MENTOR_ROYALTY'].map((t) => (
+                    {['', 'BINARY_PAIR_MATCH', 'REPURCHASE_BONUS', 'MENTOR_ROYALTY'].map((t) => (
                         <button
                             key={t || 'all'}
                             onClick={() => { setFilter(t); setPage(1); }}

@@ -132,20 +132,72 @@ export async function syncCustomerMlmProjection(userId, { session } = {}) {
 
 /**
  * Find the deepest empty slot on the weaker leg of `rootMembership`
- * using BFS. Returns { parentMembership, position } where position is
- * "L" or "R". If `rootMembership` itself has an empty slot, that slot
- * wins (depth 0).
+ * using BFS. Returns
+ *   { parentMembership, position, legUnderRoot }
+ * where:
+ *   - `position` ∈ {"L","R"} is relative to `parentMembership` (the
+ *     immediate slot in which the new member will live).
+ *   - `legUnderRoot` ∈ {"L","R"} is which subtree of `rootMembership`
+ *     the new member ultimately lands in. When the new member is a
+ *     direct child of the root, `legUnderRoot === position`.
+ *
+ * `legUnderRoot` is what the binary pair bonus engine bumps on the
+ * sponsor's `{left,right}LegDirectCount` counters.
  */
 async function findBalancedBinarySlot(rootMembership, { session } = {}) {
-  const queue = [rootMembership];
-  while (queue.length > 0) {
-    const node = queue.shift();
-    if (!node.binaryLeftChildId) return { parentMembership: node, position: "L" };
-    if (!node.binaryRightChildId) return { parentMembership: node, position: "R" };
+  // Direct-child slot — easy case, leg = position.
+  if (!rootMembership.binaryLeftChildId) {
+    return {
+      parentMembership: rootMembership,
+      position: "L",
+      legUnderRoot: "L",
+    };
+  }
+  if (!rootMembership.binaryRightChildId) {
+    return {
+      parentMembership: rootMembership,
+      position: "R",
+      legUnderRoot: "R",
+    };
+  }
 
-    // Pick the leg with the fewer descendants. Count via direct child
-    // lookup is fine because BFS already balances depth; for a deeper
-    // tree the totalDownlineCount counter (when populated) wins.
+  // Both top-level slots are filled; descend BFS down the weaker leg.
+  // We tag every queued node with the leg of the root it belongs to so
+  // the eventual placement decision carries that label out.
+  const [topLeft, topRight] = await Promise.all([
+    MlmMembership.findOne(
+      { userId: rootMembership.binaryLeftChildId },
+      null,
+      session ? { session } : {},
+    ),
+    MlmMembership.findOne(
+      { userId: rootMembership.binaryRightChildId },
+      null,
+      session ? { session } : {},
+    ),
+  ]);
+
+  const queue = [];
+  // Pick which leg to explore first based on totalDownlineCount.
+  const leftCount = topLeft?.totalDownlineCount || 0;
+  const rightCount = topRight?.totalDownlineCount || 0;
+  if (leftCount <= rightCount) {
+    if (topLeft) queue.push({ node: topLeft, legUnderRoot: "L" });
+    if (topRight) queue.push({ node: topRight, legUnderRoot: "R" });
+  } else {
+    if (topRight) queue.push({ node: topRight, legUnderRoot: "R" });
+    if (topLeft) queue.push({ node: topLeft, legUnderRoot: "L" });
+  }
+
+  while (queue.length > 0) {
+    const { node, legUnderRoot } = queue.shift();
+    if (!node.binaryLeftChildId) {
+      return { parentMembership: node, position: "L", legUnderRoot };
+    }
+    if (!node.binaryRightChildId) {
+      return { parentMembership: node, position: "R", legUnderRoot };
+    }
+
     const [leftChild, rightChild] = await Promise.all([
       MlmMembership.findOne(
         { userId: node.binaryLeftChildId },
@@ -158,16 +210,17 @@ async function findBalancedBinarySlot(rootMembership, { session } = {}) {
         session ? { session } : {},
       ),
     ]);
-    if (!leftChild) return { parentMembership: node, position: "L" };
-    if (!rightChild) return { parentMembership: node, position: "R" };
-    const leftCount = leftChild.totalDownlineCount || 0;
-    const rightCount = rightChild.totalDownlineCount || 0;
-    if (leftCount <= rightCount) {
-      queue.push(leftChild);
-      queue.push(rightChild);
+    if (!leftChild) return { parentMembership: node, position: "L", legUnderRoot };
+    if (!rightChild) return { parentMembership: node, position: "R", legUnderRoot };
+
+    const lc = leftChild.totalDownlineCount || 0;
+    const rc = rightChild.totalDownlineCount || 0;
+    if (lc <= rc) {
+      queue.push({ node: leftChild, legUnderRoot });
+      queue.push({ node: rightChild, legUnderRoot });
     } else {
-      queue.push(rightChild);
-      queue.push(leftChild);
+      queue.push({ node: rightChild, legUnderRoot });
+      queue.push({ node: leftChild, legUnderRoot });
     }
   }
   return null;
@@ -177,6 +230,13 @@ async function findBalancedBinarySlot(rootMembership, { session } = {}) {
  * Place `newMembership` into the binary tree under `sponsorMembership`
  * using the configured placement strategy. Mutates both documents in
  * place; caller is responsible for saving them in the same session.
+ *
+ * Returns
+ *   { parentMembership, position, legUnderSponsor }
+ * or `null` if no slot could be found. `legUnderSponsor` ∈ {"L","R"}
+ * tells the caller which subtree of the sponsor the new member ended
+ * up in — the binary pair bonus engine uses this to bump the sponsor's
+ * `leftLegDirectCount` / `rightLegDirectCount` counters.
  */
 export async function placeInBinaryTree({
   newMembership,
@@ -184,25 +244,26 @@ export async function placeInBinaryTree({
   session,
   preferredPosition = null, // "L" | "R" | null
 }) {
-  if (!sponsorMembership) return;
+  if (!sponsorMembership) return null;
 
   const cfg = await getMlmConfig();
   const strategy = cfg.binaryPlacementStrategy || MLM_DEFAULTS.binaryPlacementStrategy;
 
   let parentMembership = sponsorMembership;
   let position = preferredPosition && ["L", "R"].includes(preferredPosition) ? preferredPosition : null;
+  let legUnderSponsor = null;
 
   if (strategy === MLM_BINARY_PLACEMENT_STRATEGY.BALANCED_AUTO) {
     const slot = await findBalancedBinarySlot(sponsorMembership, { session });
-    if (!slot) return; // no slot found (shouldn't happen for a fresh tree)
+    if (!slot) return null;
     parentMembership = slot.parentMembership;
     position = slot.position;
+    legUnderSponsor = slot.legUnderRoot;
   } else if (strategy === MLM_BINARY_PLACEMENT_STRATEGY.SPILLOVER) {
     // Honour preferredPosition if open; otherwise spillover down that leg.
-    let prefer = position || "L";
+    const prefer = position || "L";
+    legUnderSponsor = prefer; // spillover stays on the chosen sponsor leg
     let cursor = sponsorMembership;
-    // Walk down the preferred leg until we find an empty slot.
-    // Safety: cap at sponsorChainMaxDepth iterations.
     const maxIter = Number(cfg.sponsorChainMaxDepth) || 10;
     for (let i = 0; i < maxIter; i += 1) {
       const childId = prefer === "L" ? cursor.binaryLeftChildId : cursor.binaryRightChildId;
@@ -222,9 +283,18 @@ export async function placeInBinaryTree({
     // manual: require preferredPosition; if not provided, default to L.
     parentMembership = sponsorMembership;
     position = position || "L";
+    legUnderSponsor = position;
   }
 
-  if (!parentMembership || !position) return;
+  if (!parentMembership || !position) return null;
+
+  // If we placed directly under the sponsor, legUnderSponsor === position.
+  if (
+    String(parentMembership.userId) === String(sponsorMembership.userId) &&
+    !legUnderSponsor
+  ) {
+    legUnderSponsor = position;
+  }
 
   newMembership.binaryParentId = parentMembership.userId;
   newMembership.binaryParentMembershipId = parentMembership._id;
@@ -236,6 +306,34 @@ export async function placeInBinaryTree({
     parentMembership.binaryRightChildId = newMembership.userId;
   }
   await parentMembership.save({ session });
+
+  return { parentMembership, position, legUnderSponsor };
+}
+
+/**
+ * Increment a sponsor's leg-direct counter (`leftLegDirectCount` or
+ * `rightLegDirectCount`) by 1. Called inside `assignSponsor` once the
+ * placement engine knows which subtree of the sponsor the new direct
+ * referral landed in. Powers the Plan A binary pair-match bonus engine.
+ *
+ * Returns the post-increment membership (or null if the sponsor is
+ * missing).
+ */
+export async function incrementSponsorLegDirectCount({
+  sponsorUserId,
+  leg,
+  session,
+}) {
+  if (!sponsorUserId || (leg !== "L" && leg !== "R")) return null;
+  const inc =
+    leg === "L"
+      ? { leftLegDirectCount: 1 }
+      : { rightLegDirectCount: 1 };
+  return MlmMembership.findOneAndUpdate(
+    { userId: sponsorUserId },
+    { $inc: inc },
+    { new: true, session },
+  );
 }
 
 /**
@@ -338,7 +436,7 @@ export async function assignSponsor({
   membership.sponsorMembershipId = sponsorMembership._id;
   membership.sponsorChain = await buildSponsorChain(sponsorMembership, { session });
 
-  await placeInBinaryTree({
+  const placement = await placeInBinaryTree({
     newMembership: membership,
     sponsorMembership,
     session,
@@ -350,9 +448,25 @@ export async function assignSponsor({
   await incrementDirectReferralCount(sponsorMembership.userId, { session });
   await incrementUplineDownlineCounts(membership.sponsorChain, { session });
 
+  // Plan A binary pair bonus: bump the sponsor's leg-direct counter
+  // for whichever subtree of the sponsor the new member landed in.
+  // The bonus engine reads `leftLegDirectCount` / `rightLegDirectCount`
+  // and credits a bonus when `min(L, R)` increments (one new pair
+  // completed).
+  if (placement?.legUnderSponsor) {
+    await incrementSponsorLegDirectCount({
+      sponsorUserId: sponsorMembership.userId,
+      leg: placement.legUnderSponsor,
+      session,
+    });
+  }
+
   await syncCustomerMlmProjection(membership.userId, { session });
   await syncCustomerMlmProjection(sponsorMembership.userId, { session });
 
+  // Surface the leg back to the activation flow so it can fire the
+  // pair-match bonus computation against the freshly-bumped counters.
+  membership.__placedLegUnderSponsor = placement?.legUnderSponsor || null;
   return membership;
 }
 

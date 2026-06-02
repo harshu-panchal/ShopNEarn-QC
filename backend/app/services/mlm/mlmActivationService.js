@@ -16,7 +16,7 @@ import {
   createOrGetMembership,
   syncCustomerMlmProjection,
 } from "./mlmMembershipService.js";
-import { computeAndCreditDirectReferralMilestone } from "./mlmBonusEngineService.js";
+import { computeAndCreditBinaryPairBonus } from "./mlmBonusEngineService.js";
 import { getMlmConfig } from "./mlmConfigService.js";
 import { emitNotificationEvent } from "../../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.constants.js";
@@ -69,12 +69,14 @@ async function runInSession(externalSession, fn) {
  *   5. Credit the joining-package shopping-wallet seed (using the
  *      payment's snapshot value — NOT the live config — so admins
  *      can't cheat mid-flight customers) to `shoppingBalance`.
- *   6. Fire the direct-referral milestone bonus for the sponsor (if any).
+ *   6. Fire the Plan A binary pair-matching bonus for the sponsor
+ *      (if any) via `computeAndCreditBinaryPairBonus`. Replaces the
+ *      legacy direct-referral count milestone.
  *   7. Mark `MlmJoiningPayment.activationApplied = true`.
  *   8. Resync the customer's denormalised `Customer.mlm` projection.
  *
  * Returns `{ membership, sponsorMembership, shoppingCreditAmount,
- * milestoneEvent }` on success.
+ * pairBonusEvents }` on success.
  *
  * Idempotent: re-running the function on an already-activated payment
  * is a no-op (returns the existing membership + zero new credits).
@@ -187,19 +189,21 @@ export async function activateMembershipFromJoiningPayment(
       });
     }
 
-    let milestoneEvent = null;
+    // Plan A binary pair-matching bonus.
+    //
+    // `assignSponsor` has already bumped the sponsor's
+    // `leftLegDirectCount` / `rightLegDirectCount` for the leg the new
+    // member landed in. The pair-bonus engine reads those freshly
+    // bumped counters, computes
+    //   `min(leftLegDirectCount, rightLegDirectCount)`,
+    // and credits one BINARY_PAIR_MATCH event for every newly-completed
+    // pair (typically 0 or 1 per activation, but the catch-up loop
+    // handles multi-pair jumps if they ever occur).
+    let pairBonusEvents = [];
     if (sponsorMembership) {
-      const sponsorUserId = sponsorMembership.userId;
-      const refreshedSponsor = await MlmMembership.findOne(
-        { userId: sponsorUserId },
-        null,
-        { session },
-      );
-      const directCount = refreshedSponsor?.directReferralsCount || 0;
-      milestoneEvent = await computeAndCreditDirectReferralMilestone({
-        sponsorUserId,
+      pairBonusEvents = await computeAndCreditBinaryPairBonus({
+        sponsorUserId: sponsorMembership.userId,
         newReferralUserId: customerId,
-        atDirectCount: directCount,
         session,
         correlationId,
       });
@@ -235,7 +239,11 @@ export async function activateMembershipFromJoiningPayment(
       sponsorMembership,
       shoppingCreditAmount,
       shoppingCreditResult,
-      milestoneEvent,
+      pairBonusEvents,
+      // Backwards-compat alias for any caller still reading
+      // `milestoneEvent` from the legacy direct-referral milestone
+      // path. Surfaces the first newly-credited pair bonus (or null).
+      milestoneEvent: pairBonusEvents?.[0] || null,
     };
   });
 }

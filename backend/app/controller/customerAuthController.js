@@ -13,6 +13,9 @@ import {
     validateSchema,
     verifyOtpSchema,
 } from "../validation/customerAuthValidation.js";
+import { getMlmConfig } from "../services/mlm/mlmConfigService.js";
+import { getMembershipByReferralCode } from "../services/mlm/mlmMembershipService.js";
+import { MLM_MEMBERSHIP_STATUS } from "../constants/mlm.js";
 
 const generateToken = (customer) =>
     jwt.sign(
@@ -28,12 +31,46 @@ export const signupCustomer = async (req, res) => {
     try {
         const payload = validateSchema(sendSignupOtpSchema, req.body || {});
 
+        // Referral-code gate. When `Setting.mlm.signupRequiresReferralCode`
+        // is true (default), every new customer MUST sponsor under an
+        // existing ACTIVE MlmMembership. The check happens BEFORE OTP
+        // dispatch so we don't burn an SMS / phone-rate-limit slot on a
+        // request that will fail at activation anyway.
+        //
+        // Admins disable the toggle (via /admin/mlm/settings) only to
+        // bootstrap the very first member or for offline staging tests.
+        const mlmCfg = await getMlmConfig();
+        const requireRef = mlmCfg.signupRequiresReferralCode !== false;
+
+        const rawCode = String(payload.referralCode || "").trim().toUpperCase();
+
+        if (requireRef && !rawCode) {
+            return handleResponse(
+                res,
+                400,
+                "A valid referral code is required to sign up.",
+                { code: "REFERRAL_CODE_REQUIRED" },
+            );
+        }
+
+        if (rawCode) {
+            const sponsor = await getMembershipByReferralCode(rawCode);
+            if (!sponsor || sponsor.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) {
+                return handleResponse(
+                    res,
+                    400,
+                    "Invalid referral code. Please check with your sponsor.",
+                    { code: "REFERRAL_CODE_INVALID" },
+                );
+            }
+        }
+
         await issueCustomerOtp({
             name: payload.name,
             rawPhone: payload.phone,
             flow: "signup",
             ipAddress: req.ip,
-            referralCode: payload.referralCode || "",
+            referralCode: rawCode,
         });
 
         return handleResponse(res, 200, "If the number is eligible, OTP has been sent");

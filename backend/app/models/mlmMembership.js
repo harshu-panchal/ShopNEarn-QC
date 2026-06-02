@@ -136,6 +136,26 @@ const mlmMembershipSchema = new mongoose.Schema(
     directReferralsCount: { type: Number, default: 0 },
     totalDownlineCount: { type: Number, default: 0 },
 
+    // Plan A binary pair bonus — counters of THIS member's own direct
+    // referrals partitioned by which leg (L/R) of THIS member's binary
+    // tree they were placed in. Bumped by `incrementSponsorLegDirectCount`
+    // inside the same session as `assignSponsor`. The pair bonus engine
+    // pays at every increment of `min(leftLegDirectCount, rightLegDirectCount)`.
+    //
+    // Note: these count A's *direct referrals only* (people for whom
+    // `sponsorId === A.userId`). Spillover from A's upline does NOT
+    // bump these counters — it bumps `totalDownlineCount` instead.
+    leftLegDirectCount: { type: Number, default: 0 },
+    rightLegDirectCount: { type: Number, default: 0 },
+    // `pairsCompleted` mirrors `min(leftLegDirectCount, rightLegDirectCount)`
+    // and only ever moves forward. Used for fast read paths.
+    pairsCompleted: { type: Number, default: 0 },
+    // Last pair index for which a `BINARY_PAIR_MATCH` event was credited.
+    // Drives idempotent multi-pair catch-up: if multiple directs join in
+    // the same window, the engine can fire bonuses for every pair from
+    // `lastPaidPairIndex + 1` up to current `pairsCompleted`.
+    lastPaidPairIndex: { type: Number, default: 0 },
+
     // Lifetime totals — drive Plan A => Plan B auto-upgrade trigger.
     lifetimePlanAEarnings: { type: Number, default: 0 },
     lifetimePlanBEarnings: { type: Number, default: 0 },

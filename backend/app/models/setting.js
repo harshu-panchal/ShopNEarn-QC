@@ -178,6 +178,14 @@ const settingSchema = new mongoose.Schema(
                 type: Boolean,
                 default: MLM_DEFAULTS.enabled,
             },
+            // Hard requirement: when true, new customer signup is
+            // gated on a valid sponsor referral code. Default true.
+            // Admins toggle off only to bootstrap the very first member
+            // (or for offline testing on staging).
+            signupRequiresReferralCode: {
+                type: Boolean,
+                default: MLM_DEFAULTS.signupRequiresReferralCode,
+            },
             joiningPackagePrice: {
                 type: Number,
                 default: MLM_DEFAULTS.joiningPackagePrice,
@@ -198,6 +206,10 @@ const settingSchema = new mongoose.Schema(
                 default: MLM_DEFAULTS.planBAutoUpgradeAtPlanALifetimeEarnings,
                 min: 0,
             },
+            // DEPRECATED: replaced by `planAPairBonusTiers` for the
+            // binary pair-matching bonus. Kept so legacy Setting rows
+            // do not lose data; no runtime code path consumes it any
+            // more for new credits.
             directReferralMilestones: {
                 type: [
                     {
@@ -212,6 +224,38 @@ const settingSchema = new mongoose.Schema(
                     },
                 ],
                 default: () => MLM_DEFAULTS.directReferralMilestones.map((m) => ({ ...m })),
+            },
+            // Plan A binary pair-match bonus tiers — admin-editable
+            // table mapping `pairIndex -> bonusAmount`. Pair index is
+            // 1-based and represents the sponsor's nth completed pair
+            // (`min(leftLegDirectCount, rightLegDirectCount)`). Pairs
+            // not listed here fall back to `planAPairBonusFixedAmount`
+            // when their index exceeds `planAPairBonusFixedAfterPair`.
+            planAPairBonusTiers: {
+                type: [
+                    {
+                        _id: false,
+                        pairIndex: { type: Number, required: true, min: 1 },
+                        bonusAmount: { type: Number, required: true, min: 0 },
+                    },
+                ],
+                default: () => MLM_DEFAULTS.planAPairBonusTiers.map((t) => ({ ...t })),
+            },
+            planAPairBonusFixedAfterPair: {
+                type: Number,
+                default: MLM_DEFAULTS.planAPairBonusFixedAfterPair,
+                min: 0,
+            },
+            planAPairBonusFixedAmount: {
+                type: Number,
+                default: MLM_DEFAULTS.planAPairBonusFixedAmount,
+                min: 0,
+            },
+            planAPairBonusReleaseCooldownDays: {
+                type: Number,
+                default: MLM_DEFAULTS.planAPairBonusReleaseCooldownDays,
+                min: 0,
+                max: 365,
             },
             repurchaseBonusLevels: {
                 type: [

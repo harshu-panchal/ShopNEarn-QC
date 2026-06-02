@@ -194,7 +194,10 @@ const BenefitsCard = ({ cfg }) => (
       </li>
       <li className="flex items-start gap-2">
         <Users size={18} className="text-blue-600 mt-0.5 flex-shrink-0" />
-        <span>Earn milestone bonuses for every friend you refer (Plan A)</span>
+        <span>
+          Earn binary <strong>pair-match</strong> bonuses every time you refer a
+          new pair (one on each leg) — Plan A
+        </span>
       </li>
       <li className="flex items-start gap-2">
         <Award size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
@@ -330,6 +333,11 @@ const MemberDashboardView = ({ data, navigate }) => {
           </div>
         </div>
 
+        {/* Plan A binary pair bonus card — only shown for Plan A members. */}
+        {membership.planType === "A" && (
+          <PairBonusCard membership={membership} config={config} />
+        )}
+
         {/* Stats grid */}
         <div className="grid grid-cols-3 gap-3">
           <StatCard label="Directs" value={membership.directReferralsCount} />
@@ -397,6 +405,107 @@ const WalletCard = ({ label, amount, hint, color }) => (
       className={`inline-block mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${color}`}>
       {hint}
     </span>
+  </div>
+);
+
+/**
+ * Plan A binary pair-match bonus card — shows the customer's leg counts,
+ * pairs completed, and the next-pair payout preview.
+ *
+ * The "weaker leg" is highlighted because that is what limits pair count.
+ */
+const PairBonusCard = ({ membership, config }) => {
+  const left = Number(membership.leftLegDirectCount) || 0;
+  const right = Number(membership.rightLegDirectCount) || 0;
+  const pairs = Number(membership.pairsCompleted) || 0;
+  const nextPair = Number(membership.nextPairIndex) || pairs + 1;
+  const nextAmount = Number(membership.nextPairBonusAmount) || 0;
+  const cooldown = Number(config?.planAPairBonusReleaseCooldownDays) || 0;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-base font-bold text-slate-900">
+          Binary Pair Bonus
+        </h3>
+        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">
+          Plan A
+        </span>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 mb-3">
+        <LegCard
+          label="Left Leg"
+          value={left}
+          highlight={left <= right}
+        />
+        <LegCard
+          label="Pairs"
+          value={pairs}
+          highlight={false}
+          accent
+        />
+        <LegCard
+          label="Right Leg"
+          value={right}
+          highlight={right <= left}
+        />
+      </div>
+
+      <div className="bg-slate-50 rounded-xl px-4 py-3 border border-slate-200">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+          Next Pair Payout
+        </p>
+        <div className="flex items-baseline justify-between mt-1">
+          <span className="text-lg font-black text-slate-900">
+            {nextAmount > 0 ? formatINR(nextAmount) : "—"}
+          </span>
+          <span className="text-[11px] text-slate-500">
+            for completing pair #{nextPair}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+          Refer one more friend on your{" "}
+          <strong>
+            {left <= right ? "left" : "right"} leg
+          </strong>{" "}
+          to complete the next pair.
+          {cooldown > 0 && (
+            <>
+              {" "}
+              Pair bonuses unlock for withdrawal after {cooldown} days.
+            </>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+const LegCard = ({ label, value, highlight, accent }) => (
+  <div
+    className={`rounded-xl border p-3 text-center ${
+      accent
+        ? "bg-indigo-50 border-indigo-200"
+        : highlight
+          ? "bg-amber-50 border-amber-200"
+          : "bg-slate-50 border-slate-200"
+    }`}
+  >
+    <p
+      className={`text-lg font-black ${
+        accent
+          ? "text-indigo-700"
+          : highlight
+            ? "text-amber-700"
+            : "text-slate-900"
+      }`}
+    >
+      {value}
+    </p>
+    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mt-1">
+      {label}
+    </p>
   </div>
 );
 

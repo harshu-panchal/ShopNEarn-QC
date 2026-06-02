@@ -21,10 +21,13 @@ export const createWithdrawalRequestSchema = Joi.object({
 
 export const updateMlmSettingsSchema = Joi.object({
   enabled: Joi.boolean(),
+  signupRequiresReferralCode: Joi.boolean(),
   joiningPackagePrice: Joi.number().min(0),
   joiningPackageShoppingWalletCredit: Joi.number().min(0),
   premiumUpgradeShoppingWalletTopup: Joi.number().min(0),
   planBAutoUpgradeAtPlanALifetimeEarnings: Joi.number().min(0),
+  // DEPRECATED: replaced by `planAPairBonusTiers`. Retained on the
+  // schema so admin clients submitting legacy payloads don't break.
   directReferralMilestones: Joi.array()
     .items(
       Joi.object({
@@ -34,6 +37,21 @@ export const updateMlmSettingsSchema = Joi.object({
       }),
     )
     .max(50),
+  // Plan A binary pair bonus configuration. Per-pair amounts are
+  // explicit; pair indexes outside the table fall back to
+  // `planAPairBonusFixedAmount` when their index exceeds
+  // `planAPairBonusFixedAfterPair`.
+  planAPairBonusTiers: Joi.array()
+    .items(
+      Joi.object({
+        pairIndex: Joi.number().integer().min(1).required(),
+        bonusAmount: Joi.number().min(0).required(),
+      }),
+    )
+    .max(50),
+  planAPairBonusFixedAfterPair: Joi.number().integer().min(0),
+  planAPairBonusFixedAmount: Joi.number().min(0),
+  planAPairBonusReleaseCooldownDays: Joi.number().integer().min(0).max(365),
   repurchaseBonusLevels: Joi.array()
     .items(
       Joi.object({

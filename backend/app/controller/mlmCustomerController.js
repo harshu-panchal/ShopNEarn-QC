@@ -12,7 +12,10 @@ import {
   getMembershipByUserId,
   getUplineChain,
 } from "../services/mlm/mlmMembershipService.js";
-import { getMlmConfig } from "../services/mlm/mlmConfigService.js";
+import {
+  getMlmConfig,
+  getPlanAPairBonusForPairIndex,
+} from "../services/mlm/mlmConfigService.js";
 import {
   cancelWithdrawalRequestByCustomer,
   createWithdrawalRequest,
@@ -46,6 +49,14 @@ export const getMyMembership = async (req, res) => {
       getMlmConfig(),
     ]);
 
+    // Compute the next-pair payout preview so the dashboard can show
+    // "complete your next pair to earn ₹X" without the frontend having
+    // to replicate the tier-vs-fixed lookup.
+    const pairsCompleted = membership?.pairsCompleted || 0;
+    const nextPairBonusAmount = membership
+      ? await getPlanAPairBonusForPairIndex(pairsCompleted + 1)
+      : 0;
+
     return handleResponse(res, 200, "MLM membership fetched", {
       enabled: !!cfg.enabled,
       isMember: !!membership,
@@ -59,6 +70,13 @@ export const getMyMembership = async (req, res) => {
             planBJoinedAt: membership.planBJoinedAt,
             directReferralsCount: membership.directReferralsCount || 0,
             totalDownlineCount: membership.totalDownlineCount || 0,
+            // Plan A binary pair-match state.
+            leftLegDirectCount: membership.leftLegDirectCount || 0,
+            rightLegDirectCount: membership.rightLegDirectCount || 0,
+            pairsCompleted,
+            lastPaidPairIndex: membership.lastPaidPairIndex || 0,
+            nextPairIndex: pairsCompleted + 1,
+            nextPairBonusAmount,
             lifetimePlanAEarnings: membership.lifetimePlanAEarnings || 0,
             lifetimePlanBEarnings: membership.lifetimePlanBEarnings || 0,
             homeShoppingUnlocked: !!membership.homeShoppingUnlocked,
@@ -82,7 +100,13 @@ export const getMyMembership = async (req, res) => {
         withdrawalGstOnAdminChargePercent: cfg.withdrawalGstOnAdminChargePercent,
         planBAutoUpgradeAtPlanALifetimeEarnings:
           cfg.planBAutoUpgradeAtPlanALifetimeEarnings,
-        directReferralMilestones: cfg.directReferralMilestones,
+        // Plan A pair bonus settings (read-only from the customer's
+        // perspective; admin maintains them via /admin/mlm/settings).
+        planAPairBonusTiers: cfg.planAPairBonusTiers || [],
+        planAPairBonusFixedAfterPair: cfg.planAPairBonusFixedAfterPair || 0,
+        planAPairBonusFixedAmount: cfg.planAPairBonusFixedAmount || 0,
+        planAPairBonusReleaseCooldownDays:
+          cfg.planAPairBonusReleaseCooldownDays || 0,
         repurchaseBonusLevels: cfg.repurchaseBonusLevels,
         mentorRoyaltyLevels: cfg.mentorRoyaltyLevels,
         homeShoppingCommissions: cfg.homeShoppingCommissions,

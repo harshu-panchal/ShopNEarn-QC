@@ -135,23 +135,44 @@ const CustomerAuth = () => {
             toast.error('Enter valid 10-digit number');
             return;
         }
+        // Signup requires a referral code (server-side gate also enforces
+        // it via Setting.mlm.signupRequiresReferralCode). Block client-side
+        // too so we don't waste an OTP rate-limit slot on a doomed request.
+        if (!isLogin) {
+            const normalizedReferral = (formData.referralCode || '').trim().toUpperCase();
+            if (!normalizedReferral) {
+                toast.error('A referral code is required to sign up.');
+                return;
+            }
+            if (normalizedReferral.length < 4) {
+                toast.error('Referral code looks too short. Check with your sponsor.');
+                return;
+            }
+        }
         setIsLoading(true);
         try {
             if (isLogin) {
                 await customerApi.sendLoginOtp({ phone: formData.phone });
             } else {
-                const signupPayload = { name: formData.name, phone: formData.phone };
                 const normalizedReferral = (formData.referralCode || '').trim().toUpperCase();
-                if (normalizedReferral) {
-                    signupPayload.referralCode = normalizedReferral;
-                }
+                const signupPayload = {
+                    name: formData.name,
+                    phone: formData.phone,
+                    referralCode: normalizedReferral,
+                };
                 await customerApi.sendSignupOtp(signupPayload);
             }
             setShowOtp(true);
             setTimer(30);
             toast.success('OTP sent!');
         } catch (error) {
-            toast.error('Failed to send OTP');
+            const apiMessage = error?.response?.data?.message;
+            const apiCode = error?.response?.data?.result?.code;
+            if (apiCode === 'REFERRAL_CODE_REQUIRED' || apiCode === 'REFERRAL_CODE_INVALID') {
+                toast.error(apiMessage || 'A valid referral code is required.');
+            } else {
+                toast.error(apiMessage || 'Failed to send OTP');
+            }
         } finally {
             setIsLoading(false);
         }
@@ -384,15 +405,20 @@ const CustomerAuth = () => {
                                                     <Star size={18} />
                                                 </div>
                                                 <input
+                                                    required
                                                     name="referralCode"
-                                                    placeholder="Referral Code (optional)"
+                                                    placeholder="Referral Code (required)"
                                                     value={formData.referralCode}
                                                     maxLength={16}
+                                                    minLength={4}
                                                     className="w-full bg-gray-50 border border-gray-100 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold text-gray-800 outline-none focus:bg-white transition-all uppercase"
                                                     onChange={(e) => setFormData({ ...formData, referralCode: e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase() })}
                                                     onFocus={(e) => e.target.style.borderColor = activeCategory.theme}
                                                     onBlur={(e) => e.target.style.borderColor = '#F3F4F6'}
                                                 />
+                                                <p className="mt-1 ml-2 text-[11px] font-semibold text-gray-500">
+                                                    Ask the person who invited you for their referral code.
+                                                </p>
                                             </div>
                                         )}
                                         <div className="relative group">
