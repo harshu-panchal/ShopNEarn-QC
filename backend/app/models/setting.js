@@ -5,6 +5,7 @@ import {
 } from "../constants/finance.js";
 import {
     ALL_MLM_BINARY_PLACEMENT_STRATEGIES,
+    ALL_MLM_PAYMENT_MODES,
     ALL_MLM_PLAN_TYPES,
     ALL_MLM_RETURN_CLAWBACK_MODES,
     MLM_DEFAULTS,
@@ -195,6 +196,40 @@ const settingSchema = new mongoose.Schema(
                 type: Number,
                 default: MLM_DEFAULTS.joiningPackageShoppingWalletCredit,
                 min: 0,
+            },
+            // Joining payment mode toggle. `manual_qr` keeps the
+            // PhonePe gateway code path completely dormant so the
+            // app stays functional during KYC delays.
+            joiningPaymentMode: {
+                type: String,
+                enum: ALL_MLM_PAYMENT_MODES,
+                default: MLM_DEFAULTS.joiningPaymentMode,
+            },
+            // Manual-QR display config. All fields optional. The QR
+            // image URL falls back to a bundled frontend asset on the
+            // customer page when empty so the feature stays usable
+            // before an admin uploads a real QR.
+            manualQr: {
+                imageUrl: {
+                    type: String,
+                    default: MLM_DEFAULTS.manualQr.imageUrl,
+                    trim: true,
+                },
+                upiId: {
+                    type: String,
+                    default: MLM_DEFAULTS.manualQr.upiId,
+                    trim: true,
+                },
+                merchantName: {
+                    type: String,
+                    default: MLM_DEFAULTS.manualQr.merchantName,
+                    trim: true,
+                },
+                instructions: {
+                    type: String,
+                    default: MLM_DEFAULTS.manualQr.instructions,
+                    trim: true,
+                },
             },
             premiumUpgradeShoppingWalletTopup: {
                 type: Number,

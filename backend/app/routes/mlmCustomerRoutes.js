@@ -4,6 +4,7 @@ import {
   claimHomeShopping,
   getEarningsHistory,
   getEarningsSummary,
+  getJoiningPayment,
   getMyDirectReferrals,
   getMyMembership,
   getMyReferralCode,
@@ -11,6 +12,7 @@ import {
   initiateJoin,
   listMyWithdrawals,
   requestWithdrawal,
+  submitJoiningProof,
 } from "../controller/mlmCustomerController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 
@@ -37,5 +39,7 @@ router.patch("/withdrawals/:id/cancel", verifyToken, cancelMyWithdrawal);
 router.post("/home-shopping/claim", verifyToken, claimHomeShopping);
 
 router.post("/join/initiate", verifyToken, initiateJoin);
+router.post("/join/submit-proof", verifyToken, submitJoiningProof);
+router.get("/join/payment/:paymentId", verifyToken, getJoiningPayment);
 
 export default router;

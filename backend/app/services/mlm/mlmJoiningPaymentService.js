@@ -5,14 +5,18 @@ import Customer from "../../models/customer.js";
 import MlmJoiningPayment from "../../models/mlmJoiningPayment.js";
 import MlmMembership from "../../models/mlmMembership.js";
 import PaymentWebhookEvent from "../../models/paymentWebhookEvent.js";
-import { MLM_MEMBERSHIP_STATUS } from "../../constants/mlm.js";
+import {
+  MLM_MEMBERSHIP_STATUS,
+  MLM_PAYMENT_MODE,
+} from "../../constants/mlm.js";
 import {
   PAYMENT_EVENT_SOURCE,
+  PAYMENT_GATEWAY,
   PAYMENT_STATUS,
   canTransitionPaymentStatus,
 } from "../../constants/payment.js";
 import { getActivePaymentProvider } from "../payment/providerRegistry.js";
-import { getMlmConfig } from "./mlmConfigService.js";
+import { getManualQrConfig, getMlmConfig } from "./mlmConfigService.js";
 import { activateMembershipFromJoiningPayment } from "./mlmActivationService.js";
 import { emitNotificationEvent } from "../../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.constants.js";
@@ -231,6 +235,16 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     throw err;
   }
 
+  // Snapshot the active mode for THIS intent. A subsequent toggle by
+  // admin does not reroute already-created rows — `paymentMode` is
+  // persisted and every state-machine + side-effect read goes through
+  // the row, never `Setting` directly.
+  const paymentMode =
+    cfg.joiningPaymentMode === MLM_PAYMENT_MODE.PHONEPE
+      ? MLM_PAYMENT_MODE.PHONEPE
+      : MLM_PAYMENT_MODE.MANUAL_QR;
+  const isManualQr = paymentMode === MLM_PAYMENT_MODE.MANUAL_QR;
+
   // Idempotency: if the caller supplied a key and a row already
   // exists for it, return that row's redirect rather than creating a
   // duplicate. Survives rapid double-clicks on "Join Now".
@@ -246,22 +260,42 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
       paymentId: String(existingForKey._id),
       merchantOrderId: existingForKey.gatewayOrderId,
       redirectUrl: existingForKey.rawGatewayResponse?.redirectUrl,
+      paymentMode: existingForKey.paymentMode || MLM_PAYMENT_MODE.PHONEPE,
+      manualQr: isManualQr ? await getManualQrConfig() : undefined,
       duplicate: true,
     };
   }
 
-  // Reuse an open intent if the customer hammered Join Now from a
-  // different client without an idempotency key — saves them from
-  // racking up dangling PENDING rows.
+  // Reuse an open intent of the SAME payment mode if the customer
+  // hammered Join Now from a different client without an idempotency
+  // key. Mode-scoped so a toggle flip never resurrects a stale row in
+  // the other flow. PhonePe path treats legacy rows (where the field
+  // is missing) as `phonepe` so we don't double-charge customers who
+  // had an open intent before this rollout.
+  const openStatuses = isManualQr
+    ? [PAYMENT_STATUS.CREATED, PAYMENT_STATUS.PENDING_REVIEW]
+    : [PAYMENT_STATUS.CREATED, PAYMENT_STATUS.PENDING];
+  const paymentModeFilter = isManualQr
+    ? { paymentMode: MLM_PAYMENT_MODE.MANUAL_QR }
+    : {
+        $or: [
+          { paymentMode: MLM_PAYMENT_MODE.PHONEPE },
+          { paymentMode: { $exists: false } },
+          { paymentMode: null },
+        ],
+      };
   const existingOpen = await MlmJoiningPayment.findOne({
     customer: userId,
-    status: { $in: [PAYMENT_STATUS.CREATED, PAYMENT_STATUS.PENDING] },
+    ...paymentModeFilter,
+    status: { $in: openStatuses },
   }).sort({ createdAt: -1 });
   if (existingOpen && existingOpen.rawGatewayResponse?.redirectUrl) {
     return {
       paymentId: String(existingOpen._id),
       merchantOrderId: existingOpen.gatewayOrderId,
       redirectUrl: existingOpen.rawGatewayResponse.redirectUrl,
+      paymentMode,
+      manualQr: isManualQr ? await getManualQrConfig() : undefined,
       duplicate: true,
     };
   }
@@ -274,6 +308,63 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     paymentId.toString(),
     attemptCount,
   );
+
+  // Manual-QR path: no provider call. We mint the row directly in
+  // CREATED, snapshot the manual-QR config, and return a redirect URL
+  // pointing to the in-app proof-submission page. The admin approve
+  // action transitions the row to CAPTURED, which re-uses the same
+  // `handleStatusSideEffects` -> `activateMembershipFromJoiningPayment`
+  // hook that PhonePe captures fire.
+  if (isManualQr) {
+    const manualQr = await getManualQrConfig();
+    const customerRedirectUrl = `${process.env.FRONTEND_URL || ""}/mlm/manual-payment/${paymentId.toString()}`;
+
+    const payment = await MlmJoiningPayment.create({
+      _id: paymentId,
+      customer: userId,
+      gatewayName: PAYMENT_GATEWAY.MANUAL_QR,
+      gatewayOrderId: merchantOrderId,
+      paymentMode: MLM_PAYMENT_MODE.MANUAL_QR,
+      amountPaise,
+      currency: "INR",
+      status: PAYMENT_STATUS.CREATED,
+      joiningPriceSnapshot: joiningPrice,
+      shoppingCreditSnapshot: shoppingCredit,
+      sponsorReferralCodeSnapshot: customer.pendingSponsorReferralCode || null,
+      idempotencyKey: effectiveIdempotencyKey,
+      rawGatewayResponse: {
+        redirectUrl: customerRedirectUrl,
+        merchantOrderId,
+        amountPaise,
+        manualQrSnapshot: manualQr,
+      },
+      statusHistory: [
+        {
+          fromStatus: PAYMENT_STATUS.CREATED,
+          toStatus: PAYMENT_STATUS.CREATED,
+          source: PAYMENT_EVENT_SOURCE.SYSTEM,
+          reason: "Manual QR joining intent created",
+        },
+      ],
+    });
+
+    logger.info("mlm_joining_payment_created", {
+      paymentId: payment._id.toString(),
+      merchantOrderId,
+      amountPaise,
+      provider: PAYMENT_GATEWAY.MANUAL_QR,
+      paymentMode: MLM_PAYMENT_MODE.MANUAL_QR,
+    });
+
+    return {
+      paymentId: String(payment._id),
+      merchantOrderId,
+      redirectUrl: customerRedirectUrl,
+      paymentMode: MLM_PAYMENT_MODE.MANUAL_QR,
+      manualQr,
+      duplicate: false,
+    };
+  }
 
   const provider = getActivePaymentProvider();
   const redirectUrl = `${process.env.FRONTEND_URL}/payment-status?merchantOrderId=${merchantOrderId}`;
@@ -289,6 +380,7 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     customer: userId,
     gatewayName: provider.providerName,
     gatewayOrderId: merchantOrderId,
+    paymentMode: MLM_PAYMENT_MODE.PHONEPE,
     amountPaise,
     currency: "INR",
     status: PAYMENT_STATUS.PENDING,
@@ -316,12 +408,14 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     merchantOrderId,
     amountPaise,
     provider: provider.providerName,
+    paymentMode: MLM_PAYMENT_MODE.PHONEPE,
   });
 
   return {
     paymentId: String(payment._id),
     merchantOrderId,
     redirectUrl: initResult.redirectUrl,
+    paymentMode: MLM_PAYMENT_MODE.PHONEPE,
     duplicate: false,
   };
 }
@@ -390,12 +484,32 @@ export async function verifyJoiningPaymentStatus({
  * after the merchantOrderId has already been resolved to a row in
  * this collection. The dispatcher owns webhook-event dedupe via
  * `PaymentWebhookEvent`.
+ *
+ * Manual-QR rows are immune to webhook-driven transitions: they
+ * carry no real `gatewayPaymentId`, and any callback received against
+ * one means a stray PhonePe event was misrouted. We short-circuit
+ * with a structured `ignored` result so the dispatcher can ack the
+ * webhook without mutating internal state.
  */
 export async function processJoiningPaymentWebhook({
   payment,
   decoded,
   correlationId = null,
 }) {
+  if (payment.paymentMode === MLM_PAYMENT_MODE.MANUAL_QR) {
+    logger.warn("mlm_joining_payment_webhook_ignored_manual_qr", {
+      paymentId: payment._id.toString(),
+      merchantOrderId: payment.gatewayOrderId,
+      decodedState: decoded?.state || null,
+    });
+    return {
+      ignored: true,
+      reason: "manual_qr_payment",
+      paymentStatus: payment.status,
+      paymentId: payment._id.toString(),
+    };
+  }
+
   const provider = getActivePaymentProvider();
   const nextStatus = provider.mapStatusToInternal(decoded.state);
 
@@ -418,6 +532,350 @@ export async function processJoiningPaymentWebhook({
     paymentStatus: nextStatus,
     paymentId: payment._id.toString(),
   };
+}
+
+/**
+ * Manual-QR flow: customer submits transaction id + screenshot URL.
+ * Asserts ownership + mode + status, stamps the proof, transitions
+ * the row to PENDING_REVIEW, and notifies admins.
+ *
+ * Errors:
+ *   - 404 PAYMENT_NOT_FOUND
+ *   - 403 NOT_PAYMENT_OWNER
+ *   - 422 NOT_MANUAL_QR
+ *   - 409 INVALID_STATUS                (only CREATED -> PENDING_REVIEW allowed)
+ *   - 422 TRANSACTION_ID_REQUIRED
+ *   - 422 SCREENSHOT_REQUIRED
+ */
+export async function submitManualPaymentProof({
+  paymentId,
+  customerId,
+  transactionId,
+  screenshotUrl,
+  paidAmount = null,
+}) {
+  if (!paymentId) {
+    const err = new Error("paymentId is required");
+    err.statusCode = 422;
+    throw err;
+  }
+
+  const trimmedTxn = String(transactionId || "").trim().toUpperCase();
+  if (!trimmedTxn) {
+    const err = new Error("Transaction ID is required.");
+    err.statusCode = 422;
+    err.code = "TRANSACTION_ID_REQUIRED";
+    throw err;
+  }
+  if (trimmedTxn.length < 4 || trimmedTxn.length > 64) {
+    const err = new Error("Transaction ID looks invalid.");
+    err.statusCode = 422;
+    err.code = "TRANSACTION_ID_INVALID";
+    throw err;
+  }
+
+  const trimmedScreenshot = String(screenshotUrl || "").trim();
+  if (!trimmedScreenshot) {
+    const err = new Error("Payment screenshot is required.");
+    err.statusCode = 422;
+    err.code = "SCREENSHOT_REQUIRED";
+    throw err;
+  }
+
+  const payment = await MlmJoiningPayment.findById(paymentId);
+  if (!payment) {
+    const err = new Error("Joining payment not found.");
+    err.statusCode = 404;
+    err.code = "PAYMENT_NOT_FOUND";
+    throw err;
+  }
+
+  if (String(payment.customer) !== String(customerId)) {
+    const err = new Error("Not authorized to submit proof for this payment.");
+    err.statusCode = 403;
+    err.code = "NOT_PAYMENT_OWNER";
+    throw err;
+  }
+
+  if (payment.paymentMode !== MLM_PAYMENT_MODE.MANUAL_QR) {
+    const err = new Error("This payment is not a manual-QR submission.");
+    err.statusCode = 422;
+    err.code = "NOT_MANUAL_QR";
+    throw err;
+  }
+
+  if (payment.status !== PAYMENT_STATUS.CREATED) {
+    const err = new Error(
+      payment.status === PAYMENT_STATUS.PENDING_REVIEW
+        ? "Proof has already been submitted; awaiting admin review."
+        : `Cannot submit proof for a ${payment.status} payment.`,
+    );
+    err.statusCode = 409;
+    err.code = "INVALID_STATUS";
+    throw err;
+  }
+
+  payment.manualPaymentDetails = {
+    transactionId: trimmedTxn,
+    screenshotUrl: trimmedScreenshot,
+    paidAmount:
+      paidAmount != null && Number.isFinite(Number(paidAmount))
+        ? Number(paidAmount)
+        : payment.joiningPriceSnapshot,
+    submittedAt: new Date(),
+  };
+
+  await transitionStatus(payment, {
+    nextStatus: PAYMENT_STATUS.PENDING_REVIEW,
+    source: PAYMENT_EVENT_SOURCE.SYSTEM,
+    reason: "Customer submitted manual payment proof",
+  });
+
+  try {
+    emitNotificationEvent(NOTIFICATION_EVENTS.MLM_JOINING_PROOF_SUBMITTED, {
+      customerId: payment.customer,
+      paymentId: payment._id.toString(),
+      transactionId: trimmedTxn,
+    });
+  } catch (_) {
+    /* non-fatal */
+  }
+
+  logger.info("mlm_joining_payment_proof_submitted", {
+    paymentId: payment._id.toString(),
+    customerId: String(customerId),
+    transactionIdMasked: trimmedTxn.slice(0, 4) + "***",
+  });
+
+  return payment;
+}
+
+/**
+ * Admin approves a manual-QR joining payment. Transitions the row to
+ * CAPTURED, which fires the existing `handleStatusSideEffects` ->
+ * `activateMembershipFromJoiningPayment` chain. Idempotent (double
+ * click = no-op via state-machine + activationApplied guard).
+ */
+export async function approveManualJoiningPayment({
+  paymentId,
+  adminId,
+  adminRemarks = "",
+}) {
+  if (!paymentId) {
+    const err = new Error("paymentId is required");
+    err.statusCode = 422;
+    throw err;
+  }
+  if (!adminId) {
+    const err = new Error("adminId is required");
+    err.statusCode = 401;
+    throw err;
+  }
+
+  const payment = await MlmJoiningPayment.findById(paymentId);
+  if (!payment) {
+    const err = new Error("Joining payment not found.");
+    err.statusCode = 404;
+    err.code = "PAYMENT_NOT_FOUND";
+    throw err;
+  }
+
+  if (payment.paymentMode !== MLM_PAYMENT_MODE.MANUAL_QR) {
+    const err = new Error("Only manual-QR payments require admin approval.");
+    err.statusCode = 422;
+    err.code = "NOT_MANUAL_QR";
+    throw err;
+  }
+
+  // Allow approving from PENDING_REVIEW. CAPTURED -> CAPTURED is a
+  // no-op via the transitionStatus same-status branch which keeps
+  // the activationApplied guard the source of truth on idempotency.
+  if (
+    payment.status !== PAYMENT_STATUS.PENDING_REVIEW &&
+    payment.status !== PAYMENT_STATUS.CAPTURED
+  ) {
+    const err = new Error(
+      `Cannot approve a payment in status ${payment.status}.`,
+    );
+    err.statusCode = 409;
+    err.code = "INVALID_STATUS";
+    throw err;
+  }
+
+  payment.reviewedBy = adminId;
+  payment.reviewedAt = new Date();
+  if (adminRemarks) payment.adminRemarks = String(adminRemarks).slice(0, 1000);
+
+  await transitionStatus(payment, {
+    nextStatus: PAYMENT_STATUS.CAPTURED,
+    source: PAYMENT_EVENT_SOURCE.SYSTEM,
+    reason: `Admin approved manual payment${adminRemarks ? `: ${adminRemarks}` : ""}`,
+  });
+
+  await handleStatusSideEffects(payment, PAYMENT_STATUS.CAPTURED);
+
+  try {
+    emitNotificationEvent(NOTIFICATION_EVENTS.MLM_JOINING_PROOF_APPROVED, {
+      customerId: payment.customer,
+      userId: payment.customer,
+      paymentId: payment._id.toString(),
+    });
+  } catch (_) {
+    /* non-fatal */
+  }
+
+  logger.info("mlm_joining_payment_approved", {
+    paymentId: payment._id.toString(),
+    adminId: String(adminId),
+  });
+
+  return payment;
+}
+
+/**
+ * Admin rejects a manual-QR joining payment. Transitions the row to
+ * FAILED with a captured reason; customer can retry by initiating a
+ * fresh joining payment (which mints a new row).
+ */
+export async function rejectManualJoiningPayment({
+  paymentId,
+  adminId,
+  reason,
+}) {
+  if (!paymentId) {
+    const err = new Error("paymentId is required");
+    err.statusCode = 422;
+    throw err;
+  }
+  if (!adminId) {
+    const err = new Error("adminId is required");
+    err.statusCode = 401;
+    throw err;
+  }
+  const trimmedReason = String(reason || "").trim();
+  if (!trimmedReason || trimmedReason.length < 3) {
+    const err = new Error("Rejection reason is required (>=3 characters).");
+    err.statusCode = 422;
+    err.code = "REASON_REQUIRED";
+    throw err;
+  }
+
+  const payment = await MlmJoiningPayment.findById(paymentId);
+  if (!payment) {
+    const err = new Error("Joining payment not found.");
+    err.statusCode = 404;
+    err.code = "PAYMENT_NOT_FOUND";
+    throw err;
+  }
+
+  if (payment.paymentMode !== MLM_PAYMENT_MODE.MANUAL_QR) {
+    const err = new Error("Only manual-QR payments can be rejected here.");
+    err.statusCode = 422;
+    err.code = "NOT_MANUAL_QR";
+    throw err;
+  }
+
+  if (
+    payment.status !== PAYMENT_STATUS.PENDING_REVIEW &&
+    payment.status !== PAYMENT_STATUS.CREATED
+  ) {
+    const err = new Error(
+      `Cannot reject a payment in status ${payment.status}.`,
+    );
+    err.statusCode = 409;
+    err.code = "INVALID_STATUS";
+    throw err;
+  }
+
+  payment.reviewedBy = adminId;
+  payment.reviewedAt = new Date();
+  payment.adminRemarks = trimmedReason.slice(0, 1000);
+  payment.failureReason = trimmedReason.slice(0, 1000);
+
+  await transitionStatus(payment, {
+    nextStatus: PAYMENT_STATUS.FAILED,
+    source: PAYMENT_EVENT_SOURCE.SYSTEM,
+    reason: `Admin rejected manual payment: ${trimmedReason}`,
+  });
+
+  try {
+    emitNotificationEvent(NOTIFICATION_EVENTS.MLM_JOINING_PROOF_REJECTED, {
+      customerId: payment.customer,
+      userId: payment.customer,
+      paymentId: payment._id.toString(),
+      reason: trimmedReason,
+    });
+  } catch (_) {
+    /* non-fatal */
+  }
+
+  logger.info("mlm_joining_payment_rejected", {
+    paymentId: payment._id.toString(),
+    adminId: String(adminId),
+  });
+
+  return payment;
+}
+
+/**
+ * Customer-facing fetch: return the latest non-terminal manual-QR
+ * payment for the given customer (CREATED, PENDING_REVIEW, or the
+ * most recent FAILED row if no open intent exists). Used by the
+ * dashboard to render "resume / under review / try again" banners.
+ *
+ * Returns null when the customer has no relevant manual-QR row.
+ */
+export async function getLatestPendingJoiningPaymentForCustomer(customerId) {
+  if (!customerId) return null;
+
+  const open = await MlmJoiningPayment.findOne({
+    customer: customerId,
+    paymentMode: MLM_PAYMENT_MODE.MANUAL_QR,
+    status: { $in: [PAYMENT_STATUS.CREATED, PAYMENT_STATUS.PENDING_REVIEW] },
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+  if (open) return open;
+
+  // Surface the most recent FAILED row only if there's no later
+  // CAPTURED row (i.e., customer hasn't recovered with a new attempt).
+  const lastTerminal = await MlmJoiningPayment.findOne({
+    customer: customerId,
+    paymentMode: MLM_PAYMENT_MODE.MANUAL_QR,
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+  if (
+    lastTerminal &&
+    lastTerminal.status === PAYMENT_STATUS.FAILED
+  ) {
+    return lastTerminal;
+  }
+  return null;
+}
+
+/**
+ * Read a single manual-QR payment with ownership enforcement. Used
+ * by the customer ManualPaymentPage status poller.
+ */
+export async function getManualJoiningPaymentForCustomer({
+  paymentId,
+  customerId,
+}) {
+  const payment = await MlmJoiningPayment.findById(paymentId).lean();
+  if (!payment) {
+    const err = new Error("Joining payment not found.");
+    err.statusCode = 404;
+    err.code = "PAYMENT_NOT_FOUND";
+    throw err;
+  }
+  if (String(payment.customer) !== String(customerId)) {
+    const err = new Error("Not authorized to view this payment.");
+    err.statusCode = 403;
+    err.code = "NOT_PAYMENT_OWNER";
+    throw err;
+  }
+  return payment;
 }
 
 /** Exposed for tests. */

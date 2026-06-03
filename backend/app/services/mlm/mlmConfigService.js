@@ -176,3 +176,28 @@ export async function getPlanAPairBonusReleaseCooldownDays(opts) {
   const days = Number(cfg.planAPairBonusReleaseCooldownDays);
   return Number.isFinite(days) && days >= 0 ? days : 0;
 }
+
+/**
+ * Active joining payment mode (`"manual_qr"` while PhonePe KYC is
+ * pending, `"phonepe"` once it clears). Always returns one of the two
+ * canonical values — unknown overrides fall back to the default.
+ */
+export async function getJoiningPaymentMode(opts) {
+  const cfg = await getMlmConfig(opts);
+  return cfg.joiningPaymentMode === "phonepe" ? "phonepe" : "manual_qr";
+}
+
+/**
+ * Public-safe slice of the manual-QR config. Always returns an object
+ * with all four keys (empty strings if unset).
+ */
+export async function getManualQrConfig(opts) {
+  const cfg = await getMlmConfig(opts);
+  const src = cfg.manualQr || {};
+  return {
+    imageUrl: src.imageUrl || "",
+    upiId: src.upiId || "",
+    merchantName: src.merchantName || "",
+    instructions: src.instructions || "",
+  };
+}

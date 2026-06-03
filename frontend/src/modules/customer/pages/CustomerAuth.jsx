@@ -91,20 +91,34 @@ const CustomerAuth = () => {
         referralCode: ''
     });
 
-    // Pre-fill referral code from URL params or, failing that, from
-    // localStorage where a previous visit may have cached it. Listens
-    // to `searchParams` (react-router) so client-side navigation that
-    // changes the query string is also picked up.
+    // Pre-fill referral code STRICTLY from the URL `?ref=…` param.
+    //
+    // Source of truth = URL only. We deliberately do NOT fall back to
+    // localStorage here: a cached code from a previous user's session
+    // on the same browser would otherwise look "hardcoded" on every
+    // future signup, even when the new visitor lands on a clean
+    // `/signup` URL. If the link omits the param, the field stays
+    // empty and the user has to enter their sponsor's code by hand.
+    //
+    // Listens to `searchParams` so client-side navigation that changes
+    // the query string is also picked up.
     useEffect(() => {
+        // One-time cleanup of the legacy persisted key so stale values
+        // from earlier builds don't surface anywhere else in the app.
+        try {
+            window.localStorage.removeItem('mlm_pending_referral_code');
+            window.sessionStorage.removeItem('mlm_pending_referral_code');
+        } catch { /* ignore */ }
+
         try {
             const refRaw =
                 searchParams.get('ref') ||
                 searchParams.get('referral') ||
                 searchParams.get('referralCode') ||
                 '';
-            // Normalize using the same filter the input applies on
-            // every keystroke — strip non-alphanumerics, uppercase,
-            // cap at 16 chars to match the schema.
+            // Same filter the input applies on every keystroke: strip
+            // non-alphanumerics, uppercase, cap at 16 chars to match
+            // the server-side schema.
             const normalized = refRaw
                 .trim()
                 .toUpperCase()
@@ -114,25 +128,6 @@ const CustomerAuth = () => {
             if (normalized) {
                 setFormData((prev) => ({ ...prev, referralCode: normalized }));
                 setIsLogin(false); // flip to signup so the user sees the prefilled code
-                try {
-                    window.localStorage.setItem('mlm_pending_referral_code', normalized);
-                } catch { /* ignore */ }
-                return;
-            }
-
-            // No URL code — fall back to a previously-captured one.
-            const stored = window.localStorage.getItem('mlm_pending_referral_code');
-            if (stored) {
-                const cleaned = String(stored)
-                    .toUpperCase()
-                    .replace(/[^A-Z0-9]/g, '')
-                    .slice(0, 16);
-                if (cleaned) {
-                    setFormData((prev) => ({
-                        ...prev,
-                        referralCode: prev.referralCode || cleaned,
-                    }));
-                }
             }
         } catch { /* ignore */ }
     }, [searchParams]);
@@ -193,11 +188,33 @@ const CustomerAuth = () => {
         } catch (error) {
             const apiMessage = error?.response?.data?.message;
             const apiCode = error?.response?.data?.result?.code;
-            if (apiCode === 'REFERRAL_CODE_REQUIRED' || apiCode === 'REFERRAL_CODE_INVALID') {
-                toast.error(apiMessage || 'A valid referral code is required.');
-            } else {
-                toast.error(apiMessage || 'Failed to send OTP');
+
+            // Login attempt for an unregistered / unverified phone:
+            // bounce the user to the signup tab and surface a clear
+            // toast so they know what to do next.
+            if (
+                apiCode === 'ACCOUNT_NOT_FOUND' ||
+                apiCode === 'ACCOUNT_NOT_VERIFIED'
+            ) {
+                setIsLogin(false);
+                setShowOtp(false);
+                setTimer(0);
+                toast.error(
+                    apiMessage ||
+                        'No account found with this number. Please sign up first.',
+                );
+                return;
             }
+
+            if (
+                apiCode === 'REFERRAL_CODE_REQUIRED' ||
+                apiCode === 'REFERRAL_CODE_INVALID'
+            ) {
+                toast.error(apiMessage || 'A valid referral code is required.');
+                return;
+            }
+
+            toast.error(apiMessage || 'Failed to send OTP');
         } finally {
             setIsLoading(false);
         }
@@ -209,11 +226,27 @@ const CustomerAuth = () => {
             toast.error('Enter 4-digit code');
             return;
         }
+        // Capture the signup-vs-login intent before any state change
+        // so the post-verify redirect is never confused by re-renders.
+        const wasSignup = !isLogin;
         setIsLoading(true);
         try {
             const response = await customerApi.verifyOtp({ phone: formData.phone, otp: formData.otp });
             const { token, customer } = response.data.result;
             login({ ...customer, token, role: 'customer' });
+
+            // Newly registered customer → land them on the MLM
+            // rewards dashboard so they immediately see the "Join
+            // Now" CTA and the program benefits. Existing customers
+            // still go to the storefront. `replace: true` so the
+            // browser back button doesn't bounce them back to the
+            // auth screen.
+            if (wasSignup) {
+                toast.success('Account created! Welcome aboard.');
+                navigate('/mlm', { replace: true });
+                return;
+            }
+
             toast.success('Successfully Logged In!');
             navigate('/');
         } catch (error) {
@@ -225,7 +258,7 @@ const CustomerAuth = () => {
     };
 
     return (
-        <div className="min-h-screen w-full relative flex items-center justify-center font-['Outfit',_sans-serif] overflow-hidden">
+        <div className="min-h-screen w-full relative flex items-center justify-center font-['Outfit',_sans-serif] overflow-x-hidden py-6">
 
             {/* Dynamic Atmospheric Background */}
             <div 
@@ -273,17 +306,23 @@ const CustomerAuth = () => {
                 />
             </div>
 
-            {/* Premium Centered Card Container */}
-            <div className="w-[92%] max-w-[400px] h-[85vh] max-h-[780px] bg-white relative z-10 overflow-hidden rounded-[40px] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.15)] border border-white/40 flex flex-col transition-colors duration-1000">
+            {/* Premium Centered Card Container — sizes to content
+                with a sane max-height. No more min-height, so the lean
+                login form doesn't trail off into a half-empty card. */}
+            <div className="w-[92%] max-w-[400px] max-h-[92vh] bg-white relative z-10 overflow-hidden rounded-[40px] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.15)] border border-white/40 flex flex-col transition-colors duration-1000">
 
-                {/* Scrollable Content Container */}
-                <div className="h-full overflow-y-auto no-scrollbar pb-20">
+                {/* Scrollable Content Container — only kicks in if the
+                    signup form on a small viewport is taller than the
+                    card's max-h. Login fits without scrolling. */}
+                <div className="overflow-y-auto no-scrollbar">
 
-                    {/* Header: Immersive Category Visuals */}
+                    {/* Header: Immersive Category Visuals — fixed
+                        pixel height so the banner stays visually
+                        prominent regardless of card content height. */}
                     <motion.div
                         animate={{ backgroundColor: activeCategory.theme }}
                         transition={{ duration: 1 }}
-                        className="relative h-[35%] w-full overflow-hidden"
+                        className="relative h-56 w-full overflow-hidden flex-shrink-0"
                     >
                         <AnimatePresence mode="wait">
                             <motion.div
@@ -338,9 +377,11 @@ const CustomerAuth = () => {
                         </div>
                     </motion.div>
 
-                    {/* Circular Carousel Control */}
-                    <div className="relative -mt-14 flex justify-center z-20">
-                        <div className="w-28 h-28 rounded-full bg-white border-4 border-white shadow-[0_15px_40px_rgba(97,218,251,0.2)] flex items-center justify-center overflow-hidden transition-shadow duration-1000" style={{ boxShadow: `0 15px 40px ${activeCategory.shadow}` }}>
+                    {/* Circular Carousel Control — overlaps the
+                        banner's bottom curve. Slightly smaller than
+                        before to free vertical room for the form. */}
+                    <div className="relative -mt-12 flex justify-center z-20">
+                        <div className="w-24 h-24 rounded-full bg-white border-4 border-white shadow-[0_15px_40px_rgba(97,218,251,0.2)] flex items-center justify-center overflow-hidden transition-shadow duration-1000" style={{ boxShadow: `0 15px 40px ${activeCategory.shadow}` }}>
                             <AnimatePresence mode="wait">
                                     <motion.div
                                         key={carouselIndex}
@@ -368,8 +409,9 @@ const CustomerAuth = () => {
                     </div>
 
 
-                    {/* Authentication Form Block */}
-                    <div className="px-6 pt-6 pb-10">
+                    {/* Authentication Form Block — tightened paddings
+                        for a more balanced footprint. */}
+                    <div className="px-6 pt-5 pb-8">
                         <AnimatePresence mode="wait">
                             {!showOtp ? (
                                 <motion.div
@@ -377,7 +419,7 @@ const CustomerAuth = () => {
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, x: -20 }}
-                                    className="space-y-5"
+                                    className="space-y-4"
                                 >
                                     {/* App Style Tab Switcher */}
                                     <div className="flex bg-gray-50 rounded-2xl p-1.5 border border-gray-100">

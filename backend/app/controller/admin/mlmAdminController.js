@@ -20,6 +20,13 @@ import {
   listWithdrawalsForAdmin,
   rejectWithdrawalRequest,
 } from "../../services/mlm/mlmWithdrawalService.js";
+import {
+  approveManualJoiningPayment,
+  rejectManualJoiningPayment,
+} from "../../services/mlm/mlmJoiningPaymentService.js";
+import MlmJoiningPayment from "../../models/mlmJoiningPayment.js";
+import Customer from "../../models/customer.js";
+import { PAYMENT_STATUS } from "../../constants/payment.js";
 import { creditWallet, debitWallet } from "../../services/finance/walletService.js";
 import { invalidate } from "../../services/cacheService.js";
 import {
@@ -218,11 +225,19 @@ export const getMlmMemberDetail = async (req, res) => {
 /**
  * GET /api/admin/mlm/members/:id/downline?depth=4
  *
- * Phase 2: build a recursive downline tree for the given member up to
- * `depth` levels (default 4, max 6). Each node carries the member's
- * referral code, plan type, direct count, lifetime earnings, and an
- * `children` array. Designed for the admin member-detail downline
- * visualisation; bounded by `depth` to keep payload size sane.
+ * Build the BINARY PLACEMENT tree (Plan A's left/right genealogy)
+ * rooted at the given member, up to `depth` levels (default 4,
+ * max 6). Each node has at most two children, returned on the
+ * shape `{ left, right }` so the UI can render proper left/right
+ * legs instead of a flat list of sponsor referrals.
+ *
+ * Note: this intentionally walks `binaryLeftChildId` /
+ * `binaryRightChildId`, NOT `sponsorId`. A sponsor's referrals can
+ * spill over the binary tree (e.g. all 4 of vini's referrals end
+ * up in the same leg), so the sponsor view collapses into a flat
+ * list at depth 1 and is misleading. The binary view is the one
+ * that actually drives pair-match earnings and correctly renders
+ * each member's two-child structure.
  */
 export const getMlmMemberDownlineTree = async (req, res) => {
   try {
@@ -232,14 +247,20 @@ export const getMlmMemberDownlineTree = async (req, res) => {
       .lean();
     if (!membership) return handleResponse(res, 404, "Member not found");
 
-    const tree = await buildDownlineTree(membership, depth);
+    const tree = await buildBinaryDownlineTree(membership, depth, null);
     return handleResponse(res, 200, "Downline tree", { depth, tree });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
   }
 };
 
-async function buildDownlineTree(rootMembership, depthLeft) {
+/**
+ * Recursive binary-tree walker. Returns a node shaped as
+ *   { ...meta, position, left: <node|null>, right: <node|null> }
+ * `position` is the position THIS node occupies under its parent
+ * ("L"/"R"/null for root) — the UI uses it for per-row labels.
+ */
+async function buildBinaryDownlineTree(rootMembership, depthLeft, position) {
   const node = {
     _id: rootMembership._id,
     userId: rootMembership.userId?._id || rootMembership.userId,
@@ -248,22 +269,37 @@ async function buildDownlineTree(rootMembership, depthLeft) {
     referralCode: rootMembership.referralCode,
     planType: rootMembership.planType,
     status: rootMembership.status,
+    position,
     directReferralsCount: rootMembership.directReferralsCount || 0,
     totalDownlineCount: rootMembership.totalDownlineCount || 0,
+    leftLegDirectCount: rootMembership.leftLegDirectCount || 0,
+    rightLegDirectCount: rootMembership.rightLegDirectCount || 0,
+    pairsCompleted: rootMembership.pairsCompleted || 0,
     lifetimePlanAEarnings: rootMembership.lifetimePlanAEarnings || 0,
     lifetimePlanBEarnings: rootMembership.lifetimePlanBEarnings || 0,
-    children: [],
+    left: null,
+    right: null,
   };
   if (depthLeft <= 0) return node;
 
-  const rootUserId = rootMembership.userId?._id || rootMembership.userId;
-  const children = await MlmMembership.find({ sponsorId: rootUserId })
-    .sort({ createdAt: 1 })
-    .populate("userId", "name phone")
-    .lean();
+  const [leftChild, rightChild] = await Promise.all([
+    rootMembership.binaryLeftChildId
+      ? MlmMembership.findOne({ userId: rootMembership.binaryLeftChildId })
+          .populate("userId", "name phone")
+          .lean()
+      : null,
+    rootMembership.binaryRightChildId
+      ? MlmMembership.findOne({ userId: rootMembership.binaryRightChildId })
+          .populate("userId", "name phone")
+          .lean()
+      : null,
+  ]);
 
-  for (const child of children) {
-    node.children.push(await buildDownlineTree(child, depthLeft - 1));
+  if (leftChild) {
+    node.left = await buildBinaryDownlineTree(leftChild, depthLeft - 1, "L");
+  }
+  if (rightChild) {
+    node.right = await buildBinaryDownlineTree(rightChild, depthLeft - 1, "R");
   }
   return node;
 }
@@ -528,6 +564,175 @@ export const adjustMemberWallet = async (req, res) => {
     }
   } catch (error) {
     return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+/* ───────── Manual-QR joining payment review queue (Phase X) ───────── */
+
+const JOINING_REVIEW_STATUS_OPTIONS = Object.freeze([
+  PAYMENT_STATUS.CREATED, // proof not yet submitted
+  PAYMENT_STATUS.PENDING_REVIEW,
+  PAYMENT_STATUS.CAPTURED, // approved
+  PAYMENT_STATUS.FAILED, // rejected
+]);
+
+/**
+ * GET /api/admin/mlm/joining-reviews?status=&q=&page=&limit=
+ *
+ * Lists manual-QR joining payments for admin review. Default status
+ * filter is `PENDING_REVIEW`; pass `?status=ALL` to drop the filter.
+ * `q` matches the customer's name or phone, or the submitted
+ * transaction id (case-insensitive substring).
+ */
+export const listJoiningReviews = async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 20, 1),
+      100,
+    );
+    const skip = (page - 1) * limit;
+
+    const requestedStatus = String(req.query.status || "").toUpperCase();
+    const filter = { paymentMode: "manual_qr" };
+    if (requestedStatus && requestedStatus !== "ALL") {
+      if (!JOINING_REVIEW_STATUS_OPTIONS.includes(requestedStatus)) {
+        return handleResponse(res, 400, "Invalid status filter");
+      }
+      filter.status = requestedStatus;
+    } else if (!requestedStatus) {
+      filter.status = PAYMENT_STATUS.PENDING_REVIEW;
+    }
+
+    let cursor = MlmJoiningPayment.find(filter)
+      .sort({
+        // Surface unsubmitted/under-review first; admin queue is
+        // append-friendly. Falling back to createdAt desc keeps
+        // history pages stable.
+        updatedAt: -1,
+        createdAt: -1,
+      })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    let items = await cursor;
+    const customerIds = [...new Set(items.map((p) => String(p.customer)))];
+    const customers = customerIds.length
+      ? await Customer.find(
+          { _id: { $in: customerIds } },
+          { name: 1, phone: 1, email: 1 },
+        ).lean()
+      : [];
+    const customerMap = new Map(customers.map((c) => [String(c._id), c]));
+
+    let total = await MlmJoiningPayment.countDocuments(filter);
+
+    // q = phone / name / txnId substring. Done in-memory after the
+    // page slice because the customer name lives on a different
+    // collection and txnId is on a nested sub-doc; for the expected
+    // queue size (tens to a few hundred PENDING) this is fine.
+    if (req.query.q) {
+      const needle = String(req.query.q).trim().toLowerCase();
+      items = items.filter((row) => {
+        const c = customerMap.get(String(row.customer)) || {};
+        const txn = row.manualPaymentDetails?.transactionId || "";
+        return (
+          (c.name || "").toLowerCase().includes(needle) ||
+          (c.phone || "").toLowerCase().includes(needle) ||
+          (c.email || "").toLowerCase().includes(needle) ||
+          txn.toLowerCase().includes(needle)
+        );
+      });
+    }
+
+    const enriched = items.map((row) => {
+      const c = customerMap.get(String(row.customer)) || {};
+      return {
+        _id: row._id,
+        paymentId: String(row._id),
+        customer: {
+          id: String(row.customer),
+          name: c.name || null,
+          phone: c.phone || null,
+          email: c.email || null,
+        },
+        sponsorReferralCode: row.sponsorReferralCodeSnapshot || null,
+        amount: row.joiningPriceSnapshot,
+        shoppingCredit: row.shoppingCreditSnapshot,
+        status: row.status,
+        paymentMode: row.paymentMode,
+        transactionId: row.manualPaymentDetails?.transactionId || null,
+        screenshotUrl: row.manualPaymentDetails?.screenshotUrl || null,
+        paidAmount: row.manualPaymentDetails?.paidAmount || null,
+        submittedAt: row.manualPaymentDetails?.submittedAt || null,
+        reviewedAt: row.reviewedAt || null,
+        reviewedBy: row.reviewedBy ? String(row.reviewedBy) : null,
+        adminRemarks: row.adminRemarks || null,
+        failureReason: row.failureReason || null,
+        activationApplied: !!row.activationApplied,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      };
+    });
+
+    return handleResponse(res, 200, "Joining reviews", {
+      items: enriched,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/** POST /api/admin/mlm/joining-reviews/:id/approve */
+export const approveJoiningReview = async (req, res) => {
+  try {
+    const adminId = req.user?.id || null;
+    const { adminRemarks } = req.body || {};
+    const payment = await approveManualJoiningPayment({
+      paymentId: req.params.id,
+      adminId,
+      adminRemarks,
+    });
+    return handleResponse(res, 200, "Payment approved", {
+      paymentId: String(payment._id),
+      status: payment.status,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 400,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+/** POST /api/admin/mlm/joining-reviews/:id/reject */
+export const rejectJoiningReview = async (req, res) => {
+  try {
+    const adminId = req.user?.id || null;
+    const { reason } = req.body || {};
+    const payment = await rejectManualJoiningPayment({
+      paymentId: req.params.id,
+      adminId,
+      reason,
+    });
+    return handleResponse(res, 200, "Payment rejected", {
+      paymentId: String(payment._id),
+      status: payment.status,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 400,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
   }
 };
 

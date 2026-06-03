@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trash2, Save } from 'lucide-react';
+import { Plus, Trash2, Save, Upload, ImageOff, Loader2, Smartphone, CreditCard } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
+import axiosInstance from '@core/api/axios';
 
 /**
  * MLM Settings — admin-editable rate sheet driving every runtime
@@ -45,6 +46,14 @@ const MlmSettings = () => {
                 signupRequiresReferralCode: cfg.signupRequiresReferralCode !== false,
                 joiningPackagePrice: Number(cfg.joiningPackagePrice) || 0,
                 joiningPackageShoppingWalletCredit: Number(cfg.joiningPackageShoppingWalletCredit) || 0,
+                joiningPaymentMode:
+                    cfg.joiningPaymentMode === 'phonepe' ? 'phonepe' : 'manual_qr',
+                manualQr: {
+                    imageUrl: (cfg.manualQr?.imageUrl || '').trim(),
+                    upiId: (cfg.manualQr?.upiId || '').trim(),
+                    merchantName: (cfg.manualQr?.merchantName || '').trim(),
+                    instructions: (cfg.manualQr?.instructions || '').trim(),
+                },
                 premiumUpgradeShoppingWalletTopup: Number(cfg.premiumUpgradeShoppingWalletTopup) || 0,
                 planBAutoUpgradeAtPlanALifetimeEarnings: Number(cfg.planBAutoUpgradeAtPlanALifetimeEarnings) || 0,
                 planAPairBonusTiers: (cfg.planAPairBonusTiers || []).map((t) => ({
@@ -133,6 +142,10 @@ const MlmSettings = () => {
                     The price and shopping credit are snapshotted when the customer clicks
                     "Join Now", so mid-flight edits never cheat in-flight customers.
                 </p>
+            </Section>
+
+            <Section title="Joining Payment Mode">
+                <JoiningPaymentModePanel cfg={cfg} setCfg={setCfg} />
             </Section>
 
             <Section title="Plan A → Plan B Auto-Upgrade">
@@ -408,6 +421,283 @@ const RuleEditor = ({ rows, columns, defaults, onChange }) => {
             >
                 <Plus size={14} /> Add row
             </button>
+        </div>
+    );
+};
+
+/**
+ * Joining Payment Mode panel — radio toggle between manual QR and the
+ * PhonePe gateway, plus the manual-QR display config (image upload, UPI
+ * id, merchant name, instructions). Mirrors the customer-facing layout
+ * in a live preview pane on the right.
+ */
+const JoiningPaymentModePanel = ({ cfg, setCfg }) => {
+    const fileInputRef = useRef(null);
+    const [uploading, setUploading] = useState(false);
+    const mode = cfg.joiningPaymentMode === 'phonepe' ? 'phonepe' : 'manual_qr';
+    const manualQr = cfg.manualQr || {};
+
+    const setMode = (next) => setCfg({ ...cfg, joiningPaymentMode: next });
+    const setManual = (patch) =>
+        setCfg({ ...cfg, manualQr: { ...manualQr, ...patch } });
+
+    const handleUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!/^image\//.test(file.type)) {
+            toast.error('Please select an image file.');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            toast.error('Image must be 10 MB or smaller.');
+            return;
+        }
+        setUploading(true);
+        try {
+            const fd = new FormData();
+            fd.append('file', file);
+            const res = await axiosInstance.post('/media/upload', fd, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            const url =
+                res.data?.result?.url || res.data?.data?.url || res.data?.url || '';
+            if (!url) throw new Error('Upload returned no URL');
+            setManual({ imageUrl: url });
+            toast.success('QR uploaded — remember to save changes');
+        } catch (err) {
+            toast.error(err?.response?.data?.message || err?.message || 'Upload failed');
+        } finally {
+            setUploading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <ModeRadio
+                    active={mode === 'manual_qr'}
+                    icon={<Smartphone size={18} />}
+                    title="Manual QR"
+                    badge="Temporary"
+                    description="Customer scans an admin-uploaded UPI QR, pays externally, and submits txn id + screenshot. Admin manually approves in Joining Reviews."
+                    onClick={() => setMode('manual_qr')}
+                />
+                <ModeRadio
+                    active={mode === 'phonepe'}
+                    icon={<CreditCard size={18} />}
+                    title="PhonePe Gateway"
+                    badge="Production"
+                    description="Hosted checkout with automatic capture via webhook. Requires completed PhonePe KYC."
+                    onClick={() => setMode('phonepe')}
+                />
+            </div>
+
+            {mode === 'manual_qr' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                        <div>
+                            <span className="text-xs font-semibold text-slate-600 block mb-1">
+                                Payment QR image
+                            </span>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={handleUpload}
+                                className="hidden"
+                            />
+                            {manualQr.imageUrl ? (
+                                <div className="flex gap-3 items-start">
+                                    <img
+                                        src={manualQr.imageUrl}
+                                        alt="QR"
+                                        className="w-24 h-24 object-contain border border-slate-200 rounded-lg bg-white"
+                                    />
+                                    <div className="flex-1 space-y-2">
+                                        <button
+                                            onClick={() => fileInputRef.current?.click()}
+                                            disabled={uploading}
+                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-700 text-white inline-flex items-center gap-1 disabled:opacity-60">
+                                            {uploading ? (
+                                                <>
+                                                    <Loader2 size={12} className="animate-spin" />
+                                                    Uploading…
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Upload size={12} /> Replace
+                                                </>
+                                            )}
+                                        </button>
+                                        <button
+                                            onClick={() => setManual({ imageUrl: '' })}
+                                            className="ml-2 px-3 py-1.5 text-xs font-bold rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50">
+                                            Remove
+                                        </button>
+                                        <p className="text-[11px] text-slate-500">
+                                            Empty image falls back to a bundled
+                                            placeholder on the customer page.
+                                        </p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={uploading}
+                                    className="w-full border-2 border-dashed border-slate-300 rounded-lg py-6 px-4 flex flex-col items-center justify-center gap-2 hover:bg-slate-50 transition-colors disabled:opacity-60">
+                                    {uploading ? (
+                                        <Loader2 size={20} className="animate-spin text-slate-400" />
+                                    ) : (
+                                        <Upload size={20} className="text-slate-400" />
+                                    )}
+                                    <span className="text-sm font-bold text-slate-700">
+                                        Upload UPI QR image
+                                    </span>
+                                    <span className="text-[11px] text-slate-500">
+                                        JPG / PNG / WebP, ≤ 10 MB
+                                    </span>
+                                </button>
+                            )}
+                        </div>
+
+                        <TextField
+                            label="UPI ID"
+                            value={manualQr.upiId || ''}
+                            onChange={(v) => setManual({ upiId: v })}
+                            hint="Shown alongside the QR for cross-verification."
+                        />
+                        <TextField
+                            label="Merchant / payee name"
+                            value={manualQr.merchantName || ''}
+                            onChange={(v) => setManual({ merchantName: v })}
+                        />
+                        <label className="block">
+                            <span className="text-xs font-semibold text-slate-600 block mb-1">
+                                Instructions (optional)
+                            </span>
+                            <textarea
+                                value={manualQr.instructions || ''}
+                                onChange={(e) =>
+                                    setManual({ instructions: e.target.value })
+                                }
+                                rows={4}
+                                maxLength={2000}
+                                placeholder="e.g. After payment, copy the UPI transaction ID from your bank app and upload a screenshot."
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                            />
+                        </label>
+                    </div>
+
+                    <ManualQrPreview cfg={cfg} manualQr={manualQr} />
+                </div>
+            )}
+
+            {mode === 'phonepe' && (
+                <p className="text-[11px] text-slate-500 leading-relaxed bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                    PhonePe-pg checkout will handle joining payments
+                    automatically. The customer will be redirected to
+                    PhonePe and back; activation fires on the success
+                    webhook. Configure provider credentials in System
+                    Settings.
+                </p>
+            )}
+        </div>
+    );
+};
+
+const ModeRadio = ({ active, icon, title, badge, description, onClick }) => (
+    <button
+        type="button"
+        onClick={onClick}
+        className={`text-left rounded-2xl border p-4 transition-colors ${
+            active
+                ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200'
+                : 'border-slate-200 bg-white hover:bg-slate-50'
+        }`}>
+        <div className="flex items-center gap-2">
+            <span
+                className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                    active ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                }`}>
+                {icon}
+            </span>
+            <div className="flex-1">
+                <div className="flex items-center gap-2">
+                    <p className="font-bold text-slate-900 text-sm">{title}</p>
+                    {badge && (
+                        <span
+                            className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                                badge === 'Temporary'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-emerald-100 text-emerald-700'
+                            }`}>
+                            {badge}
+                        </span>
+                    )}
+                </div>
+            </div>
+            <span
+                className={`w-4 h-4 rounded-full border-2 ${
+                    active ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'
+                }`}
+            />
+        </div>
+        <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+            {description}
+        </p>
+    </button>
+);
+
+const ManualQrPreview = ({ cfg, manualQr }) => {
+    const price = Number(cfg.joiningPackagePrice) || 0;
+    return (
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3">
+                Customer view (preview)
+            </p>
+            <div className="rounded-xl bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 p-4 text-white mb-3">
+                <p className="text-[11px] uppercase font-bold opacity-80 tracking-widest">
+                    Amount to pay
+                </p>
+                <p className="text-2xl font-black mt-1">
+                    ₹{price.toLocaleString('en-IN')}
+                </p>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl p-3 text-center">
+                {manualQr.imageUrl ? (
+                    <img
+                        src={manualQr.imageUrl}
+                        alt="QR preview"
+                        className="w-32 h-32 object-contain mx-auto"
+                    />
+                ) : (
+                    <div className="w-32 h-32 mx-auto flex flex-col items-center justify-center text-slate-400 bg-slate-50 rounded">
+                        <ImageOff size={24} />
+                        <p className="text-[10px] mt-2">Bundled fallback</p>
+                    </div>
+                )}
+                {manualQr.merchantName && (
+                    <p className="text-xs font-bold text-slate-900 mt-2">
+                        {manualQr.merchantName}
+                    </p>
+                )}
+                {manualQr.upiId && (
+                    <p className="text-[11px] font-mono text-slate-600 mt-0.5">
+                        {manualQr.upiId}
+                    </p>
+                )}
+            </div>
+            {manualQr.instructions && (
+                <div className="mt-3 bg-white border border-slate-200 rounded-xl p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+                        Instructions
+                    </p>
+                    <p className="text-xs text-slate-700 whitespace-pre-line leading-relaxed">
+                        {manualQr.instructions}
+                    </p>
+                </div>
+            )}
         </div>
     );
 };

@@ -1,6 +1,7 @@
 import express from "express";
 import {
   adjustMemberWallet,
+  approveJoiningReview,
   approveWithdrawal,
   createMilestoneRule,
   deleteMilestoneRule,
@@ -9,8 +10,10 @@ import {
   getMlmMemberDownlineTree,
   getMlmSettings,
   listAdminWithdrawals,
+  listJoiningReviews,
   listMilestoneRules,
   listMlmMembers,
+  rejectJoiningReview,
   rejectWithdrawal,
   updateMilestoneRule,
   updateMlmSettings,
@@ -31,6 +34,14 @@ router.get("/members/:id/wallet-verification", ...adminGuard, verifyMemberWallet
 router.get("/withdrawals", ...adminGuard, listAdminWithdrawals);
 router.post("/withdrawals/:id/approve", ...adminGuard, approveWithdrawal);
 router.post("/withdrawals/:id/reject", ...adminGuard, rejectWithdrawal);
+
+router.get("/joining-reviews", ...adminGuard, listJoiningReviews);
+router.post(
+  "/joining-reviews/:id/approve",
+  ...adminGuard,
+  approveJoiningReview,
+);
+router.post("/joining-reviews/:id/reject", ...adminGuard, rejectJoiningReview);
 
 router.get("/settings", ...adminGuard, getMlmSettings);
 router.put("/settings", ...adminGuard, updateMlmSettings);

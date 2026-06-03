@@ -116,30 +116,47 @@ export async function issueCustomerOtp({
     "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpLastSentAt +otpSessionVersion +otp +otpExpiry",
   );
 
-  if (flow === "login" && (!customer || !customer.isVerified)) {
-    if (useRealSMS()) {
-      otpAuditLog("customer_otp_login_generic_response", {
+  // LOGIN flow: refuse to issue an OTP for phones that don't have a
+  // verified Customer row. Previously the dev/mock branch silently
+  // CREATED a fresh row here, which let unregistered users "log in"
+  // without ever going through the signup flow. The new behaviour is
+  // explicit and consistent across modes:
+  //
+  //   - Customer missing                 → 404 ACCOUNT_NOT_FOUND
+  //   - Customer exists but !isVerified  → 404 ACCOUNT_NOT_VERIFIED
+  //
+  // The frontend reads the error `code` and switches the auth screen
+  // to the signup tab so the user is guided into the right flow
+  // instead of getting an opaque "OTP sent" with no SMS.
+  if (flow === "login") {
+    if (!customer) {
+      otpAuditLog("customer_otp_login_rejected_no_account", {
         phone: maskPhone(phone),
         ipAddress,
-        accountExists: !!customer,
       });
-      return { sent: true, phone };
-    }
-
-    // In mock/dev mode, allow login OTP issuance so local testing works end-to-end.
-    if (!customer) {
-      customer = await Customer.create({
-        name: name || "Customer",
-        phone,
-        isVerified: false,
-      });
-      customer = await Customer.findById(customer._id).select(
-        "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpLastSentAt +otpSessionVersion +otp +otpExpiry",
+      const err = new Error(
+        "No account found with this number. Please sign up first.",
       );
+      err.statusCode = 404;
+      err.code = "ACCOUNT_NOT_FOUND";
+      throw err;
+    }
+    if (!customer.isVerified) {
+      otpAuditLog("customer_otp_login_rejected_unverified", {
+        phone: maskPhone(phone),
+        ipAddress,
+      });
+      const err = new Error(
+        "Your account is not yet verified. Please complete signup.",
+      );
+      err.statusCode = 404;
+      err.code = "ACCOUNT_NOT_VERIFIED";
+      throw err;
     }
   }
 
   if (!customer) {
+    // Reachable only on the signup flow now — login bails above.
     const normalizedReferralCode = String(referralCode || "").trim().toUpperCase();
     customer = await Customer.create({
       name: name || "Customer",

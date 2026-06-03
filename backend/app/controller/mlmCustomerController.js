@@ -13,6 +13,7 @@ import {
   getUplineChain,
 } from "../services/mlm/mlmMembershipService.js";
 import {
+  getManualQrConfig,
   getMlmConfig,
   getPlanAPairBonusForPairIndex,
 } from "../services/mlm/mlmConfigService.js";
@@ -21,7 +22,12 @@ import {
   createWithdrawalRequest,
   listWithdrawalsForCustomer,
 } from "../services/mlm/mlmWithdrawalService.js";
-import { initiateJoiningPayment } from "../services/mlm/mlmJoiningPaymentService.js";
+import {
+  getLatestPendingJoiningPaymentForCustomer,
+  getManualJoiningPaymentForCustomer,
+  initiateJoiningPayment,
+  submitManualPaymentProof,
+} from "../services/mlm/mlmJoiningPaymentService.js";
 import {
   createWithdrawalRequestSchema,
   validateMlmSchema,
@@ -56,6 +62,30 @@ export const getMyMembership = async (req, res) => {
     const nextPairBonusAmount = membership
       ? await getPlanAPairBonusForPairIndex(pairsCompleted + 1)
       : 0;
+
+    // Surface the latest non-terminal manual-QR joining payment so the
+    // dashboard can render resume / under-review / try-again banners
+    // without an extra round trip. Only relevant for non-members.
+    let pendingJoiningPayment = null;
+    if (!membership) {
+      const pending = await getLatestPendingJoiningPaymentForCustomer(userId);
+      if (pending) {
+        pendingJoiningPayment = {
+          paymentId: String(pending._id),
+          status: pending.status,
+          paymentMode: pending.paymentMode,
+          amount: pending.joiningPriceSnapshot,
+          createdAt: pending.createdAt,
+          submittedAt: pending.manualPaymentDetails?.submittedAt || null,
+          transactionId: pending.manualPaymentDetails?.transactionId || null,
+          rejectionReason:
+            pending.status === "FAILED"
+              ? pending.adminRemarks || pending.failureReason || null
+              : null,
+          redirectUrl: pending.rawGatewayResponse?.redirectUrl || null,
+        };
+      }
+    }
 
     return handleResponse(res, 200, "MLM membership fetched", {
       enabled: !!cfg.enabled,
@@ -92,9 +122,12 @@ export const getMyMembership = async (req, res) => {
         pendingBalance: wallet?.pendingBalance || 0,
         availableBalance: wallet?.availableBalance || 0,
       },
+      pendingJoiningPayment,
       config: {
         joiningPackagePrice: cfg.joiningPackagePrice,
         joiningPackageShoppingWalletCredit: cfg.joiningPackageShoppingWalletCredit,
+        joiningPaymentMode:
+          cfg.joiningPaymentMode === "phonepe" ? "phonepe" : "manual_qr",
         withdrawalMinAmount: cfg.withdrawalMinAmount,
         withdrawalAdminChargePercent: cfg.withdrawalAdminChargePercent,
         withdrawalGstOnAdminChargePercent: cfg.withdrawalGstOnAdminChargePercent,
@@ -382,6 +415,101 @@ export const initiateJoin = async (req, res) => {
       res,
       error.statusCode || 500,
       error.message || "Failed to initiate joining payment",
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+/**
+ * POST /api/customer/mlm/join/submit-proof
+ *
+ * Manual-QR flow only. Body: `{ paymentId, transactionId,
+ * screenshotUrl, paidAmount? }`. Validates ownership +
+ * payment-mode + status, transitions the row to PENDING_REVIEW.
+ */
+export const submitJoiningProof = async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const {
+      paymentId,
+      transactionId,
+      screenshotUrl,
+      paidAmount = null,
+    } = req.body || {};
+
+    const updated = await submitManualPaymentProof({
+      paymentId,
+      customerId,
+      transactionId,
+      screenshotUrl,
+      paidAmount,
+    });
+
+    return handleResponse(res, 200, "Payment proof submitted for review", {
+      paymentId: String(updated._id),
+      status: updated.status,
+      submittedAt: updated.manualPaymentDetails?.submittedAt || null,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to submit payment proof",
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+/**
+ * GET /api/customer/mlm/join/payment/:paymentId
+ *
+ * Polled by `ManualPaymentPage` so it can swap from form mode to
+ * status-card mode the moment proof is submitted (or the admin
+ * approves/rejects). Returns the manual-QR config snapshot so the
+ * page never reads admin settings directly — it always renders the
+ * QR/instructions snapshotted at intent time.
+ */
+export const getJoiningPayment = async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const { paymentId } = req.params;
+    const payment = await getManualJoiningPaymentForCustomer({
+      paymentId,
+      customerId,
+    });
+
+    // Prefer the snapshot baked into rawGatewayResponse at intent
+    // time; fall back to the live config if a legacy row predates the
+    // snapshot. The fallback keeps the page usable even for rows that
+    // existed before this rollout.
+    const manualQr =
+      payment.rawGatewayResponse?.manualQrSnapshot ||
+      (await getManualQrConfig());
+
+    return handleResponse(res, 200, "Joining payment", {
+      paymentId: String(payment._id),
+      status: payment.status,
+      paymentMode: payment.paymentMode,
+      amount: payment.joiningPriceSnapshot,
+      shoppingCredit: payment.shoppingCreditSnapshot,
+      sponsorReferralCode: payment.sponsorReferralCodeSnapshot || null,
+      createdAt: payment.createdAt,
+      submittedAt: payment.manualPaymentDetails?.submittedAt || null,
+      transactionId: payment.manualPaymentDetails?.transactionId || null,
+      screenshotUrl: payment.manualPaymentDetails?.screenshotUrl || null,
+      reviewedAt: payment.reviewedAt || null,
+      adminRemarks: payment.adminRemarks || null,
+      rejectionReason:
+        payment.status === "FAILED"
+          ? payment.adminRemarks || payment.failureReason || null
+          : null,
+      manualQr,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to fetch payment",
       error.code ? { code: error.code } : undefined,
     );
   }

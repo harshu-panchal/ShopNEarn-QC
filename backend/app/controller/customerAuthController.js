@@ -92,9 +92,17 @@ export const loginCustomer = async (req, res) => {
             ipAddress: req.ip,
         });
 
-        return handleResponse(res, 200, "If the number is eligible, OTP has been sent");
+        return handleResponse(res, 200, "OTP has been sent");
     } catch (error) {
-        return handleResponse(res, error.statusCode || 500, error.message);
+        // Forward structured error codes (e.g. ACCOUNT_NOT_FOUND,
+        // ACCOUNT_NOT_VERIFIED) so the client can route to the right
+        // tab instead of showing a generic "Failed to send OTP".
+        return handleResponse(
+            res,
+            error.statusCode || 500,
+            error.message,
+            error.code ? { code: error.code } : {},
+        );
     }
 };
 

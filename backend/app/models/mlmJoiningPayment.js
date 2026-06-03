@@ -5,6 +5,7 @@ import {
   ALL_PAYMENT_STATUSES,
   PAYMENT_STATUS,
 } from "../constants/payment.js";
+import { ALL_MLM_PAYMENT_MODES, MLM_PAYMENT_MODE } from "../constants/mlm.js";
 
 /**
  * MlmJoiningPayment — owns the full intent-pay-activate lifecycle for
@@ -52,6 +53,16 @@ const mlmJoiningPaymentSchema = new mongoose.Schema(
       enum: ALL_PAYMENT_GATEWAYS,
       required: true,
       default: "PHONEPE",
+      index: true,
+    },
+    // Snapshot of `Setting.mlm.joiningPaymentMode` at intent time so a
+    // mid-flight admin toggle never reroutes an open payment from one
+    // flow to the other. The PhonePe code path treats every legacy row
+    // (where this field is missing) as `phonepe` for back-compat.
+    paymentMode: {
+      type: String,
+      enum: ALL_MLM_PAYMENT_MODES,
+      default: MLM_PAYMENT_MODE.PHONEPE,
       index: true,
     },
     gatewayOrderId: {
@@ -137,6 +148,36 @@ const mlmJoiningPaymentSchema = new mongoose.Schema(
     statusHistory: {
       type: [joiningPaymentStateChangeSchema],
       default: [],
+    },
+    // Manual-QR flow only — out-of-band proof submitted by the customer
+    // through `/mlm/manual-payment/:paymentId`. Stays null for the
+    // PhonePe gateway code path.
+    manualPaymentDetails: {
+      transactionId: {
+        type: String,
+        default: null,
+        trim: true,
+        uppercase: true,
+        index: true,
+      },
+      screenshotUrl: { type: String, default: null },
+      paidAmount: { type: Number, default: null },
+      submittedAt: { type: Date, default: null },
+    },
+    // Manual-QR flow only — admin who actioned the review and when.
+    // Untouched for PhonePe payments (those auto-capture via webhook).
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    reviewedAt: {
+      type: Date,
+      default: null,
+    },
+    adminRemarks: {
+      type: String,
+      default: null,
     },
   },
   { timestamps: true },

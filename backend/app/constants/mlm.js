@@ -106,6 +106,27 @@ export const MLM_RETURN_CLAWBACK_MODE = {
 export const ALL_MLM_RETURN_CLAWBACK_MODES = Object.values(MLM_RETURN_CLAWBACK_MODE);
 
 /**
+ * MLM joining payment mode. Controls which gateway code path
+ * `mlmJoiningPaymentService.initiateJoiningPayment` takes.
+ *
+ *  - `phonepe`    — production flow: PhonePe-pg checkout, automatic
+ *    activation on webhook capture.
+ *  - `manual_qr`  — temporary fallback used while PhonePe KYC is
+ *    pending. Customer scans an admin-uploaded UPI QR, pays out-of-band,
+ *    and submits a transaction id + screenshot. Admin manually approves
+ *    or rejects in `/admin/mlm/joining-reviews`.
+ *
+ * The active mode is read from `Setting.mlm.joiningPaymentMode` at
+ * intent-creation time and snapshotted on the `MlmJoiningPayment` row,
+ * so flipping the toggle never strands payments mid-flight.
+ */
+export const MLM_PAYMENT_MODE = {
+  MANUAL_QR: "manual_qr",
+  PHONEPE: "phonepe",
+};
+export const ALL_MLM_PAYMENT_MODES = Object.values(MLM_PAYMENT_MODE);
+
+/**
  * Default MLM rate sheet. Every value here is an admin-editable default.
  * Read these via `mlmConfigService.getMlmConfig()` — never import directly
  * for runtime decisions (admin overrides will be missed).
@@ -128,6 +149,24 @@ export const MLM_DEFAULTS = Object.freeze({
   // customers.
   joiningPackagePrice: 2999,
   joiningPackageShoppingWalletCredit: 5000,
+
+  // Joining payment mode toggle. See `MLM_PAYMENT_MODE`. Defaults to
+  // `manual_qr` because the temporary UPI-QR flow is the production
+  // mode while PhonePe KYC verification is pending. Switch to
+  // `phonepe` once KYC clears.
+  joiningPaymentMode: "manual_qr",
+
+  // Manual-QR config. Empty `imageUrl` falls back to the bundled
+  // `frontend/src/assets/payment_QR.jpeg` asset on the customer page,
+  // so the feature stays functional even if the admin hasn't uploaded
+  // a custom QR yet. `upiId` / `merchantName` / `instructions` are
+  // shown alongside the QR for cross-verification by the customer.
+  manualQr: {
+    imageUrl: "",
+    upiId: "",
+    merchantName: "",
+    instructions: "",
+  },
 
   // Auto-upgrade trigger from Plan A to Plan B
   planBAutoUpgradeAtPlanALifetimeEarnings: 30000,

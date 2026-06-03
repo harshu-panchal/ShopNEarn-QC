@@ -23,6 +23,20 @@ export const adminMlmApi = {
     rejectWithdrawal: (id, data) =>
         axiosInstance.post(`/admin/mlm/withdrawals/${id}/reject`, data || {}),
 
+    /* Manual-QR joining payment review queue */
+    listJoiningReviews: (params) =>
+        axiosInstance.get('/admin/mlm/joining-reviews', { params }),
+    approveJoiningReview: (id, data) =>
+        axiosInstance.post(
+            `/admin/mlm/joining-reviews/${id}/approve`,
+            data || {},
+        ),
+    rejectJoiningReview: (id, data) =>
+        axiosInstance.post(
+            `/admin/mlm/joining-reviews/${id}/reject`,
+            data || {},
+        ),
+
     // Renamed from getSettings/updateSettings to avoid a name collision
     // with adminSettingsApi inside the aggregate `adminApi` (the MLM slice
     // was spread last and was silently overriding the platform-settings

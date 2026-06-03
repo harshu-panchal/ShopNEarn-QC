@@ -35,18 +35,45 @@ export const mlmApi = {
   },
 
   /**
-   * One-click MLM joining. Server creates the joining-package order on
-   * the customer's behalf and returns a payment-gateway redirect URL.
-   * The caller is expected to redirect the browser to `result.redirectUrl`
-   * so PhonePe handles the payment sheet. Activation fires through the
-   * existing webhook chain on payment capture.
+   * One-click MLM joining. Server creates the joining-package payment
+   * row and returns a redirect target. The shape of the redirect
+   * depends on `paymentMode`:
+   *   - `phonepe`     -> redirectUrl is the gateway checkout page.
+   *   - `manual_qr`   -> redirectUrl is the in-app
+   *                       `/mlm/manual-payment/:paymentId` page.
    *
    * Response shape:
-   *   { orderId, publicOrderId, paymentId, redirectUrl, duplicate }
+   *   { paymentId, merchantOrderId, redirectUrl, paymentMode,
+   *     manualQr?: { imageUrl, upiId, merchantName, instructions },
+   *     duplicate }
    */
   initiateJoin: () => {
     invalidateCache("/customer/mlm/membership");
     return axiosInstance.post("/customer/mlm/join/initiate");
+  },
+
+  /**
+   * Manual-QR flow: read the latest known state of a joining payment.
+   * Polled by `ManualPaymentPage` so it can transition between form
+   * mode (CREATED), under-review card (PENDING_REVIEW), success card
+   * (CAPTURED), and rejection card (FAILED) without a full reload.
+   */
+  getJoiningPayment: (paymentId) =>
+    getWithDedupe(
+      `/customer/mlm/join/payment/${paymentId}`,
+      {},
+      { ttl: 1500 },
+    ),
+
+  /**
+   * Manual-QR flow: submit transaction id + screenshot URL after the
+   * customer pays via UPI. Server transitions the row to
+   * PENDING_REVIEW and notifies admins for review.
+   */
+  submitJoiningProof: (payload) => {
+    invalidateCache("/customer/mlm/membership");
+    invalidateCache("/customer/mlm/join/payment");
+    return axiosInstance.post("/customer/mlm/join/submit-proof", payload);
   },
 };
 

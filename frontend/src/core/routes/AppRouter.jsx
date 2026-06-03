@@ -50,6 +50,7 @@ const MlmReferralPage = lazy(() => import('../../modules/customer/pages/mlm/MlmR
 const MlmEarningsPage = lazy(() => import('../../modules/customer/pages/mlm/MlmEarningsPage'));
 const MlmWithdrawalPage = lazy(() => import('../../modules/customer/pages/mlm/MlmWithdrawalPage'));
 const MlmHomeShoppingPage = lazy(() => import('../../modules/customer/pages/mlm/MlmHomeShoppingPage'));
+const ManualPaymentPage = lazy(() => import('../../modules/customer/pages/mlm/ManualPaymentPage'));
 
 // Lazy load heavy modules
 const SellerModule = lazy(() => import('../../modules/seller/routes/index'));
@@ -187,6 +188,7 @@ const AppRouter = () => {
                         { path: 'mlm/earnings', element: <ProtectedRoute><MlmEarningsPage /></ProtectedRoute> },
                         { path: 'mlm/withdrawals', element: <ProtectedRoute><MlmWithdrawalPage /></ProtectedRoute> },
                         { path: 'mlm/home-shopping', element: <ProtectedRoute><MlmHomeShoppingPage /></ProtectedRoute> },
+                        { path: 'mlm/manual-payment/:paymentId', element: <ProtectedRoute><ManualPaymentPage /></ProtectedRoute> },
                         { path: 'search', element: <SearchPage /> },
                     ]
                 },

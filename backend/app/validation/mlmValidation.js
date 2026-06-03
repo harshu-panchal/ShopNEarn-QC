@@ -1,6 +1,7 @@
 import Joi from "joi";
 import {
   ALL_MLM_BINARY_PLACEMENT_STRATEGIES,
+  ALL_MLM_PAYMENT_MODES,
   ALL_MLM_PLAN_TYPES,
   ALL_MLM_RETURN_CLAWBACK_MODES,
   ALL_MLM_WITHDRAWAL_METHODS,
@@ -24,6 +25,13 @@ export const updateMlmSettingsSchema = Joi.object({
   signupRequiresReferralCode: Joi.boolean(),
   joiningPackagePrice: Joi.number().min(0),
   joiningPackageShoppingWalletCredit: Joi.number().min(0),
+  joiningPaymentMode: Joi.string().valid(...ALL_MLM_PAYMENT_MODES),
+  manualQr: Joi.object({
+    imageUrl: Joi.string().trim().allow("").max(2048),
+    upiId: Joi.string().trim().allow("").max(120),
+    merchantName: Joi.string().trim().allow("").max(120),
+    instructions: Joi.string().trim().allow("").max(2000),
+  }),
   premiumUpgradeShoppingWalletTopup: Joi.number().min(0),
   planBAutoUpgradeAtPlanALifetimeEarnings: Joi.number().min(0),
   // DEPRECATED: replaced by `planAPairBonusTiers`. Retained on the

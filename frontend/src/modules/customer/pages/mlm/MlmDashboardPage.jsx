@@ -11,6 +11,9 @@ import {
   ArrowDownRight,
   Sparkles,
   Loader2,
+  Clock,
+  AlertTriangle,
+  RefreshCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../services/mlmApi";
@@ -95,14 +98,28 @@ const Header = ({ title, navigate, right = null }) => (
 
 const NotMemberView = ({ data, navigate }) => {
   const cfg = data.config || {};
+  const pending = data.pendingJoiningPayment || null;
   const [joining, setJoining] = useState(false);
 
   const joiningPriceConfigured = Number(cfg.joiningPackagePrice) > 0;
-  const canJoin = joiningPriceConfigured;
+  const hasOpenIntent =
+    pending && (pending.status === "CREATED" || pending.status === "PENDING_REVIEW");
+  // Block re-initiation while a payment is open (avoids minting a
+  // second row mid-review). FAILED is fine — that's a retry path.
+  const canJoin = joiningPriceConfigured && !hasOpenIntent;
 
   const handleJoin = async () => {
     if (joining) return;
     if (!canJoin) {
+      if (hasOpenIntent) {
+        // Resume — route the customer back to the manual page or
+        // wait for review. Should not normally reach here as the
+        // banner CTA fires first.
+        if (pending.redirectUrl) {
+          window.location.assign(pending.redirectUrl);
+        }
+        return;
+      }
       toast.error("Joining is not configured yet. Please contact support.");
       return;
     }
@@ -111,12 +128,18 @@ const NotMemberView = ({ data, navigate }) => {
       const res = await mlmApi.initiateJoin();
       const payload = res.data?.result ?? res.data?.data ?? res.data;
       const redirectUrl = payload?.redirectUrl;
+      const paymentMode = payload?.paymentMode;
+      const paymentId = payload?.paymentId;
       if (!redirectUrl) {
         throw new Error("Payment gateway did not return a redirect URL.");
       }
-      // Hand off to PhonePe. On success the gateway brings the customer
-      // back to /payment-status, the webhook fires activation, and the
-      // membership row appears on next dashboard load.
+      if (paymentMode === "manual_qr" && paymentId) {
+        // Stay in-app for the manual flow — don't trigger a hard
+        // window.location.assign which would unmount the SPA.
+        navigate(`/mlm/manual-payment/${paymentId}`);
+        return;
+      }
+      // PhonePe path — hand off the browser.
       window.location.assign(redirectUrl);
     } catch (err) {
       const message =
@@ -126,7 +149,6 @@ const NotMemberView = ({ data, navigate }) => {
       const code = err?.response?.data?.result?.code;
       if (code === "ALREADY_MEMBER") {
         toast.error(message);
-        // Refresh the dashboard so the now-member view appears.
         navigate(0);
       } else if (code === "JOINING_PRICE_UNCONFIGURED" || code === "MLM_DISABLED") {
         toast.error(message);
@@ -141,6 +163,19 @@ const NotMemberView = ({ data, navigate }) => {
     <div className="min-h-screen bg-slate-50 pb-24">
       <Header title="Rewards Program" navigate={navigate} />
       <div className="max-w-2xl mx-auto px-4 space-y-4">
+        {pending && (
+          <PendingPaymentBanner
+            pending={pending}
+            onResume={() => {
+              if (pending.paymentId) {
+                navigate(`/mlm/manual-payment/${pending.paymentId}`);
+              }
+            }}
+            onRetry={handleJoin}
+            retrying={joining}
+          />
+        )}
+
         <div className="rounded-2xl p-6 bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 text-white shadow-lg shadow-indigo-500/20">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest opacity-80">
             <Award size={16} />
@@ -162,13 +197,20 @@ const NotMemberView = ({ data, navigate }) => {
                 <Loader2 size={18} className="animate-spin" />
                 Opening payment…
               </>
+            ) : hasOpenIntent ? (
+              <>
+                {pending?.status === "PENDING_REVIEW"
+                  ? "Awaiting Approval"
+                  : "Resume Payment"}{" "}
+                <ChevronRight size={18} />
+              </>
             ) : (
               <>
                 Join Now <ChevronRight size={18} />
               </>
             )}
           </button>
-          {!canJoin && (
+          {!joiningPriceConfigured && (
             <p className="mt-2 text-[11px] opacity-90">
               Joining is being set up. Please check back soon.
             </p>
@@ -179,6 +221,102 @@ const NotMemberView = ({ data, navigate }) => {
       </div>
     </div>
   );
+};
+
+/**
+ * Three banner variants based on the pending manual-QR joining
+ * payment state:
+ *   - CREATED        — proof not submitted, "Resume" CTA -> manual page
+ *   - PENDING_REVIEW — under admin review, no action
+ *   - FAILED         — last attempt rejected, "Try Again" CTA
+ */
+const PendingPaymentBanner = ({ pending, onResume, onRetry, retrying }) => {
+  if (pending.status === "CREATED") {
+    return (
+      <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 flex gap-3 items-start">
+        <Clock size={22} className="text-amber-600 flex-shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="text-sm font-bold text-amber-900">
+            Finish your payment
+          </p>
+          <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+            You've started joining for {formatINR(pending.amount)}. Complete
+            the QR payment and submit your transaction id to activate.
+          </p>
+          <button
+            onClick={onResume}
+            className="mt-3 px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold inline-flex items-center gap-1 hover:bg-amber-700 transition-colors">
+            Resume <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.status === "PENDING_REVIEW") {
+    return (
+      <div className="rounded-2xl bg-blue-50 border border-blue-200 p-4 flex gap-3 items-start">
+        <Clock size={22} className="text-blue-600 flex-shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="text-sm font-bold text-blue-900">
+            Your request is under review
+          </p>
+          <p className="text-xs text-blue-800 mt-1 leading-relaxed">
+            We've received your payment proof
+            {pending.transactionId ? (
+              <>
+                {" "}
+                (txn:{" "}
+                <code className="font-mono text-blue-900">
+                  {pending.transactionId}
+                </code>
+                )
+              </>
+            ) : null}
+            . Your status will be updated within 24 hours. You'll get a
+            notification once admin approves it.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.status === "FAILED") {
+    return (
+      <div className="rounded-2xl bg-rose-50 border border-rose-200 p-4 flex gap-3 items-start">
+        <AlertTriangle size={22} className="text-rose-600 flex-shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="text-sm font-bold text-rose-900">
+            Your last payment was not approved
+          </p>
+          {pending.rejectionReason && (
+            <p className="text-xs text-rose-800 mt-1 leading-relaxed">
+              Reason: {pending.rejectionReason}
+            </p>
+          )}
+          <p className="text-xs text-rose-800 mt-1 leading-relaxed">
+            You can retry with a fresh payment.
+          </p>
+          <button
+            onClick={onRetry}
+            disabled={retrying}
+            className="mt-3 px-4 py-2 rounded-lg bg-rose-600 text-white text-xs font-bold inline-flex items-center gap-1 hover:bg-rose-700 transition-colors disabled:opacity-70">
+            {retrying ? (
+              <>
+                <Loader2 size={14} className="animate-spin" /> Starting…
+              </>
+            ) : (
+              <>
+                <RefreshCcw size={14} /> Try Again
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 };
 
 const BenefitsCard = ({ cfg }) => (

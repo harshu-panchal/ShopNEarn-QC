@@ -33,6 +33,15 @@ export const NOTIFICATION_EVENTS = Object.freeze({
   MLM_WITHDRAWAL_APPROVED: "MLM_WITHDRAWAL_APPROVED",
   MLM_WITHDRAWAL_REJECTED: "MLM_WITHDRAWAL_REJECTED",
   MLM_MILESTONE_REACHED: "MLM_MILESTONE_REACHED",
+  // Manual-QR joining payment review lifecycle.
+  // Submitted -> notify admins (review queue update).
+  // Approved   -> CAPTURE side-effect already fires PAYMENT_SUCCESS +
+  //               MEMBERSHIP_ACTIVATED, this stays for an explicit
+  //               "Your payment was approved" customer push.
+  // Rejected   -> notify the customer with the admin reason.
+  MLM_JOINING_PROOF_SUBMITTED: "MLM_JOINING_PROOF_SUBMITTED",
+  MLM_JOINING_PROOF_APPROVED: "MLM_JOINING_PROOF_APPROVED",
+  MLM_JOINING_PROOF_REJECTED: "MLM_JOINING_PROOF_REJECTED",
 });
 
 export const NOTIFICATION_ROLES = Object.freeze({

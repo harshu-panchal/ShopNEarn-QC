@@ -7,7 +7,7 @@ import ProductDetailSheet from '../shared/ProductDetailSheet';
 import MobileFooterMessage from './MobileFooterMessage';
 import { useProductDetail } from '../../context/ProductDetailContext';
 import { cn } from '@/lib/utils';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '@core/context/AuthContext';
 import { onReturnPickupOtp, onReturnDropOtp } from '@core/services/orderSocket';
 import { toast } from 'sonner';
@@ -15,32 +15,8 @@ import { ShieldCheck, Package } from 'lucide-react';
 
 const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = false, showCart: showCartProp, showBottomNav: showBottomNavProp }) => {
     const location = useLocation();
-    const [searchParams] = useSearchParams();
     const { isOpen: isProductDetailOpen } = useProductDetail();
     const { user, token } = useAuth();
-
-    // Persist a sponsor referral code from any URL inside the customer
-    // layout (?ref=CODE on /, /product/:id, /category, etc.). This way
-    // a guest who lands on a referral link, browses around, and only
-    // later taps "Sign up" still has the code auto-filled — picked up
-    // from localStorage by CustomerAuth.jsx.
-    useEffect(() => {
-        try {
-            const refRaw =
-                searchParams.get('ref') ||
-                searchParams.get('referral') ||
-                searchParams.get('referralCode') ||
-                '';
-            const normalized = refRaw
-                .trim()
-                .toUpperCase()
-                .replace(/[^A-Z0-9]/g, '')
-                .slice(0, 16);
-            if (normalized) {
-                window.localStorage.setItem('mlm_pending_referral_code', normalized);
-            }
-        } catch { /* ignore */ }
-    }, [searchParams]);
 
     // Listen for Return OTPs (Real-time Alert for Customer)
     useEffect(() => {
