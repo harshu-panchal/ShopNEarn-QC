@@ -98,6 +98,15 @@ const AppRouter = () => {
                     path: 'signup',
                     element: <CustomerAuth />,
                 },
+                // Legacy alias — `/customer-auth?ref=CODE` is what older
+                // MLM referral shares (WhatsApp / SMS / printed material)
+                // point at. Mapped to the same component so existing
+                // links keep working and the `?ref` query is preserved
+                // for the prefill logic in CustomerAuth.jsx.
+                {
+                    path: 'customer-auth',
+                    element: <CustomerAuth />,
+                },
                 {
                     path: 'seller/auth',
                     element: <Auth />,

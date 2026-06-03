@@ -21,6 +21,7 @@ import Settings from "../pages/profile/Settings";
 import HelpSupport from "../pages/profile/HelpSupport";
 import Withdrawals from "../pages/profile/Withdrawals";
 import Notifications from "../pages/Notifications";
+import DeliveryLegalPage from "../pages/DeliveryLegalPage";
 
 const DeliveryRoutes = () => {
   useEffect(() => {
@@ -50,6 +51,12 @@ const DeliveryRoutes = () => {
         <Route path="profile/help-support" element={<HelpSupport />} />
         <Route path="profile/withdrawals" element={<Withdrawals />} />
         <Route path="notifications" element={<Notifications />} />
+        {/* Admin-managed legal / informational pages. Slugs are
+            configured under Admin → Legal Pages → Delivery App. */}
+        <Route path="privacy" element={<DeliveryLegalPage slug="privacy-policy" />} />
+        <Route path="terms" element={<DeliveryLegalPage slug="terms-of-service" />} />
+        <Route path="about" element={<DeliveryLegalPage slug="about" />} />
+        <Route path="legal/:slug" element={<DeliveryLegalPage />} />
         <Route path="/" element={<Navigate to="dashboard" replace />} />
       </Route>
     </Routes>

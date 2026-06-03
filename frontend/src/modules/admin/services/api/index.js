@@ -22,6 +22,7 @@ import { adminSupportApi } from './supportApi';
 import { adminDeliveryApi } from './deliveryApi';
 import { adminContentApi } from './contentApi';
 import { adminMlmApi } from './mlmApi';
+import { adminLegalPagesApi } from './legalPagesApi';
 
 export {
     adminAuthApi,
@@ -34,6 +35,7 @@ export {
     adminDeliveryApi,
     adminContentApi,
     adminMlmApi,
+    adminLegalPagesApi,
 };
 
 /**
@@ -79,6 +81,7 @@ export const adminApi = mergeApiSlices({
     adminDeliveryApi,
     adminContentApi,
     adminMlmApi,
+    adminLegalPagesApi,
 });
 
 export default adminApi;

@@ -55,7 +55,11 @@ const MlmReferralPage = () => {
     }
 
     const code = membership.membership.referralCode;
-    const shareUrl = `${window.location.origin}/customer-auth?ref=${encodeURIComponent(code)}`;
+    // Canonical share URL points at the public signup route. The legacy
+    // `/customer-auth?ref=…` path is also registered in `AppRouter.jsx`
+    // so older links shared on WhatsApp / SMS keep working — but new
+    // shares should use `/signup` for the cleanest UX.
+    const shareUrl = `${window.location.origin}/signup?ref=${encodeURIComponent(code)}`;
     const shareText = `Use my referral code ${code} when you sign up — get instant shopping credit on your first order! ${shareUrl}`;
     const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(shareUrl)}`;
 

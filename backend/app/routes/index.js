@@ -13,6 +13,10 @@ import pushRoute from "./pushRoutes.js";
 import ticketRoute from "./ticketRoutes.js";
 import reviewRoute from "./reviewRoutes.js";
 import faqRoute from "./faqRoutes.js";
+import {
+    legalPageAdminRouter,
+    legalPagePublicRouter,
+} from "./legalPageRoutes.js";
 import experienceRoute from "./experienceRoutes.js";
 import offerRoute from "./offerRoutes.js";
 import couponRoute from "./couponRoutes.js";
@@ -77,6 +81,11 @@ const setupRoutes = (app) => {
     router.use("/reviews", reviewRoute);
     router.use("/admin/faqs", faqRoute);
     router.use("/public/faqs", faqRoute); // For public access without admin prefix
+
+    // Legal / informational pages — admin-editable content surfaced
+    // by the customer, seller, and delivery apps.
+    router.use("/admin/legal-pages", legalPageAdminRouter);
+    router.use("/public/legal-pages", legalPagePublicRouter);
 
     app.use("/api", router);
 }

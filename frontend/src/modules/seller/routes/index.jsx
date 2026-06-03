@@ -29,6 +29,7 @@ const Transactions = React.lazy(() => import("../pages/Transactions"));
 const DeliveryTracking = React.lazy(() => import("../pages/DeliveryTracking"));
 const Profile = React.lazy(() => import("../pages/Profile"));
 const Withdrawals = React.lazy(() => import("../pages/Withdrawals"));
+const SellerLegalPage = React.lazy(() => import("../pages/SellerLegalPage"));
 
 const navItems = [
   { label: "Dashboard", path: "/seller", icon: HiOutlineSquares2X2, end: true },
@@ -80,6 +81,15 @@ const SellerRoutes = () => {
         <Route path="/earnings" element={<Earnings />} />
         <Route path="/withdrawals" element={<Withdrawals />} />
         <Route path="/profile" element={<Profile />} />
+        {/* Admin-managed legal / informational pages. Slug names
+            (privacy-policy, terms-of-service, about, refund-policy,
+            shipping-policy, ...) are configured under Admin → Legal Pages
+            → Seller App. The catch-all `legal/:slug` route lets admins
+            mint new pages without a frontend release. */}
+        <Route path="/privacy" element={<SellerLegalPage slug="privacy-policy" />} />
+        <Route path="/terms" element={<SellerLegalPage slug="terms-of-service" />} />
+        <Route path="/about" element={<SellerLegalPage slug="about" />} />
+        <Route path="/legal/:slug" element={<SellerLegalPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </DashboardLayout>

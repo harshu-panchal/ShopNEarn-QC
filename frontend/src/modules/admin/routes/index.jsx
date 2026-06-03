@@ -22,6 +22,7 @@ import {
   Sparkles,
   User,
   Network,
+  FileText,
 } from "lucide-react";
 
 const Dashboard = React.lazy(() => import("../pages/Dashboard"));
@@ -68,6 +69,9 @@ const CustomerDetail = React.lazy(() => import("../pages/CustomerDetail"));
 const UserManagement = React.lazy(() => import("../pages/UserManagement"));
 const Profile = React.lazy(() => import("@/pages/Profile"));
 const FAQManagement = React.lazy(() => import("../pages/FAQManagement"));
+const LegalPagesManagement = React.lazy(() =>
+  import("../pages/LegalPagesManagement"),
+);
 const OrdersList = React.lazy(() => import("../pages/OrdersList"));
 const OrderDetail = React.lazy(() => import("../pages/OrderDetail"));
 const Returns = React.lazy(() => import("../pages/Returns"));
@@ -198,6 +202,12 @@ const navItems = [
   },
   { label: "FAQs", path: "/admin/faqs", icon: HelpCircle, color: "pink" },
   {
+    label: "Legal Pages",
+    path: "/admin/legal-pages",
+    icon: FileText,
+    color: "slate",
+  },
+  {
     label: "Orders",
     icon: ClipboardList,
     color: "fuchsia",
@@ -289,6 +299,7 @@ const AdminRoutes = () => {
         <Route path="/customers" element={<CustomerManagement />} />
         <Route path="/customers/:id" element={<CustomerDetail />} />
         <Route path="/faqs" element={<FAQManagement />} />
+        <Route path="/legal-pages" element={<LegalPagesManagement />} />
         <Route path="/orders/:status" element={<OrdersList />} />
         <Route path="/orders/view/:orderId" element={<OrderDetail />} />
         <Route path="/returns" element={<Returns />} />

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@core/context/AuthContext';
 import { useSettings } from '@core/context/SettingsContext';
 import {
@@ -76,41 +76,66 @@ const CustomerAuth = () => {
     const appName = settings?.appName || 'App';
     const logoUrl = settings?.logoUrl || '';
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
 
     const [formData, setFormData] = useState({
         phone: '',
         otp: '',
         name: '',
-        // MLM Phase 1: optional sponsor referral code captured at signup.
-        // Pre-filled from a `?ref=CODE` query param if present; persisted
-        // server-side on Customer.pendingSponsorReferralCode for the
-        // joining-package activation hook to consume later.
+        // Sponsor referral code captured at signup. Pre-filled from a
+        // `?ref=CODE` query param when the user lands here from a
+        // referral link (e.g. shopnearn.in/signup?ref=ABC123 or the
+        // legacy /customer-auth?ref=… alias). Persisted server-side on
+        // Customer.pendingSponsorReferralCode so the joining-package
+        // activation hook can consume it at payment-CAPTURED time.
         referralCode: ''
     });
 
-    // Pre-fill referral code from URL (?ref=CODE) on first render.
+    // Pre-fill referral code from URL params or, failing that, from
+    // localStorage where a previous visit may have cached it. Listens
+    // to `searchParams` (react-router) so client-side navigation that
+    // changes the query string is also picked up.
     useEffect(() => {
         try {
-            const params = new URLSearchParams(window.location.search);
-            const ref = params.get('ref') || params.get('referral') || params.get('referralCode');
-            if (ref) {
-                const normalized = ref.trim().toUpperCase().slice(0, 16);
-                if (normalized) {
-                    setFormData((prev) => ({ ...prev, referralCode: normalized }));
-                    setIsLogin(false); // flip to signup so the user sees the prefilled code
-                    try {
-                        window.localStorage.setItem('mlm_pending_referral_code', normalized);
-                    } catch { /* ignore */ }
-                }
-            } else {
-                const stored = window.localStorage.getItem('mlm_pending_referral_code');
-                if (stored) {
-                    setFormData((prev) => ({ ...prev, referralCode: stored }));
+            const refRaw =
+                searchParams.get('ref') ||
+                searchParams.get('referral') ||
+                searchParams.get('referralCode') ||
+                '';
+            // Normalize using the same filter the input applies on
+            // every keystroke — strip non-alphanumerics, uppercase,
+            // cap at 16 chars to match the schema.
+            const normalized = refRaw
+                .trim()
+                .toUpperCase()
+                .replace(/[^A-Z0-9]/g, '')
+                .slice(0, 16);
+
+            if (normalized) {
+                setFormData((prev) => ({ ...prev, referralCode: normalized }));
+                setIsLogin(false); // flip to signup so the user sees the prefilled code
+                try {
+                    window.localStorage.setItem('mlm_pending_referral_code', normalized);
+                } catch { /* ignore */ }
+                return;
+            }
+
+            // No URL code — fall back to a previously-captured one.
+            const stored = window.localStorage.getItem('mlm_pending_referral_code');
+            if (stored) {
+                const cleaned = String(stored)
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9]/g, '')
+                    .slice(0, 16);
+                if (cleaned) {
+                    setFormData((prev) => ({
+                        ...prev,
+                        referralCode: prev.referralCode || cleaned,
+                    }));
                 }
             }
         } catch { /* ignore */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [searchParams]);
 
     const activeCategory = CATEGORIES[carouselIndex];
 
