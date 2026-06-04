@@ -7,31 +7,24 @@ import Joi from "joi";
  *   - name: customer full name
  *   - email: lowercased; uniqueness enforced at controller layer
  *   - phone: 7–24 chars, normalized to E.164 by the auth service
- *   - password: >=8 chars, must contain at least one letter and one digit
+ *   - password: any non-empty string (PO-request: zero complexity rules)
  *   - referralCode: sponsor's referral code (4–16 alphanum chars, uppercase)
  *   - leg: "L" or "R" — which leg under the sponsor the new member chose
  *
  * No optional fields. The customer cannot complete signup without all six.
  *
- * `confirmPassword` is intentionally NOT validated here — confirmation
- * is a client-side concern; the server only stores the canonical
- * password.
+ * Password validation history — originally enforced min 8 chars + letter
+ * + digit. Removed entirely on PO request: signup friction was too high.
+ * The only constraint kept is a 1024-char hard cap so an abusive client
+ * cannot post arbitrarily large bodies. `confirmPassword` is no longer
+ * collected by the UI; if a client still sends it, `stripUnknown` will
+ * drop it before validation.
  */
 export const sendSignupOtpSchema = Joi.object({
   name: Joi.string().trim().min(2).max(80).required(),
   email: Joi.string().trim().lowercase().email({ minDomainSegments: 2 }).max(160).required(),
   phone: Joi.string().trim().min(7).max(24).required(),
-  password: Joi.string()
-    .min(8)
-    .max(128)
-    .pattern(/[A-Za-z]/, { name: "letter" })
-    .pattern(/\d/, { name: "digit" })
-    .required()
-    .messages({
-      "string.min": "Password must be at least 8 characters long",
-      "string.pattern.name":
-        "Password must include at least one letter and one digit",
-    }),
+  password: Joi.string().min(1).max(1024).required(),
   referralCode: Joi.string()
     .trim()
     .uppercase()

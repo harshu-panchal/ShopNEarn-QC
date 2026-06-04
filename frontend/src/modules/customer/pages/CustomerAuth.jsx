@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@core/context/AuthContext';
@@ -70,20 +70,10 @@ const CATEGORIES = [
     },
 ];
 
-// Lightweight inline password strength meter — no extra dependency.
-// Score 0..4 based on length + character classes; matches the server
-// rule "min 8 chars + at least one letter + at least one digit".
-function evaluatePasswordStrength(pw) {
-    if (!pw) return { score: 0, label: '', valid: false };
-    let score = 0;
-    if (pw.length >= 8) score += 1;
-    if (pw.length >= 12) score += 1;
-    if (/[A-Za-z]/.test(pw) && /\d/.test(pw)) score += 1;
-    if (/[^A-Za-z0-9]/.test(pw)) score += 1;
-    const labels = ['Too weak', 'Weak', 'Fair', 'Strong', 'Very strong'];
-    const valid = pw.length >= 8 && /[A-Za-z]/.test(pw) && /\d/.test(pw);
-    return { score, label: labels[score] || '', valid };
-}
+// NOTE: the inline password strength meter (`evaluatePasswordStrength`)
+// and its surrounding UI were removed by PO request — signup now
+// accepts any non-empty password without complexity feedback. Restore
+// from git history if a strength meter ever comes back.
 
 const CustomerAuth = () => {
     // Top-level view state:
@@ -97,7 +87,6 @@ const CustomerAuth = () => {
     const [timer, setTimer] = useState(0);
     const [carouselIndex, setCarouselIndex] = useState(0);
     const [showPassword, setShowPassword] = useState(false);
-    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [showLoginPassword, setShowLoginPassword] = useState(false);
 
     const { login } = useAuth();
@@ -113,7 +102,6 @@ const CustomerAuth = () => {
         email: '',
         phone: '',
         password: '',
-        confirmPassword: '',
         referralCode: '',
         leg: '', // "L" or "R"
         // OTP fields
@@ -172,11 +160,6 @@ const CustomerAuth = () => {
         return () => clearInterval(interval);
     }, [timer]);
 
-    const pwStrength = useMemo(
-        () => evaluatePasswordStrength(formData.password),
-        [formData.password],
-    );
-
     const updateField = (key, value) => {
         setFormData((prev) => ({ ...prev, [key]: value }));
     };
@@ -191,7 +174,6 @@ const CustomerAuth = () => {
         const email = (formData.email || '').trim().toLowerCase();
         const phone = (formData.phone || '').trim();
         const password = formData.password || '';
-        const confirm = formData.confirmPassword || '';
         const referralCode = (formData.referralCode || '').trim().toUpperCase();
         const leg = (formData.leg || '').trim().toUpperCase();
 
@@ -207,12 +189,11 @@ const CustomerAuth = () => {
             toast.error('Enter a valid 10-digit mobile number.');
             return;
         }
-        if (!pwStrength.valid) {
-            toast.error('Password must be 8+ chars and include a letter and a number.');
-            return;
-        }
-        if (password !== confirm) {
-            toast.error('Passwords do not match.');
+        // Password complexity + confirm-match checks intentionally
+        // removed (PO-request). The only requirement is non-empty —
+        // the backend Joi schema enforces the same minimal rule.
+        if (!password) {
+            toast.error('Please enter a password.');
             return;
         }
         if (!referralCode || referralCode.length < 4) {
@@ -582,9 +563,6 @@ const CustomerAuth = () => {
                                             updateField={updateField}
                                             showPassword={showPassword}
                                             setShowPassword={setShowPassword}
-                                            showConfirmPassword={showConfirmPassword}
-                                            setShowConfirmPassword={setShowConfirmPassword}
-                                            pwStrength={pwStrength}
                                             isLoading={isLoading}
                                             theme={activeCategory.theme}
                                             shadow={activeCategory.shadow}
@@ -813,9 +791,6 @@ function SignupPane({
     updateField,
     showPassword,
     setShowPassword,
-    showConfirmPassword,
-    setShowConfirmPassword,
-    pwStrength,
     isLoading,
     theme,
     shadow,
@@ -853,6 +828,10 @@ function SignupPane({
                     value={formData.phone}
                     onChange={(v) => updateField('phone', v)}
                 />
+                {/* Password field — strength meter + Confirm Password
+                    input were removed by PO request. The backend Joi
+                    schema also enforces only a non-empty rule, so any
+                    string the user types is accepted as-is. */}
                 <FieldWithIcon
                     icon={<Lock size={18} />}
                     theme={theme}
@@ -869,54 +848,6 @@ function SignupPane({
                             aria-label={showPassword ? 'Hide password' : 'Show password'}
                         >
                             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                        </button>
-                    }
-                />
-                {formData.password && (
-                    <div className="px-2">
-                        <div className="flex gap-1 items-center">
-                            {[0, 1, 2, 3].map((i) => (
-                                <div
-                                    key={i}
-                                    className="h-1.5 flex-1 rounded-full transition-colors"
-                                    style={{
-                                        backgroundColor:
-                                            i < pwStrength.score
-                                                ? pwStrength.valid
-                                                    ? theme
-                                                    : '#f59e0b'
-                                                : '#e5e7eb',
-                                    }}
-                                />
-                            ))}
-                        </div>
-                        <p
-                            className="mt-1 text-[10px] font-semibold uppercase tracking-widest"
-                            style={{
-                                color: pwStrength.valid ? theme : '#f59e0b',
-                            }}
-                        >
-                            {pwStrength.label}
-                            {!pwStrength.valid && ' • need 8+ chars with letter & number'}
-                        </p>
-                    </div>
-                )}
-                <FieldWithIcon
-                    icon={<Lock size={18} />}
-                    theme={theme}
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    placeholder="Confirm Password"
-                    value={formData.confirmPassword}
-                    onChange={(v) => updateField('confirmPassword', v)}
-                    autoComplete="new-password"
-                    rightAdornment={
-                        <button
-                            type="button"
-                            onClick={() => setShowConfirmPassword((v) => !v)}
-                            className="text-gray-400 hover:text-gray-600"
-                            aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                        >
-                            {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                     }
                 />
