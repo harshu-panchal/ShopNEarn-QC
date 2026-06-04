@@ -2,17 +2,25 @@ import express from "express";
 import {
   cancelMyWithdrawal,
   claimHomeShopping,
+  getDashboardOverview,
   getEarningsHistory,
   getEarningsSummary,
   getJoiningPayment,
+  getMyBinaryGenealogy,
   getMyDirectReferrals,
+  getMyDirectSponsor,
+  getMyGenealogyTree,
+  getMyMatchingReport,
   getMyMembership,
   getMyReferralCode,
+  getMyTreeLayout,
   getMyUpline,
+  getMyWalletHistory,
   initiateJoin,
   listMyWithdrawals,
   requestWithdrawal,
   submitJoiningProof,
+  updateMyTreeLayout,
 } from "../controller/mlmCustomerController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 
@@ -31,6 +39,23 @@ router.get("/direct-referrals", verifyToken, getMyDirectReferrals);
 router.get("/upline", verifyToken, getMyUpline);
 router.get("/earnings-summary", verifyToken, getEarningsSummary);
 router.get("/earnings-history", verifyToken, getEarningsHistory);
+
+// Customer-MLM-rebuild Phase 5 — Main dashboard one-shot payload.
+router.get("/dashboard-overview", verifyToken, getDashboardOverview);
+
+// Customer-MLM-rebuild Phase 5 — Genealogy section: Tree View,
+// Binary Genealogy, Matching Report, Direct Sponsor, Tree Layout.
+router.get("/genealogy/tree", verifyToken, getMyGenealogyTree);
+router.get("/genealogy/binary", verifyToken, getMyBinaryGenealogy);
+router.get("/genealogy/matching-report", verifyToken, getMyMatchingReport);
+router.get("/genealogy/direct-sponsor", verifyToken, getMyDirectSponsor);
+router.get("/genealogy/tree-layout", verifyToken, getMyTreeLayout);
+router.put("/genealogy/tree-layout", verifyToken, updateMyTreeLayout);
+
+// Customer-MLM-rebuild Phase 5 — Payouts section: My Earnings
+// reuses /earnings-summary + /earnings-history; My Payout reuses
+// /withdrawals. Wallet History is the new unified LedgerEntry feed.
+router.get("/payouts/wallet-history", verifyToken, getMyWalletHistory);
 
 router.post("/withdrawals", verifyToken, requestWithdrawal);
 router.get("/withdrawals", verifyToken, listMyWithdrawals);

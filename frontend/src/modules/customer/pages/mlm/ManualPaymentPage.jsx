@@ -203,7 +203,7 @@ const ManualPaymentPage = () => {
           </p>
           <p className="text-3xl font-black mt-1">{formatINR(payment.amount)}</p>
           <p className="text-xs opacity-90 mt-2">
-            One-time MLM joining fee · {formatINR(payment.shoppingCredit)}{" "}
+            One-time activation fee · {formatINR(payment.shoppingCredit)}{" "}
             shopping credit on activation
           </p>
         </div>

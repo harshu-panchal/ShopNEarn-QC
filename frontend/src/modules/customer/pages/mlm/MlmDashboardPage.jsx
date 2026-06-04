@@ -42,7 +42,7 @@ const MlmDashboardPage = () => {
         const payload = res.data?.result ?? res.data?.data ?? res.data;
         if (mounted) setData(payload);
       } catch (err) {
-        toast.error(err?.response?.data?.message || "Failed to load MLM data");
+        toast.error(err?.response?.data?.message || "Failed to load rewards data");
       } finally {
         if (mounted) setLoading(false);
       }

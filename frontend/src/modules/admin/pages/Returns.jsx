@@ -485,7 +485,10 @@ const Returns = () => {
                 </button>
               </div>
 
-              <div className="px-4 py-4 sm:px-6 sm:py-5 overflow-y-auto overscroll-contain flex-1 min-h-0 space-y-4">
+              <div
+                data-lenis-prevent
+                className="px-4 py-4 sm:px-6 sm:py-5 overflow-y-auto overscroll-contain flex-1 min-h-0 space-y-4"
+              >
                 <div className="space-y-2">
                   <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">
                     Customer

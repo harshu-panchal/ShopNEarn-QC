@@ -185,8 +185,8 @@ const ProfilePage = () => {
                             />
                             <MenuItem
                                 icon={Network}
-                                label="Refer & Earn (MLM)"
-                                sub="Invite friends, earn commissions, withdraw"
+                                label="Refer & Earn"
+                                sub="Invite friends, earn rewards, withdraw"
                                 path="/mlm"
                                 color="#8b5cf6"
                                 bg="rgba(139,92,246,0.10)"

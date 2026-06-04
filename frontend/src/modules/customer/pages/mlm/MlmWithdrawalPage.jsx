@@ -133,7 +133,7 @@ const MlmWithdrawalPage = () => {
             <div className="min-h-screen bg-slate-50 pb-24">
                 <Header navigate={navigate} />
                 <div className="max-w-2xl mx-auto px-4 py-12 text-center text-slate-500 text-sm">
-                    You need to be an MLM member to withdraw earnings.
+                    You need to activate your rewards account to withdraw earnings.
                 </div>
             </div>
         );

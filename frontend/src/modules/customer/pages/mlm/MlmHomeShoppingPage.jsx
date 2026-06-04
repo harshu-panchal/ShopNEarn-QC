@@ -84,8 +84,8 @@ const MlmHomeShoppingPage = () => {
                 ) : !data?.isMember ? (
                     <Locked
                         icon={Lock}
-                        title="Join the MLM Program First"
-                        sub="Buy the joining package, refer friends, hit ₹30k Plan A earnings, then claim your Home Shopping benefit."
+                        title="Activate Your Rewards Account First"
+                        sub="Activate your rewards account, refer friends, hit ₹30k Plan A earnings, then claim your Home Shopping benefit."
                     />
                 ) : !isPlanB || !isUnlocked ? (
                     <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">

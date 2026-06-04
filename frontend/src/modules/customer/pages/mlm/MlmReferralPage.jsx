@@ -48,7 +48,7 @@ const MlmReferralPage = () => {
             <div className="min-h-screen bg-slate-50 pb-24">
                 <Header navigate={navigate} />
                 <div className="max-w-2xl mx-auto px-4 py-12 text-center text-slate-500 text-sm">
-                    You need to be an MLM member to access this page.
+                    You need to activate your rewards account to access this page.
                 </div>
             </div>
         );
@@ -99,13 +99,13 @@ const MlmReferralPage = () => {
         <div className="min-h-screen bg-slate-50 pb-24">
             <Header navigate={navigate} />
             <div className="max-w-2xl mx-auto px-4 space-y-4">
-                <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
                     <h3 className="text-sm font-bold uppercase tracking-wide text-slate-600 mb-2">Your Code</h3>
-                    <div className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-4 border-2 border-dashed border-slate-300">
-                        <code className="text-2xl font-black tracking-widest text-slate-900">{code}</code>
+                    <div className="flex items-center justify-between gap-3 bg-slate-50 rounded-xl px-3 sm:px-4 py-4 border-2 border-dashed border-slate-300">
+                        <code className="text-xl sm:text-2xl font-black tracking-widest text-slate-900 break-all min-w-0">{code}</code>
                         <button
                             onClick={() => handleCopy(code)}
-                            className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 uppercase tracking-widest hover:underline"
+                            className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 uppercase tracking-widest hover:underline shrink-0"
                         >
                             <Copy size={14} /> Copy
                         </button>
@@ -171,7 +171,7 @@ const MlmReferralPage = () => {
                 </div>
 
                 <div className="bg-white rounded-2xl border border-slate-200">
-                    <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                    <div className="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                         <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                             <Users size={18} /> Direct Referrals ({referrals.length})
                         </h3>
@@ -183,17 +183,17 @@ const MlmReferralPage = () => {
                     ) : (
                         <ul className="divide-y divide-slate-100">
                             {referrals.map((r) => (
-                                <li key={r.userId} className="px-5 py-3 flex items-center justify-between">
-                                    <div>
-                                        <p className="text-sm font-semibold text-slate-900">{r.name || 'New member'}</p>
-                                        <p className="text-[11px] text-slate-500">
+                                <li key={r.userId} className="px-4 sm:px-5 py-3 flex items-center justify-between gap-3">
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-semibold text-slate-900 truncate">{r.name || 'New member'}</p>
+                                        <p className="text-[11px] text-slate-500 truncate">
                                             Joined {new Date(r.joinedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                                             {' · '}{r.planType === 'B' ? 'Plan B' : 'Plan A'}
                                         </p>
                                     </div>
-                                    <div className="text-right">
+                                    <div className="text-right shrink-0">
                                         <p className="text-xs font-bold text-slate-600">{r.directReferralsCount} directs</p>
-                                        <p className="text-[11px] text-emerald-600 font-semibold">
+                                        <p className="text-[11px] text-emerald-600 font-semibold whitespace-nowrap">
                                             {formatINR(r.lifetimeEarnings)}
                                         </p>
                                     </div>

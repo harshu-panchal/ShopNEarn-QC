@@ -2,6 +2,7 @@ import express from "express";
 import {
     signupCustomer,
     loginCustomer,
+    loginWithPassword,
     verifyCustomerOTP,
     getCustomerProfile,
     updateCustomerProfile,
@@ -22,6 +23,12 @@ const smallAuthPayload = createContentLengthGuard(
 router.post("/send-signup-otp", authRouteRateLimiter, otpRouteRateLimiter, smallAuthPayload, signupCustomer);
 router.post("/send-login-otp", authRouteRateLimiter, otpRouteRateLimiter, smallAuthPayload, loginCustomer);
 router.post("/verify-otp", authRouteRateLimiter, otpRouteRateLimiter, smallAuthPayload, verifyCustomerOTP);
+
+// Customer-MLM-rebuild Phase 2: dual-login — email-or-phone + password
+// works alongside the existing phone+OTP flow. Both are first-class
+// authentication paths; the client lets the user pick on the login
+// screen.
+router.post("/login-password", authRouteRateLimiter, smallAuthPayload, loginWithPassword);
 
 // Profile routes
 router.get("/profile", verifyToken, getCustomerProfile);

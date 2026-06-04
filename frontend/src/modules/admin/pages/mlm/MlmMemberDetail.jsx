@@ -1,11 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, ChevronDown, Users, ShieldCheck, AlertTriangle, ArrowDownLeft, ArrowDownRight, GitBranch, UserPlus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Users, ShieldCheck, AlertTriangle, ArrowDownLeft, ArrowDownRight, GitBranch, UserPlus, Hourglass, Award } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDate = (d) => new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+const STATUS_BADGE = {
+    active: 'bg-emerald-100 text-emerald-700',
+    registered_unpaid: 'bg-amber-100 text-amber-700',
+    suspended: 'bg-rose-100 text-rose-700',
+    terminated: 'bg-slate-200 text-slate-700',
+};
+const STATUS_LABEL = {
+    active: 'Active',
+    registered_unpaid: 'Registered (unpaid)',
+    suspended: 'Suspended',
+    terminated: 'Terminated',
+};
 
 const MlmMemberDetail = () => {
     const { id } = useParams();
@@ -94,21 +107,102 @@ const MlmMemberDetail = () => {
     const u = m.userId || {};
 
     return (
-        <div className="p-6 space-y-6">
-            <div className="flex items-center gap-3">
-                <Link to="/admin/mlm/members" className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full">
+        <div className="p-4 sm:p-6 space-y-6">
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                <Link to="/admin/mlm/members" className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full shrink-0">
                     <ChevronLeft size={20} />
                 </Link>
-                <h1 className="text-2xl font-bold text-slate-900">{u.name || 'Member'}</h1>
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 truncate max-w-full">{u.name || 'Member'}</h1>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${m.planType === 'B' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'}`}>
                     Plan {m.planType}
                 </span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${STATUS_BADGE[m.status] || 'bg-slate-100 text-slate-600'}`}>
+                    {STATUS_LABEL[m.status] || m.status}
+                </span>
+                {m.position && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                        Leg {m.position === 'L' ? 'Left' : 'Right'}
+                    </span>
+                )}
             </div>
+
+            {/* Customer-MLM-rebuild Phase 10 — call-out banner when the
+                member hasn't paid the joining fee yet. Visible to admins
+                so they can chase up activation. */}
+            {m.status === 'registered_unpaid' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+                    <Hourglass size={20} className="text-amber-600 mt-0.5 shrink-0" />
+                    <div className="flex-1">
+                        <p className="font-bold text-amber-900 text-sm">Registered but not activated</p>
+                        <p className="text-xs text-amber-800 mt-0.5">
+                            This member has signed up and received their referral code, but hasn't paid the joining fee yet.
+                            All pair-match bonuses earned via this member's leg are <strong>held</strong> for the sponsor and
+                            will release automatically once activation is confirmed.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* Customer-MLM-rebuild Phase 10 — sponsor and held-bonus
+                summary card. Admins can navigate straight to the
+                sponsor's profile and see the total amount waiting on
+                this member's activation. */}
+            {(data.sponsor || (m.heldPairBonusForSponsor || 0) > 0) && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {data.sponsor && (
+                        <Card title="Sponsor (L1 Upline)">
+                            <Row label="Name" value={data.sponsor.name || '—'} />
+                            <Row label="Phone" value={data.sponsor.phone || '—'} />
+                            <Row label="Email" value={data.sponsor.email || '—'} />
+                            <Row label="Code" value={<code className="font-bold">{data.sponsor.referralCode || '—'}</code>} />
+                            <Row label="Status" value={
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${STATUS_BADGE[data.sponsor.status] || 'bg-slate-100 text-slate-600'}`}>
+                                    {STATUS_LABEL[data.sponsor.status] || data.sponsor.status}
+                                </span>
+                            } />
+                            <div className="pt-2">
+                                <Link to={`/admin/mlm/members/${data.sponsor.membershipId}`} className="text-xs font-bold text-indigo-600 hover:underline">
+                                    View sponsor →
+                                </Link>
+                            </div>
+                        </Card>
+                    )}
+                    <Card title="Held Pair-Match Bonus">
+                        <div className="flex items-center gap-3 mb-2">
+                            <Award className="text-amber-600" size={24} />
+                            <div>
+                                <p className="text-2xl font-black text-slate-900">{formatINR(m.heldPairBonusForSponsor || 0)}</p>
+                                <p className="text-[11px] text-slate-500">Owed to this member's sponsor, pending downline activation</p>
+                            </div>
+                        </div>
+                        {(data.heldBonusEvents?.length || 0) > 0 ? (
+                            <ul className="divide-y divide-slate-100 text-xs">
+                                {data.heldBonusEvents.map((row) => (
+                                    <li key={row._id} className="py-2 flex items-center justify-between">
+                                        <div>
+                                            <p className="font-semibold text-slate-800">Pair #{row.meta?.pairIndex ?? '?'}</p>
+                                            <p className="text-[10px] text-slate-500">{formatDate(row.createdAt)}</p>
+                                        </div>
+                                        <span className="font-bold text-amber-700">{formatINR(row.bonusAmount || 0)}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="text-xs text-slate-500">No held bonus events currently rely on this member.</p>
+                        )}
+                    </Card>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <Card title="Membership">
                     <Row label="Referral Code" value={<code className="font-bold">{m.referralCode}</code>} />
-                    <Row label="Status" value={m.status} />
+                    <Row label="Status" value={
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${STATUS_BADGE[m.status] || 'bg-slate-100 text-slate-600'}`}>
+                            {STATUS_LABEL[m.status] || m.status}
+                        </span>
+                    } />
+                    <Row label="Leg position" value={m.position === 'L' ? 'Left' : m.position === 'R' ? 'Right' : '—'} />
                     <Row label="Phone" value={u.phone} />
                     <Row label="Email" value={u.email || '-'} />
                     <Row label="Joined" value={formatDate(m.joinedAt)} />
@@ -201,7 +295,7 @@ const MlmMemberDetail = () => {
                                     : 'Wallet matches ledger'}
                             </span>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 text-xs">
                             <div className="bg-slate-50 rounded p-2"><p className="text-slate-500">Actual net</p><p className="font-bold">{formatINR(verification.actualNet)}</p></div>
                             <div className="bg-slate-50 rounded p-2"><p className="text-slate-500">Expected net</p><p className="font-bold">{formatINR(verification.expectedNet)}</p></div>
                             <div className="bg-slate-50 rounded p-2"><p className="text-slate-500">Ledger credits</p><p className="font-bold">{formatINR(verification.ledger?.credit)} <span className="text-slate-400">({verification.ledger?.creditEntries})</span></p></div>
@@ -337,7 +431,7 @@ const BinaryDownlineView = ({ root }) => {
                             <code className="text-[11px] text-slate-500">{root.referralCode}</code>
                         </div>
                     </div>
-                    <div className="flex items-center gap-3 text-[11px]">
+                    <div className="flex items-center gap-2 text-[11px] flex-wrap">
                         <Stat label="Pairs" value={pairs} tone="indigo" />
                         <Stat label="Left" value={leftCount} tone="emerald" />
                         <Stat label="Right" value={rightCount} tone="rose" />
@@ -439,32 +533,32 @@ const BinaryTreeNode = ({ node, tone, depth = 0 }) => {
 
     return (
         <div className={depth === 0 ? '' : `ml-3 border-l-2 ${guideToneMap[tone]} pl-3 mt-2`}>
-            <div className="flex items-center gap-2 group">
+            <div className="flex items-center gap-x-2 gap-y-1 flex-wrap group">
                 {hasChildren ? (
                     <button
                         type="button"
                         onClick={() => setExpanded(!expanded)}
-                        className="w-5 h-5 flex items-center justify-center rounded text-slate-500 hover:bg-slate-200"
+                        className="w-5 h-5 flex items-center justify-center rounded text-slate-500 hover:bg-slate-200 shrink-0"
                         aria-label={expanded ? 'Collapse' : 'Expand'}>
                         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </button>
                 ) : (
-                    <span className="w-5 h-5 inline-flex items-center justify-center text-slate-300">
+                    <span className="w-5 h-5 inline-flex items-center justify-center text-slate-300 shrink-0">
                         ·
                     </span>
                 )}
                 <PositionPill position={node.position} />
                 <Link
                     to={`/admin/mlm/members/${node._id}`}
-                    className="text-sm font-semibold text-slate-900 hover:text-indigo-700 hover:underline truncate max-w-[160px]">
+                    className="text-sm font-semibold text-slate-900 hover:text-indigo-700 hover:underline truncate max-w-[140px] sm:max-w-[180px]">
                     {node.name || 'Unknown'}
                 </Link>
                 <code className="text-[10px] text-slate-500 font-mono">{node.referralCode}</code>
-                <span className="text-[10px] text-slate-400">·</span>
+                <span className="hidden sm:inline text-[10px] text-slate-400">·</span>
                 <span className="text-[10px] text-slate-500">
                     L{node.leftLegDirectCount || 0}/R{node.rightLegDirectCount || 0}
                 </span>
-                <span className="text-[10px] text-slate-400">·</span>
+                <span className="hidden sm:inline text-[10px] text-slate-400">·</span>
                 <span className="text-[10px] font-semibold text-slate-700">
                     ₹{((node.lifetimePlanAEarnings || 0) + (node.lifetimePlanBEarnings || 0)).toLocaleString('en-IN')}
                 </span>

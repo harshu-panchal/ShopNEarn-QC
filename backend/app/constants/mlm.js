@@ -23,6 +23,19 @@ export const MLM_MEMBERSHIP_STATUS = {
   ACTIVE: "active",
   SUSPENDED: "suspended",
   TERMINATED: "terminated",
+  // Customer-MLM-rebuild Phase 1: customer has signed up (referral
+  // captured, leg captured, referral code minted, binary tree placement
+  // done) but the ₹2999 joining payment has NOT yet been CAPTURED.
+  // While in this state the membership row:
+  //   - has its own referralCode (shareable immediately)
+  //   - has binaryParentId / binaryPosition set under sponsor's chosen leg
+  //   - counts toward sponsor's leftLegDirectCount / rightLegDirectCount
+  //   - does NOT receive any bonus credits as recipient
+  //   - sponsor's pair-bonus tied to THIS member is emitted with
+  //     `MlmCommissionEvent.status = HELD_AWAITING_DOWNLINE_ACTIVATION`
+  //     and released to sponsor's wallet only when this member's joining
+  //     payment is captured (see `mlmActivationService`).
+  REGISTERED_UNPAID: "registered_unpaid",
 };
 export const ALL_MLM_MEMBERSHIP_STATUSES = Object.values(MLM_MEMBERSHIP_STATUS);
 
@@ -64,6 +77,12 @@ export const MLM_COMMISSION_EVENT_STATUS = {
   CAPPED_ROLLOVER: "capped_rollover", // daily cap exceeded; deferred to next day
   CLAWED_BACK: "clawed_back", // reversed via return clawback
   SKIPPED: "skipped", // recipient ineligible / config disabled
+  // Customer-MLM-rebuild Phase 4: pair-match bonus for a sponsor whose
+  // newly-added direct referral is still `REGISTERED_UNPAID`. No wallet
+  // credit and no ledger row are written; the event sits here until the
+  // downline activates and `releaseHeldPairBonusesForDownlineActivation`
+  // flips it to `CREDITED` inside the activation transaction.
+  HELD_AWAITING_DOWNLINE_ACTIVATION: "held_awaiting_downline_activation",
 };
 export const ALL_MLM_COMMISSION_EVENT_STATUSES = Object.values(MLM_COMMISSION_EVENT_STATUS);
 
@@ -274,6 +293,11 @@ export const MLM_IDEMPOTENCY_PREFIX = {
   //   `MLM-BPR-<commissionEventId>` (suffixed `-D` and `-C` for the
   //   debit/credit pair inside the release job).
   PAIR_BONUS_RELEASE: "MLM-BPR",
+  // Customer-MLM-rebuild Phase 4: when a `REGISTERED_UNPAID` downline
+  // activates (joining payment captured), every HELD pair-bonus tied
+  // to them is released to the sponsor's `pending` wallet bucket.
+  // Key shape: `MLM-BPH-<commissionEventId>`.
+  PAIR_BONUS_HELD_RELEASE: "MLM-BPH",
   REPURCHASE_BONUS: "MLM-RB",
   MENTOR_ROYALTY: "MLM-MR",
   HOME_SHOPPING_SALES: "MLM-HSS",

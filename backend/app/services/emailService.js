@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import logger from "./logger.js";
+import { buildCustomerWelcomeEmail } from "../templates/email/customerWelcome.js";
 
 let cachedTransporter = null;
 
@@ -123,6 +124,68 @@ export async function sendSellerVerificationOtpEmail({
     delivered: true,
     mode: "real",
   };
+}
+
+/**
+ * Customer-MLM-rebuild Phase 3: congratulations email fired exactly
+ * once when a new customer completes the signup OTP verification. The
+ * referral code is included so the user can start sharing immediately
+ * without having to open the app first. NEVER mentions "MLM" — the
+ * customer surface is branded as the Rewards Program.
+ *
+ * Behaves like `sendSellerVerificationOtpEmail`: in mock mode (no real
+ * SMTP credentials) it logs and returns `{delivered: false}` so dev /
+ * staging environments do not need a working transporter.
+ */
+export async function sendCustomerWelcomeEmail({
+  email,
+  name,
+  referralCode,
+  ctaUrl,
+  appName,
+  // Customer-MLM-rebuild Phase 3 (PO-request): the customer's own
+  // login credentials are echoed back in the welcome email so they
+  // never lose track of how to sign in. Plaintext password handling
+  // is documented on `Customer._signupPasswordPlaintext` — read that
+  // SECURITY NOTE before changing this signature.
+  loginEmail,
+  loginPhone,
+  loginPassword,
+}) {
+  if (!email) {
+    logger.warn("sendCustomerWelcomeEmail called without email — skipping");
+    return { delivered: false, mode: "skipped" };
+  }
+
+  const message = buildCustomerWelcomeEmail({
+    name,
+    referralCode,
+    ctaUrl,
+    appName,
+    loginEmail,
+    loginPhone,
+    loginPassword,
+  });
+
+  if (!useRealEmailOTP()) {
+    logger.info("Customer welcome email generated in mock mode", {
+      email,
+      referralCode,
+      mode: "mock",
+    });
+    return { delivered: false, mode: "mock" };
+  }
+
+  const transporter = getTransporter();
+  await transporter.sendMail({
+    from: getMailFrom(),
+    to: email,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
+  });
+
+  return { delivered: true, mode: "real" };
 }
 
 export function __resetEmailTransportForTests() {

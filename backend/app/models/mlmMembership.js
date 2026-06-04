@@ -172,6 +172,32 @@ const mlmMembershipSchema = new mongoose.Schema(
     // request and edited on subsequent ones).
     payoutBeneficiary: { type: beneficiarySchema, default: () => ({}) },
 
+    // Customer-MLM-rebuild Phase 1: running total of pair-match bonus
+    // amount currently HELD on behalf of THIS member's sponsor because
+    // THIS member is still `REGISTERED_UNPAID`. Bumped every time a
+    // `HELD_AWAITING_DOWNLINE_ACTIVATION` event is emitted; cleared
+    // (set back to 0) by `releaseHeldPairBonusesForDownlineActivation`
+    // when THIS member activates. Used by the admin "Held pair-bonus
+    // for upline" panel and the support / release-now override.
+    heldPairBonusForSponsor: { type: Number, default: 0, min: 0 },
+
+    // Customer-MLM-rebuild Phase 1: per-user cosmetic node coordinates
+    // for the customer-facing Tree View. Keys are stringified MongoDB
+    // ObjectIds of downline membership rows; values are `{x, y}` pixel
+    // offsets persisted from `react-flow`'s `onNodeDragStop`. Never
+    // affects the underlying binary tree structure — purely visual.
+    treeLayoutOverrides: {
+      type: Map,
+      of: new mongoose.Schema(
+        {
+          x: { type: Number, required: true },
+          y: { type: Number, required: true },
+        },
+        { _id: false },
+      ),
+      default: () => new Map(),
+    },
+
     // Soft-delete (per soft-delete-cascade-pattern skill)
     deletedAt: { type: Date, default: null, index: true },
     deletedBy: {

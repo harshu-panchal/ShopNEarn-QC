@@ -101,9 +101,9 @@ const MlmSettings = () => {
     if (loading || !cfg) return <div className="p-6 text-slate-500">Loading...</div>;
 
     return (
-        <div className="p-6 space-y-6 max-w-4xl">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-slate-900">MLM Settings</h1>
+        <div className="p-4 sm:p-6 space-y-6 max-w-4xl">
+            <div className="flex items-start sm:items-center justify-between gap-3 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-900">MLM Settings</h1>
                 <button
                     onClick={save}
                     disabled={saving}
@@ -133,7 +133,7 @@ const MlmSettings = () => {
             </Section>
 
             <Section title="Joining Package (Plan A entry)">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <NumField label="Price (₹)" value={cfg.joiningPackagePrice} onChange={(v) => setCfg({ ...cfg, joiningPackagePrice: v })} />
                     <NumField label="Shopping wallet credit on join (₹)" value={cfg.joiningPackageShoppingWalletCredit} onChange={(v) => setCfg({ ...cfg, joiningPackageShoppingWalletCredit: v })} />
                 </div>
@@ -149,7 +149,7 @@ const MlmSettings = () => {
             </Section>
 
             <Section title="Plan A → Plan B Auto-Upgrade">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <NumField label="Auto-upgrade at lifetime Plan A earnings (₹)" value={cfg.planBAutoUpgradeAtPlanALifetimeEarnings} onChange={(v) => setCfg({ ...cfg, planBAutoUpgradeAtPlanALifetimeEarnings: v })} />
                     <NumField label="Plan B upgrade shopping wallet top-up (₹)" value={cfg.premiumUpgradeShoppingWalletTopup} onChange={(v) => setCfg({ ...cfg, premiumUpgradeShoppingWalletTopup: v })} />
                 </div>
@@ -173,7 +173,7 @@ const MlmSettings = () => {
                     defaults={{ pairIndex: (cfg.planAPairBonusTiers?.length || 0) + 1, bonusAmount: 0 }}
                     onChange={(rows) => setCfg({ ...cfg, planAPairBonusTiers: rows })}
                 />
-                <div className="grid grid-cols-3 gap-3 mt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
                     <NumField
                         label="Fixed amount kicks in AFTER pair #"
                         value={cfg.planAPairBonusFixedAfterPair}
@@ -222,12 +222,12 @@ const MlmSettings = () => {
             </Section>
 
             <Section title="Home Shopping (Plan B exclusive)">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     <TextField label="Product ID" value={cfg.homeShoppingProductId || ''} onChange={(v) => setCfg({ ...cfg, homeShoppingProductId: v.trim() || null })} />
                     <NumField label="Price (₹)" value={cfg.homeShoppingPrice} onChange={(v) => setCfg({ ...cfg, homeShoppingPrice: v })} />
                     <NumField label="Product credit value (₹)" value={cfg.homeShoppingProductCreditValue} onChange={(v) => setCfg({ ...cfg, homeShoppingProductCreditValue: v })} />
                 </div>
-                <div className="grid grid-cols-3 gap-3 mt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
                     <NumField label="Sales %" value={cfg.homeShoppingCommissions?.salesPercent || 0} onChange={(v) => setCfg({ ...cfg, homeShoppingCommissions: { ...cfg.homeShoppingCommissions, salesPercent: v } })} />
                     <NumField label="Referral %" value={cfg.homeShoppingCommissions?.referralPercent || 0} onChange={(v) => setCfg({ ...cfg, homeShoppingCommissions: { ...cfg.homeShoppingCommissions, referralPercent: v } })} />
                     <NumField label="Royalty %" value={cfg.homeShoppingCommissions?.royaltyPercent || 0} onChange={(v) => setCfg({ ...cfg, homeShoppingCommissions: { ...cfg.homeShoppingCommissions, royaltyPercent: v } })} />
@@ -235,7 +235,7 @@ const MlmSettings = () => {
             </Section>
 
             <Section title="Withdrawals">
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <NumField label="Min withdrawal (₹)" value={cfg.withdrawalMinAmount} onChange={(v) => setCfg({ ...cfg, withdrawalMinAmount: v })} />
                     <NumField label="Admin charge %" value={cfg.withdrawalAdminChargePercent} onChange={(v) => setCfg({ ...cfg, withdrawalAdminChargePercent: v })} max={100} />
                     <NumField label="GST on charge %" value={cfg.withdrawalGstOnAdminChargePercent} onChange={(v) => setCfg({ ...cfg, withdrawalGstOnAdminChargePercent: v })} max={100} />
@@ -243,7 +243,7 @@ const MlmSettings = () => {
             </Section>
 
             <Section title="Cap & Behaviour">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <NumField label="Daily earning cap (₹)" value={cfg.dailyEarningCap} onChange={(v) => setCfg({ ...cfg, dailyEarningCap: v })} />
                     <SelectField
                         label="Binary placement strategy"

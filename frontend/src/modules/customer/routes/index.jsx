@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Home from '../pages/Home';
 import CategoriesPage from '../pages/CategoriesPage';
 import CategoryProductsPage from '../pages/CategoryProductsPage';
@@ -27,6 +27,17 @@ import MlmReferralPage from '../pages/mlm/MlmReferralPage';
 import MlmEarningsPage from '../pages/mlm/MlmEarningsPage';
 import MlmWithdrawalPage from '../pages/mlm/MlmWithdrawalPage';
 import MlmHomeShoppingPage from '../pages/mlm/MlmHomeShoppingPage';
+// Customer-MLM-rebuild Phase 8 — new dashboard + Genealogy + Payouts sections.
+import MainDashboardPage from '../pages/mlm/MainDashboardPage';
+import GenealogyLayout from '../pages/mlm/genealogy/GenealogyLayout';
+import TreeViewPage from '../pages/mlm/genealogy/TreeViewPage';
+import BinaryGenealogyPage from '../pages/mlm/genealogy/BinaryGenealogyPage';
+import MatchingReportPage from '../pages/mlm/genealogy/MatchingReportPage';
+import DirectSponsorPage from '../pages/mlm/genealogy/DirectSponsorPage';
+import PayoutsLayout from '../pages/mlm/payouts/PayoutsLayout';
+import MyEarningsPage from '../pages/mlm/payouts/MyEarningsPage';
+import MyPayoutPage from '../pages/mlm/payouts/MyPayoutPage';
+import WalletHistoryPage from '../pages/mlm/payouts/WalletHistoryPage';
 import ScrollToTop from '../components/shared/ScrollToTop';
 import { WishlistProvider } from '../context/WishlistContext';
 import { CartProvider } from '../context/CartContext';
@@ -67,11 +78,27 @@ const CustomerRoutes = () => {
                             <Route path="profile/edit" element={<ProtectedRoute><EditProfilePage /></ProtectedRoute>} />
                             {/* Wallet page (pre-existing gap fixed in MLM Phase 1) */}
                             <Route path="wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
-                            {/* MLM Phase 1 customer dashboard + sub-pages */}
-                            <Route path="mlm" element={<ProtectedRoute><MlmDashboardPage /></ProtectedRoute>} />
+                            {/* Customer-MLM-rebuild Phase 8 — new main dashboard,
+                                Genealogy tabbed section, Payouts tabbed section.
+                                Legacy paths redirect into the new layouts. */}
+                            <Route path="mlm" element={<ProtectedRoute><MainDashboardPage /></ProtectedRoute>} />
+                            <Route path="mlm/legacy" element={<ProtectedRoute><MlmDashboardPage /></ProtectedRoute>} />
                             <Route path="mlm/referrals" element={<ProtectedRoute><MlmReferralPage /></ProtectedRoute>} />
-                            <Route path="mlm/earnings" element={<ProtectedRoute><MlmEarningsPage /></ProtectedRoute>} />
-                            <Route path="mlm/withdrawals" element={<ProtectedRoute><MlmWithdrawalPage /></ProtectedRoute>} />
+                            <Route path="mlm/genealogy" element={<ProtectedRoute><GenealogyLayout /></ProtectedRoute>}>
+                                <Route index element={<Navigate to="tree" replace />} />
+                                <Route path="tree" element={<TreeViewPage />} />
+                                <Route path="binary" element={<BinaryGenealogyPage />} />
+                                <Route path="matching-report" element={<MatchingReportPage />} />
+                                <Route path="direct-sponsor" element={<DirectSponsorPage />} />
+                            </Route>
+                            <Route path="mlm/payouts" element={<ProtectedRoute><PayoutsLayout /></ProtectedRoute>}>
+                                <Route index element={<Navigate to="earnings" replace />} />
+                                <Route path="earnings" element={<MyEarningsPage />} />
+                                <Route path="withdrawals" element={<MyPayoutPage />} />
+                                <Route path="wallet-history" element={<WalletHistoryPage />} />
+                            </Route>
+                            <Route path="mlm/earnings" element={<Navigate to="/mlm/payouts/earnings" replace />} />
+                            <Route path="mlm/withdrawals" element={<Navigate to="/mlm/payouts/withdrawals" replace />} />
                             <Route path="mlm/home-shopping" element={<ProtectedRoute><MlmHomeShoppingPage /></ProtectedRoute>} />
                         </Routes>
                     </CartAnimationProvider>

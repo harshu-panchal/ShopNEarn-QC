@@ -1,9 +1,17 @@
 import crypto from "crypto";
+import mongoose from "mongoose";
 import Customer from "../models/customer.js";
 import { sendSmsIndiaHubOtp } from "./smsIndiaHubService.js";
 import { generateOTP, useRealSMS } from "../utils/otp.js";
 import { getRedisClient } from "../config/redis.js";
 import { isValidE164Phone, maskPhone, normalizePhoneNumber } from "../utils/phone.js";
+import { MLM_MEMBERSHIP_STATUS } from "../constants/mlm.js";
+import {
+  assignSponsor,
+  createOrGetMembership,
+  getMembershipByUserId,
+} from "./mlm/mlmMembershipService.js";
+import { sendCustomerWelcomeEmail } from "./emailService.js";
 
 const OTP_EXPIRY_MINUTES = () => parseInt(process.env.OTP_EXPIRY_MINUTES || "5", 10);
 const OTP_RESEND_COOLDOWN_SECONDS = () =>
@@ -98,6 +106,19 @@ export async function issueCustomerOtp({
   // Persisted on the freshly-created Customer doc so the joining-package
   // activation hook can pick it up at payment-CAPTURED time.
   referralCode = "",
+  // Customer-MLM-rebuild Phase 2: full signup snapshot — email +
+  // pre-hashed password + sponsor leg are persisted on the
+  // not-yet-verified Customer row so the OTP-verify step can mint the
+  // membership atomically. All are optional for the login flow.
+  email = "",
+  passwordHash = "",
+  // Customer-MLM-rebuild Phase 3 (PO-request): plaintext copy of the
+  // signup password kept ONLY long enough to echo back to the user in
+  // the welcome email. Wiped during signup-completion side effects
+  // (`completeCustomerSignupSideEffects`). See SECURITY NOTE on
+  // `Customer._signupPasswordPlaintext`.
+  plaintextPassword = "",
+  leg = "",
 }) {
   const phone = normalizeAndValidatePhone(rawPhone);
   const now = new Date();
@@ -113,7 +134,7 @@ export async function issueCustomerOtp({
   }
 
   let customer = await Customer.findOne({ phone }).select(
-    "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpLastSentAt +otpSessionVersion +otp +otpExpiry",
+    "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpLastSentAt +otpSessionVersion +otp +otpExpiry +_signupPasswordPlaintext",
   );
 
   // LOGIN flow: refuse to issue an OTP for phones that don't have a
@@ -155,28 +176,44 @@ export async function issueCustomerOtp({
     }
   }
 
+  const normalizedReferralCode = String(referralCode || "").trim().toUpperCase();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedLeg = ["L", "R"].includes(String(leg || "").trim().toUpperCase())
+    ? String(leg).trim().toUpperCase()
+    : null;
+
   if (!customer) {
     // Reachable only on the signup flow now — login bails above.
-    const normalizedReferralCode = String(referralCode || "").trim().toUpperCase();
     customer = await Customer.create({
       name: name || "Customer",
       phone,
       isVerified: false,
+      ...(normalizedEmail ? { email: normalizedEmail } : {}),
+      ...(passwordHash ? { password: passwordHash } : {}),
+      ...(plaintextPassword
+        ? { _signupPasswordPlaintext: plaintextPassword }
+        : {}),
+      ...(normalizedLeg ? { pendingSponsorLeg: normalizedLeg } : {}),
       pendingSponsorReferralCode: normalizedReferralCode || null,
     });
     customer = await Customer.findById(customer._id).select(
-      "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpLastSentAt +otpSessionVersion +otp +otpExpiry",
+      "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpLastSentAt +otpSessionVersion +otp +otpExpiry +_signupPasswordPlaintext",
     );
-  } else if (
-    flow === "signup" &&
-    referralCode &&
-    !customer.pendingSponsorReferralCode &&
-    !customer.mlm?.active
-  ) {
+  } else if (flow === "signup" && !customer.mlm?.active) {
     // Existing un-verified or un-activated customer is retrying signup
-    // with a referral code — capture it so the joining-package hook can
-    // use it when they finally activate.
-    customer.pendingSponsorReferralCode = String(referralCode).trim().toUpperCase();
+    // — refresh the full snapshot so the OTP-verify step has the
+    // latest email/password/leg/referralCode picked up by the new
+    // membership creation hook.
+    if (name) customer.name = name;
+    if (normalizedEmail) customer.email = normalizedEmail;
+    if (passwordHash) customer.password = passwordHash;
+    if (plaintextPassword) {
+      customer._signupPasswordPlaintext = plaintextPassword;
+    }
+    if (normalizedLeg) customer.pendingSponsorLeg = normalizedLeg;
+    if (normalizedReferralCode) {
+      customer.pendingSponsorReferralCode = normalizedReferralCode;
+    }
     await customer.save();
   }
 
@@ -256,7 +293,7 @@ export async function verifyCustomerOtpCode({
   }
 
   const customer = await Customer.findOne({ phone }).select(
-    "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpSessionVersion +otp +otpExpiry",
+    "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpSessionVersion +otp +otpExpiry +_signupPasswordPlaintext",
   );
   if (!customer) {
     const err = new Error("Invalid or expired OTP");
@@ -300,6 +337,13 @@ export async function verifyCustomerOtpCode({
     throw err;
   }
 
+  // Customer-MLM-rebuild Phase 2: this is the canonical "signup
+  // completion" signal. A customer who hasn't been verified before but
+  // is now passing OTP verification is finishing the new-signup flow.
+  // After this point the customer is verified AND the membership +
+  // welcome email side effects fire.
+  const wasNewlyVerified = !customer.isVerified;
+
   customer.isVerified = true;
   customer.otpHash = undefined;
   customer.otpExpiresAt = undefined;
@@ -312,18 +356,145 @@ export async function verifyCustomerOtpCode({
 
   await customer.save();
 
+  if (wasNewlyVerified) {
+    await completeCustomerSignupSideEffects(customer, { ipAddress });
+  }
+
   otpAuditLog("customer_otp_verify_success", {
     phone: maskPhone(phone),
     ipAddress,
+    signupCompleted: wasNewlyVerified,
   });
 
   return customer;
+}
+
+/**
+ * Customer-MLM-rebuild Phase 2 + 3: signup completion side effects.
+ *
+ * Fired exactly once when an OTP verification flips the Customer from
+ * `isVerified=false` -> `true`. Runs inside a single mongoose session
+ * so all database writes (membership creation, sponsor wiring, binary
+ * placement, projection sync, pending-counter bumps) commit or roll
+ * back together.
+ *
+ * - Mints an `MlmMembership` row with status `REGISTERED_UNPAID` and a
+ *   freshly-generated referral code.
+ * - Wires the sponsor edge using the `pendingSponsorReferralCode` +
+ *   `pendingSponsorLeg` captured at signup, forcing manual placement
+ *   under the sponsor's chosen leg (no BFS auto-balance).
+ * - Fires the welcome email to the supplied email address (outside the
+ *   transaction — email failures must not roll back the membership).
+ *
+ * If membership creation fails (e.g. sponsor was suspended between
+ * send-OTP and verify-OTP), we surface the error and the Customer
+ * stays verified — the user can still log in but will see a "complete
+ * your enrollment" prompt. We never re-set isVerified=false because
+ * the customer DID correctly enter the OTP.
+ */
+async function completeCustomerSignupSideEffects(customer, { ipAddress } = {}) {
+  const session = await mongoose.startSession();
+  let membership = null;
+  try {
+    await session.withTransaction(async () => {
+      const result = await createOrGetMembership(customer._id, {
+        session,
+        status: MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
+      });
+      membership = result.membership;
+
+      const sponsorCode = customer.pendingSponsorReferralCode;
+      if (sponsorCode && !membership.sponsorId) {
+        await assignSponsor({
+          membership,
+          sponsorReferralCode: sponsorCode,
+          session,
+          preferredBinaryPosition: customer.pendingSponsorLeg || null,
+          forceManualPlacement: true,
+        });
+      }
+    });
+  } catch (err) {
+    otpAuditLog("customer_signup_completion_failed", {
+      phone: maskPhone(customer.phone),
+      ipAddress,
+      error: err.message,
+    });
+    // Re-throw so the caller can surface "verified but membership
+    // creation failed" semantics to the client.
+    const wrapped = new Error(
+      `Signup completion failed after OTP verification: ${err.message}`,
+    );
+    wrapped.statusCode = err.statusCode || 500;
+    wrapped.code = "SIGNUP_COMPLETION_FAILED";
+    throw wrapped;
+  } finally {
+    await session.endSession();
+  }
+
+  if (!membership) {
+    membership = await getMembershipByUserId(customer._id);
+  }
+
+  // Welcome email — best effort, never blocks the signup response.
+  //
+  // We snapshot the plaintext password BEFORE clearing it, then
+  // unconditionally wipe the ephemeral field on the doc — even if the
+  // email transport fails. Rationale: the user can always recover
+  // their password via the reset flow, but we never want plaintext
+  // lingering in Mongo because the mail server hiccupped.
+  if (customer.email && membership?.referralCode) {
+    const loginPasswordSnapshot = customer._signupPasswordPlaintext || "";
+    try {
+      await sendCustomerWelcomeEmail({
+        email: customer.email,
+        name: customer.name || "Customer",
+        referralCode: membership.referralCode,
+        loginEmail: customer.email,
+        loginPhone: customer.phone,
+        loginPassword: loginPasswordSnapshot,
+      });
+      otpAuditLog("customer_welcome_email_dispatched", {
+        phone: maskPhone(customer.phone),
+        ipAddress,
+        includedCredentials: Boolean(loginPasswordSnapshot),
+      });
+    } catch (mailErr) {
+      otpAuditLog("customer_welcome_email_failed", {
+        phone: maskPhone(customer.phone),
+        ipAddress,
+        error: mailErr.message,
+      });
+    } finally {
+      if (customer._signupPasswordPlaintext) {
+        customer._signupPasswordPlaintext = undefined;
+        try {
+          await customer.save();
+        } catch (wipeErr) {
+          otpAuditLog("customer_signup_password_wipe_failed", {
+            phone: maskPhone(customer.phone),
+            ipAddress,
+            error: wipeErr.message,
+          });
+        }
+      }
+    }
+  } else if (customer._signupPasswordPlaintext) {
+    // No email / no membership — still don't leave plaintext at rest.
+    customer._signupPasswordPlaintext = undefined;
+    try {
+      await customer.save();
+    } catch {
+      /* swallow — wipe is best-effort */
+    }
+  }
 }
 
 export function sanitizeCustomer(customerDoc) {
   if (!customerDoc) return null;
   const obj = customerDoc.toObject ? customerDoc.toObject() : { ...customerDoc };
   delete obj.password;
+  delete obj._signupPasswordPlaintext;
   delete obj.__v;
   delete obj.updatedAt;
   delete obj.otp;

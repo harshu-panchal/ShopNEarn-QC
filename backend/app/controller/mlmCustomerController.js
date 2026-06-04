@@ -1,11 +1,17 @@
 import mongoose from "mongoose";
 import handleResponse from "../utils/helper.js";
 import Wallet from "../models/wallet.js";
+import LedgerEntry from "../models/ledgerEntry.js";
+import MlmMembership from "../models/mlmMembership.js";
 import MlmCommissionEvent from "../models/mlmCommissionEvent.js";
+import MlmWithdrawalRequest from "../models/mlmWithdrawalRequest.js";
 import { OWNER_TYPE } from "../constants/finance.js";
 import {
   ALL_MLM_WITHDRAWAL_STATUSES,
+  MLM_BONUS_TYPE,
+  MLM_COMMISSION_EVENT_STATUS,
   MLM_MEMBERSHIP_STATUS,
+  MLM_WITHDRAWAL_STATUS,
 } from "../constants/mlm.js";
 import {
   getDirectReferrals,
@@ -32,6 +38,33 @@ import {
   createWithdrawalRequestSchema,
   validateMlmSchema,
 } from "../validation/mlmValidation.js";
+
+/* ===============================
+   Customer-MLM-rebuild Phase 5 — helpers
+================================ */
+
+/**
+ * Mask a phone number for downline privacy:
+ *   "+919876543210" -> "+91••••3210"
+ * The first 3 chars (e.g. country code) and last 4 digits remain
+ * visible; everything else is dots. Returns the original input if it's
+ * too short to mask.
+ */
+function maskPhoneForDownline(phone) {
+  if (!phone) return null;
+  const str = String(phone);
+  if (str.length <= 6) return str;
+  return `${str.slice(0, 3)}${"•".repeat(Math.max(str.length - 7, 4))}${str.slice(-4)}`;
+}
+
+/** IST date string for "today" daily-cap reads. */
+function todayIstDateString(now = new Date()) {
+  const local = new Date(now.getTime() + 330 * 60 * 1000);
+  const y = local.getUTCFullYear();
+  const m = String(local.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(local.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
 /**
  * GET /api/customer/mlm/membership
@@ -526,5 +559,680 @@ export const cancelMyWithdrawal = async (req, res) => {
     return handleResponse(res, 200, "Withdrawal request cancelled", { id: request._id });
   } catch (error) {
     return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+/* ===================================================================
+ * Customer-MLM-rebuild Phase 5 — Main dashboard + Genealogy + Payouts
+ * ================================================================ */
+
+/**
+ * GET /api/customer/mlm/dashboard-overview
+ *
+ * Single batched payload that powers the customer's Main Dashboard
+ * page. Returns the full snapshot in one round trip:
+ *
+ *   - wallet buckets (shopping, earnings, pending, available)
+ *   - lifetime earnings split (Plan A / Plan B / total)
+ *   - direct referrals count + active / registered-unpaid breakdown
+ *   - total downline count
+ *   - left leg / right leg counts + pairs completed + next pair preview
+ *   - pending payout total (sum of pending withdrawal amounts)
+ *   - today's credited earnings (IST day)
+ *   - daily cap usage
+ */
+export const getDashboardOverview = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+    const today = todayIstDateString();
+    const monthStart = new Date();
+    monthStart.setUTCHours(0, 0, 0, 0);
+    monthStart.setUTCDate(1);
+
+    const [membership, wallet, cfg] = await Promise.all([
+      getMembershipByUserId(userId),
+      Wallet.findOne(
+        { ownerType: OWNER_TYPE.CUSTOMER, ownerId: userId },
+        {
+          availableBalance: 1,
+          pendingBalance: 1,
+          shoppingBalance: 1,
+          earningsBalance: 1,
+        },
+      ).lean(),
+      getMlmConfig(),
+    ]);
+
+    const pairsCompleted = membership?.pairsCompleted || 0;
+    const nextPairBonusAmount = membership
+      ? await getPlanAPairBonusForPairIndex(pairsCompleted + 1)
+      : 0;
+
+    // Downline split: active customers vs registered-unpaid. We count
+    // memberships whose `sponsorChain` contains the caller (full
+    // downline, not just direct referrals).
+    const [activeDownline, unpaidDownline, directActive, directUnpaid] =
+      await Promise.all([
+        MlmMembership.countDocuments({
+          sponsorChain: userObjectId,
+          status: MLM_MEMBERSHIP_STATUS.ACTIVE,
+        }),
+        MlmMembership.countDocuments({
+          sponsorChain: userObjectId,
+          status: MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
+        }),
+        MlmMembership.countDocuments({
+          sponsorId: userId,
+          status: MLM_MEMBERSHIP_STATUS.ACTIVE,
+        }),
+        MlmMembership.countDocuments({
+          sponsorId: userId,
+          status: MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
+        }),
+      ]);
+
+    const [pendingWithdrawAgg, todaysCreditAgg, monthCreditAgg] =
+      await Promise.all([
+        MlmWithdrawalRequest.aggregate([
+          {
+            $match: {
+              userId: userObjectId,
+              status: {
+                $in: [
+                  MLM_WITHDRAWAL_STATUS.PENDING,
+                  MLM_WITHDRAWAL_STATUS.APPROVED,
+                ],
+              },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              gross: { $sum: "$amount" },
+              net: { $sum: "$netPayoutAmount" },
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+        MlmCommissionEvent.aggregate([
+          {
+            $match: {
+              recipientId: userObjectId,
+              status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+              createdAt: {
+                $gte: (() => {
+                  // Start of today IST -> UTC instant
+                  const ist = new Date();
+                  ist.setUTCHours(0, 0, 0, 0);
+                  return new Date(ist.getTime() - 330 * 60 * 1000);
+                })(),
+              },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$cappedAmount" },
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+        MlmCommissionEvent.aggregate([
+          {
+            $match: {
+              recipientId: userObjectId,
+              status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+              createdAt: { $gte: monthStart },
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
+        ]),
+      ]);
+
+    const pendingWithdraw = pendingWithdrawAgg[0] || {
+      gross: 0,
+      net: 0,
+      count: 0,
+    };
+
+    return handleResponse(res, 200, "Dashboard overview", {
+      enabled: !!cfg.enabled,
+      isMember: !!membership,
+      membership: membership
+        ? {
+            referralCode: membership.referralCode,
+            planType: membership.planType,
+            status: membership.status,
+            isActive: membership.status === MLM_MEMBERSHIP_STATUS.ACTIVE,
+            isRegisteredUnpaid:
+              membership.status === MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
+            joinedAt: membership.joinedAt,
+            planAJoinedAt: membership.planAJoinedAt,
+            planBJoinedAt: membership.planBJoinedAt,
+            sponsorId: membership.sponsorId || null,
+            heldPairBonusForSponsor: membership.heldPairBonusForSponsor || 0,
+            homeShoppingUnlocked: !!membership.homeShoppingUnlocked,
+          }
+        : null,
+      wallet: {
+        shoppingBalance: wallet?.shoppingBalance || 0,
+        earningsBalance: wallet?.earningsBalance || 0,
+        pendingBalance: wallet?.pendingBalance || 0,
+        availableBalance: wallet?.availableBalance || 0,
+      },
+      earnings: {
+        lifetime:
+          (membership?.lifetimePlanAEarnings || 0) +
+          (membership?.lifetimePlanBEarnings || 0),
+        planA: membership?.lifetimePlanAEarnings || 0,
+        planB: membership?.lifetimePlanBEarnings || 0,
+        today: todaysCreditAgg[0]?.total || 0,
+        todayCount: todaysCreditAgg[0]?.count || 0,
+        thisMonth: monthCreditAgg[0]?.total || 0,
+      },
+      referrals: {
+        directReferralsCount: membership?.directReferralsCount || 0,
+        directActive,
+        directRegisteredUnpaid: directUnpaid,
+        totalDownlineCount: membership?.totalDownlineCount || 0,
+        activeCustomersInNetwork: activeDownline,
+        registeredUnpaidInNetwork: unpaidDownline,
+      },
+      binary: {
+        leftLegDirectCount: membership?.leftLegDirectCount || 0,
+        rightLegDirectCount: membership?.rightLegDirectCount || 0,
+        pairsCompleted,
+        lastPaidPairIndex: membership?.lastPaidPairIndex || 0,
+        nextPairIndex: pairsCompleted + 1,
+        nextPairBonusAmount,
+      },
+      payout: {
+        pendingGross: pendingWithdraw.gross || 0,
+        pendingNet: pendingWithdraw.net || 0,
+        pendingCount: pendingWithdraw.count || 0,
+      },
+      dailyCap: {
+        cap: Number(cfg.dailyEarningCap) || 0,
+        usedToday:
+          membership?.dailyCapTracker?.date === today
+            ? Number(membership.dailyCapTracker.usedAmount) || 0
+            : 0,
+        date: today,
+      },
+      config: {
+        joiningPackagePrice: cfg.joiningPackagePrice,
+        joiningPackageShoppingWalletCredit: cfg.joiningPackageShoppingWalletCredit,
+        withdrawalMinAmount: cfg.withdrawalMinAmount,
+        planAPairBonusTiers: cfg.planAPairBonusTiers || [],
+        planAPairBonusFixedAmount: cfg.planAPairBonusFixedAmount || 0,
+        // Surface the Plan A → Plan B auto-upgrade threshold so the
+        // Main Dashboard "Current Plan" card can render a progress
+        // meter towards the Premium tier without a second round-trip.
+        planBAutoUpgradeAtPlanALifetimeEarnings:
+          cfg.planBAutoUpgradeAtPlanALifetimeEarnings || 0,
+        premiumUpgradeShoppingWalletTopup:
+          cfg.premiumUpgradeShoppingWalletTopup || 0,
+      },
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * Recursive binary-tree walker — clone of the admin tree builder
+ * scoped to the caller's downline. Returns each node with at most
+ * `left` and `right` children. Phone numbers are masked except for
+ * direct (L1) referrals so privacy holds for distant downline members.
+ */
+async function buildCustomerBinaryTree(rootMembership, depthLeft, position) {
+  const node = {
+    _id: rootMembership._id,
+    userId: rootMembership.userId,
+    name: rootMembership.userId?.name || null,
+    phone: maskPhoneForDownline(rootMembership.userId?.phone || null),
+    referralCode: rootMembership.referralCode,
+    planType: rootMembership.planType,
+    status: rootMembership.status,
+    position,
+    joinedAt: rootMembership.joinedAt,
+    directReferralsCount: rootMembership.directReferralsCount || 0,
+    totalDownlineCount: rootMembership.totalDownlineCount || 0,
+    leftLegDirectCount: rootMembership.leftLegDirectCount || 0,
+    rightLegDirectCount: rootMembership.rightLegDirectCount || 0,
+    pairsCompleted: rootMembership.pairsCompleted || 0,
+    lifetimePlanAEarnings: rootMembership.lifetimePlanAEarnings || 0,
+    lifetimePlanBEarnings: rootMembership.lifetimePlanBEarnings || 0,
+    left: null,
+    right: null,
+  };
+  if (depthLeft <= 0) return node;
+
+  const [leftChild, rightChild] = await Promise.all([
+    rootMembership.binaryLeftChildId
+      ? MlmMembership.findOne({ userId: rootMembership.binaryLeftChildId })
+          .populate("userId", "name phone")
+          .lean()
+      : null,
+    rootMembership.binaryRightChildId
+      ? MlmMembership.findOne({ userId: rootMembership.binaryRightChildId })
+          .populate("userId", "name phone")
+          .lean()
+      : null,
+  ]);
+
+  if (leftChild) {
+    node.left = await buildCustomerBinaryTree(leftChild, depthLeft - 1, "L");
+  }
+  if (rightChild) {
+    node.right = await buildCustomerBinaryTree(rightChild, depthLeft - 1, "R");
+  }
+  return node;
+}
+
+/**
+ * GET /api/customer/mlm/genealogy/tree?depth=4
+ *
+ * Recursive binary downline tree rooted at the caller's membership.
+ * Depth capped at 6 to keep payload bounded; the frontend's tree
+ * canvas supports lazy-expand via a follow-up call rooted at a child.
+ */
+export const getMyGenealogyTree = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const depth = Math.min(Math.max(parseInt(req.query.depth, 10) || 4, 1), 6);
+    const rootMembership = await MlmMembership.findOne({ userId })
+      .populate("userId", "name phone email")
+      .lean();
+    if (!rootMembership) {
+      return handleResponse(res, 200, "Tree", {
+        depth,
+        tree: null,
+        isMember: false,
+      });
+    }
+    const tree = await buildCustomerBinaryTree(rootMembership, depth, null);
+    return handleResponse(res, 200, "Tree", {
+      depth,
+      tree,
+      isMember: true,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * GET /api/customer/mlm/genealogy/binary
+ *
+ * Flat per-leg breakdown — caller's left-leg roster and right-leg
+ * roster as two arrays, with subtree counts. Each row is one of the
+ * caller's direct referrals; spillover downline counts are surfaced
+ * via the row's `subtreeCount` field.
+ */
+export const getMyBinaryGenealogy = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const membership = await getMembershipByUserId(userId);
+    if (!membership) {
+      return handleResponse(res, 200, "Binary genealogy", {
+        isMember: false,
+        leftLeg: [],
+        rightLeg: [],
+      });
+    }
+
+    const directs = await MlmMembership.find({
+      sponsorId: userId,
+      status: {
+        $in: [
+          MLM_MEMBERSHIP_STATUS.ACTIVE,
+          MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
+        ],
+      },
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const userRows = await mongoose
+      .model("User")
+      .find({ _id: { $in: directs.map((d) => d.userId) } }, { name: 1, phone: 1 })
+      .lean();
+    const userById = new Map(userRows.map((u) => [String(u._id), u]));
+
+    const shape = (m) => {
+      const u = userById.get(String(m.userId));
+      return {
+        userId: m.userId,
+        name: u?.name || null,
+        phone: maskPhoneForDownline(u?.phone || null),
+        referralCode: m.referralCode,
+        status: m.status,
+        position: m.binaryPosition,
+        joinedAt: m.joinedAt,
+        subtreeCount: m.totalDownlineCount || 0,
+        pairsCompleted: m.pairsCompleted || 0,
+        leftLegDirectCount: m.leftLegDirectCount || 0,
+        rightLegDirectCount: m.rightLegDirectCount || 0,
+        lifetimeEarnings:
+          (m.lifetimePlanAEarnings || 0) + (m.lifetimePlanBEarnings || 0),
+      };
+    };
+
+    const leftLeg = directs.filter((m) => m.binaryPosition === "L").map(shape);
+    const rightLeg = directs.filter((m) => m.binaryPosition === "R").map(shape);
+
+    return handleResponse(res, 200, "Binary genealogy", {
+      isMember: true,
+      leftLegCount: membership.leftLegDirectCount || 0,
+      rightLegCount: membership.rightLegDirectCount || 0,
+      pairsCompleted: membership.pairsCompleted || 0,
+      leftLeg,
+      rightLeg,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * GET /api/customer/mlm/genealogy/matching-report?page=1&limit=20
+ *
+ * Paginated pair-match (BINARY_PAIR_MATCH) commission events for the
+ * caller, joined with the left/right contributor names from the
+ * event's `meta` (denormalised at credit time).
+ *
+ * Surfaces HELD events too so the customer can see pairs that are
+ * pending downline activation.
+ */
+export const getMyMatchingReport = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const skip = (page - 1) * limit;
+
+    const query = {
+      recipientId: userId,
+      bonusType: MLM_BONUS_TYPE.BINARY_PAIR_MATCH,
+    };
+
+    const [items, total] = await Promise.all([
+      MlmCommissionEvent.find(query)
+        .sort({ "meta.pairIndex": 1, createdAt: 1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      MlmCommissionEvent.countDocuments(query),
+    ]);
+
+    // Gather every contributor userId to do ONE user lookup.
+    const contributorIds = new Set();
+    for (const ev of items) {
+      if (ev.meta?.leftContributorUserId) contributorIds.add(String(ev.meta.leftContributorUserId));
+      if (ev.meta?.rightContributorUserId) contributorIds.add(String(ev.meta.rightContributorUserId));
+    }
+    const users = contributorIds.size
+      ? await mongoose
+          .model("User")
+          .find(
+            { _id: { $in: Array.from(contributorIds) } },
+            { name: 1, phone: 1 },
+          )
+          .lean()
+      : [];
+    const userById = new Map(users.map((u) => [String(u._id), u]));
+
+    const shaped = items.map((ev) => {
+      const left = ev.meta?.leftContributorUserId
+        ? userById.get(String(ev.meta.leftContributorUserId))
+        : null;
+      const right = ev.meta?.rightContributorUserId
+        ? userById.get(String(ev.meta.rightContributorUserId))
+        : null;
+      return {
+        _id: ev._id,
+        pairIndex: ev.meta?.pairIndex || null,
+        bonusAmount: ev.bonusAmount,
+        cappedAmount: ev.cappedAmount,
+        status: ev.status,
+        isHeld:
+          ev.status === MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_DOWNLINE_ACTIVATION,
+        createdAt: ev.createdAt,
+        releasedAt: ev.releasedAt || null,
+        left: left
+          ? { userId: left._id, name: left.name, phone: maskPhoneForDownline(left.phone) }
+          : null,
+        right: right
+          ? { userId: right._id, name: right.name, phone: maskPhoneForDownline(right.phone) }
+          : null,
+      };
+    });
+
+    return handleResponse(res, 200, "Matching report", {
+      items: shaped,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * GET /api/customer/mlm/genealogy/direct-sponsor
+ *
+ * Returns the caller's direct upline (L1 sponsor) information. The
+ * sponsor's phone is masked; only the name + referral code + join
+ * date are exposed.
+ */
+export const getMyDirectSponsor = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const chain = await getUplineChain(userId, 1);
+    if (!chain || chain.length === 0) {
+      // Customer-MLM-rebuild Phase 4: also surface REGISTERED_UNPAID
+      // sponsor — getUplineChain only returns ACTIVE rows.
+      const membership = await getMembershipByUserId(userId);
+      if (!membership?.sponsorId) {
+        return handleResponse(res, 200, "Direct sponsor", { sponsor: null });
+      }
+      const sponsorMembership = await MlmMembership.findOne({
+        userId: membership.sponsorId,
+      });
+      if (!sponsorMembership) {
+        return handleResponse(res, 200, "Direct sponsor", { sponsor: null });
+      }
+      const sponsorUser = await mongoose
+        .model("User")
+        .findById(sponsorMembership.userId, { name: 1, phone: 1 })
+        .lean();
+      return handleResponse(res, 200, "Direct sponsor", {
+        sponsor: {
+          userId: sponsorMembership.userId,
+          name: sponsorUser?.name || null,
+          phone: maskPhoneForDownline(sponsorUser?.phone || null),
+          referralCode: sponsorMembership.referralCode,
+          status: sponsorMembership.status,
+          planType: sponsorMembership.planType,
+          joinedAt: sponsorMembership.joinedAt,
+        },
+      });
+    }
+    const sponsor = chain[0];
+    const sponsorUser = await mongoose
+      .model("User")
+      .findById(sponsor.userId, { name: 1, phone: 1 })
+      .lean();
+    return handleResponse(res, 200, "Direct sponsor", {
+      sponsor: {
+        userId: sponsor.userId,
+        name: sponsorUser?.name || null,
+        phone: maskPhoneForDownline(sponsorUser?.phone || null),
+        referralCode: sponsor.referralCode,
+        status: sponsor.status,
+        planType: sponsor.planType,
+        joinedAt: sponsor.joinedAt,
+      },
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * GET /api/customer/mlm/genealogy/tree-layout
+ *
+ * Returns the caller's cosmetic tree-node coordinate overrides. Used
+ * by the Tree View page so a customer's manual layout drag positions
+ * persist across reloads.
+ */
+export const getMyTreeLayout = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const membership = await getMembershipByUserId(userId);
+    if (!membership) {
+      return handleResponse(res, 200, "Tree layout", { overrides: {} });
+    }
+    const overrides = {};
+    const map = membership.treeLayoutOverrides;
+    if (map && typeof map.forEach === "function") {
+      map.forEach((value, key) => {
+        if (value && typeof value.x === "number" && typeof value.y === "number") {
+          overrides[String(key)] = { x: value.x, y: value.y };
+        }
+      });
+    } else if (map && typeof map === "object") {
+      for (const [key, value] of Object.entries(map)) {
+        if (value && typeof value.x === "number" && typeof value.y === "number") {
+          overrides[String(key)] = { x: value.x, y: value.y };
+        }
+      }
+    }
+    return handleResponse(res, 200, "Tree layout", { overrides });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * PUT /api/customer/mlm/genealogy/tree-layout
+ * Body: { overrides: { [nodeId: string]: { x: number, y: number } } }
+ *
+ * Persists the caller's cosmetic node coordinates. Validates that
+ * each entry is a `{x, y}` pair of finite numbers and that the count
+ * is bounded (caps at 500 entries to prevent unbounded growth).
+ *
+ * Customer-MLM-rebuild Phase 1 invariant: this layout NEVER affects
+ * the underlying binary tree's parent/child structure — it's pixel
+ * coordinates only.
+ */
+export const updateMyTreeLayout = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const body = req.body || {};
+    const incoming = body.overrides && typeof body.overrides === "object"
+      ? body.overrides
+      : null;
+    if (!incoming) {
+      return handleResponse(res, 400, "`overrides` is required (object)");
+    }
+    const entries = Object.entries(incoming).slice(0, 500);
+    const sanitized = new Map();
+    for (const [key, value] of entries) {
+      if (!key || typeof key !== "string") continue;
+      if (!value || typeof value !== "object") continue;
+      const x = Number(value.x);
+      const y = Number(value.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      sanitized.set(String(key), { x, y });
+    }
+
+    const membership = await getMembershipByUserId(userId);
+    if (!membership) {
+      return handleResponse(res, 404, "You are not a member yet");
+    }
+    membership.treeLayoutOverrides = sanitized;
+    await membership.save();
+    return handleResponse(res, 200, "Tree layout saved", {
+      count: sanitized.size,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * GET /api/customer/mlm/payouts/wallet-history?page=1&limit=20&type=&direction=
+ *
+ * Customer-MLM-rebuild Phase 5: unified wallet history from the
+ * canonical `LedgerEntry` collection. Replaces the legacy
+ * `Transaction`-backed `/api/customer/transactions` reader for the
+ * new Payouts > Wallet History page.
+ *
+ * Surfaces: MLM bonus credits, withdrawal debits, joining-package
+ * shopping seeds, Plan B upgrade top-ups, clawbacks, milestone
+ * rewards, manual adjustments. Filterable by ledger type prefix
+ * (`MLM_`) or by direction (`CREDIT` / `DEBIT`).
+ */
+export const getMyWalletHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const skip = (page - 1) * limit;
+
+    const query = {
+      actorType: OWNER_TYPE.CUSTOMER,
+      actorId: new mongoose.Types.ObjectId(userId),
+    };
+    if (req.query.type) {
+      query.type = req.query.type;
+    }
+    if (
+      req.query.direction &&
+      ["CREDIT", "DEBIT"].includes(String(req.query.direction).toUpperCase())
+    ) {
+      query.direction = String(req.query.direction).toUpperCase();
+    }
+
+    const [items, total] = await Promise.all([
+      LedgerEntry.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      LedgerEntry.countDocuments(query),
+    ]);
+
+    const shaped = items.map((row) => ({
+      _id: row._id,
+      transactionId: row.transactionId,
+      type: row.type,
+      direction: row.direction,
+      amount: row.amount,
+      status: row.status,
+      description: row.description || null,
+      reference: row.reference || null,
+      createdAt: row.createdAt,
+      balanceBefore: row.balanceBefore,
+      balanceAfter: row.balanceAfter,
+      orderId: row.orderId || null,
+      payoutId: row.payoutId || null,
+      metadata: row.metadata || {},
+    }));
+
+    return handleResponse(res, 200, "Wallet history", {
+      items: shaped,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
   }
 };

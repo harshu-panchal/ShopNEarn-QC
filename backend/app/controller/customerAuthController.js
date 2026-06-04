@@ -1,13 +1,16 @@
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 import Customer from "../models/customer.js";
 import Transaction from "../models/transaction.js";
-import jwt from "jsonwebtoken";
 import handleResponse from "../utils/helper.js";
 import {
     issueCustomerOtp,
+    normalizeAndValidatePhone,
     sanitizeCustomer,
     verifyCustomerOtpCode,
 } from "../services/otpAuthService.js";
 import {
+    loginWithPasswordSchema,
     sendLoginOtpSchema,
     sendSignupOtpSchema,
     validateSchema,
@@ -17,6 +20,8 @@ import { getMlmConfig } from "../services/mlm/mlmConfigService.js";
 import { getMembershipByReferralCode } from "../services/mlm/mlmMembershipService.js";
 import { MLM_MEMBERSHIP_STATUS } from "../constants/mlm.js";
 
+const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "10", 10);
+
 const generateToken = (customer) =>
     jwt.sign(
         { id: customer._id, role: "customer" },
@@ -24,25 +29,42 @@ const generateToken = (customer) =>
         { expiresIn: "7d" }
     );
 
+// Customer-MLM-rebuild Phase 2: sponsor referral codes are minted at
+// signup-time (free, immediately shareable). Therefore both ACTIVE and
+// REGISTERED_UNPAID memberships are valid sponsors — only SUSPENDED /
+// TERMINATED rows are rejected. Without this, a brand-new (still-
+// unpaid) referrer couldn't bring in anyone, defeating the "no need
+// to pay to get a referral code" requirement.
+const VALID_SPONSOR_STATUSES = new Set([
+    MLM_MEMBERSHIP_STATUS.ACTIVE,
+    MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
+]);
+
 /* ===============================
    SIGNUP – Send OTP
+
+   New required payload (Customer-MLM-rebuild Phase 2):
+     { name, email, phone, password, referralCode, leg }
+
+   - email + password are persisted on the not-yet-verified Customer
+     row (password is bcrypt-hashed before storage). They become
+     authoritative login credentials once the OTP is verified.
+   - referralCode + leg are captured into
+     `pendingSponsorReferralCode` + `pendingSponsorLeg`. The OTP-verify
+     step consumes them to mint the new `MlmMembership` (status =
+     `REGISTERED_UNPAID`) and place the user under the sponsor's
+     chosen L/R leg of the binary tree.
 ================================ */
 export const signupCustomer = async (req, res) => {
     try {
         const payload = validateSchema(sendSignupOtpSchema, req.body || {});
 
-        // Referral-code gate. When `Setting.mlm.signupRequiresReferralCode`
-        // is true (default), every new customer MUST sponsor under an
-        // existing ACTIVE MlmMembership. The check happens BEFORE OTP
-        // dispatch so we don't burn an SMS / phone-rate-limit slot on a
-        // request that will fail at activation anyway.
-        //
-        // Admins disable the toggle (via /admin/mlm/settings) only to
-        // bootstrap the very first member or for offline staging tests.
         const mlmCfg = await getMlmConfig();
         const requireRef = mlmCfg.signupRequiresReferralCode !== false;
 
         const rawCode = String(payload.referralCode || "").trim().toUpperCase();
+        const leg = String(payload.leg || "").trim().toUpperCase();
+        const emailLower = String(payload.email || "").trim().toLowerCase();
 
         if (requireRef && !rawCode) {
             return handleResponse(
@@ -53,34 +75,101 @@ export const signupCustomer = async (req, res) => {
             );
         }
 
-        if (rawCode) {
-            const sponsor = await getMembershipByReferralCode(rawCode);
-            if (!sponsor || sponsor.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) {
-                return handleResponse(
-                    res,
-                    400,
-                    "Invalid referral code. Please check with your sponsor.",
-                    { code: "REFERRAL_CODE_INVALID" },
-                );
-            }
+        if (!["L", "R"].includes(leg)) {
+            return handleResponse(
+                res,
+                400,
+                "Please choose a leg position (Left or Right).",
+                { code: "LEG_POSITION_REQUIRED" },
+            );
         }
 
+        const sponsor = await getMembershipByReferralCode(rawCode);
+        if (!sponsor || !VALID_SPONSOR_STATUSES.has(sponsor.status)) {
+            return handleResponse(
+                res,
+                400,
+                "Invalid referral code. Please check with your sponsor.",
+                { code: "REFERRAL_CODE_INVALID" },
+            );
+        }
+
+        // Pre-check: a DIFFERENT verified customer already owns this
+        // email. Reject upfront so the user can pick another email
+        // instead of failing at OTP-verify time. (A row that is still
+        // unverified with the same email will be re-used because
+        // issueCustomerOtp's lookup is keyed on phone — so the same
+        // person retrying signup with the same email is fine.)
+        const normalizedPhone = (() => {
+            try {
+                return normalizeAndValidatePhone(payload.phone);
+            } catch {
+                return null;
+            }
+        })();
+        if (!normalizedPhone) {
+            return handleResponse(res, 400, "Invalid phone number format.", {
+                code: "PHONE_INVALID",
+            });
+        }
+        const conflicting = await Customer.findOne({
+            email: emailLower,
+            isVerified: true,
+            phone: { $ne: normalizedPhone },
+        }).select("_id");
+        if (conflicting) {
+            return handleResponse(
+                res,
+                409,
+                "This email is already used by another account.",
+                { code: "EMAIL_ALREADY_USED" },
+            );
+        }
+
+        const passwordHash = await bcrypt.hash(
+            String(payload.password),
+            BCRYPT_ROUNDS,
+        );
+
+        // The plaintext is also forwarded so the post-OTP welcome
+        // email can echo the credentials back to the customer. The
+        // OTP service stores it on a `select:false` ephemeral field
+        // and wipes it the instant the email is dispatched. See the
+        // SECURITY NOTE on `Customer._signupPasswordPlaintext`.
         await issueCustomerOtp({
             name: payload.name,
             rawPhone: payload.phone,
             flow: "signup",
             ipAddress: req.ip,
             referralCode: rawCode,
+            email: emailLower,
+            passwordHash,
+            plaintextPassword: String(payload.password),
+            leg,
         });
 
-        return handleResponse(res, 200, "If the number is eligible, OTP has been sent");
+        return handleResponse(
+            res,
+            200,
+            "If the number is eligible, OTP has been sent",
+        );
     } catch (error) {
+        // Handle mongo duplicate-key (race between the email pre-check
+        // and the customer.create call).
+        if (error?.code === 11000 && error?.keyPattern?.email) {
+            return handleResponse(
+                res,
+                409,
+                "This email is already used by another account.",
+                { code: "EMAIL_ALREADY_USED" },
+            );
+        }
         return handleResponse(res, error.statusCode || 500, error.message);
     }
 };
 
 /* ===============================
-   LOGIN – Send OTP
+   LOGIN – Send OTP (phone-only, unchanged)
 ================================ */
 export const loginCustomer = async (req, res) => {
     try {
@@ -94,9 +183,6 @@ export const loginCustomer = async (req, res) => {
 
         return handleResponse(res, 200, "OTP has been sent");
     } catch (error) {
-        // Forward structured error codes (e.g. ACCOUNT_NOT_FOUND,
-        // ACCOUNT_NOT_VERIFIED) so the client can route to the right
-        // tab instead of showing a generic "Failed to send OTP".
         return handleResponse(
             res,
             error.statusCode || 500,
@@ -108,6 +194,13 @@ export const loginCustomer = async (req, res) => {
 
 /* ===============================
    VERIFY OTP – Login / Signup
+
+   For signup completion (customer was not previously verified) the
+   verifyCustomerOtpCode service:
+     1. Marks isVerified = true
+     2. Inside a single mongoose session: createOrGetMembership(status:
+        REGISTERED_UNPAID) + assignSponsor with the captured leg
+     3. Fires the welcome email (best-effort, outside the transaction)
 ================================ */
 export const verifyCustomerOTP = async (req, res) => {
     try {
@@ -119,15 +212,74 @@ export const verifyCustomerOTP = async (req, res) => {
         });
         const token = generateToken(customer);
 
+        return handleResponse(res, 200, "Login successful", {
+            token,
+            customer: sanitizeCustomer(customer),
+        });
+    } catch (error) {
         return handleResponse(
             res,
-            200,
-            "Login successful",
-            {
-                token,
-                customer: sanitizeCustomer(customer),
-            }
+            error.statusCode || 500,
+            error.message,
+            error.code ? { code: error.code } : {},
         );
+    }
+};
+
+/* ===============================
+   LOGIN – Email/Phone + Password (Customer-MLM-rebuild Phase 2)
+
+   Body: { identifier, password }
+     - `identifier` is either an email (contains "@") or a phone number
+       (normalized to E.164 by the auth service).
+     - Requires an existing VERIFIED customer with a bcrypt-hashed
+       password (signup since the rebuild). Pre-rebuild customers who
+       only have OTP can still log in via /send-login-otp + /verify-otp.
+================================ */
+export const loginWithPassword = async (req, res) => {
+    try {
+        const payload = validateSchema(loginWithPasswordSchema, req.body || {});
+        const identifier = payload.identifier.trim();
+        const looksLikeEmail = identifier.includes("@");
+
+        let customer;
+        if (looksLikeEmail) {
+            customer = await Customer.findOne({
+                email: identifier.toLowerCase(),
+            }).select("+password");
+        } else {
+            let phone;
+            try {
+                phone = normalizeAndValidatePhone(identifier);
+            } catch {
+                return handleResponse(res, 401, "Invalid credentials", {
+                    code: "INVALID_CREDENTIALS",
+                });
+            }
+            customer = await Customer.findOne({ phone }).select("+password");
+        }
+
+        if (!customer || !customer.isVerified || !customer.password) {
+            return handleResponse(res, 401, "Invalid credentials", {
+                code: "INVALID_CREDENTIALS",
+            });
+        }
+
+        const ok = await bcrypt.compare(payload.password, customer.password);
+        if (!ok) {
+            return handleResponse(res, 401, "Invalid credentials", {
+                code: "INVALID_CREDENTIALS",
+            });
+        }
+
+        customer.lastLogin = new Date();
+        await customer.save();
+
+        const token = generateToken(customer);
+        return handleResponse(res, 200, "Login successful", {
+            token,
+            customer: sanitizeCustomer(customer),
+        });
     } catch (error) {
         return handleResponse(res, error.statusCode || 500, error.message);
     }
@@ -174,6 +326,12 @@ export const updateCustomerProfile = async (req, res) => {
 
 /* ===============================
    GET WALLET TRANSACTIONS
+
+   @deprecated Customer-MLM-rebuild Phase 5: legacy reader against the
+   deprecated `Transaction` collection. New customers should consume
+   `GET /api/customer/mlm/payouts/wallet-history` which reads from the
+   canonical `LedgerEntry` collection. Kept here only for back-compat
+   with the existing /wallet page that hasn't migrated yet.
 ================================ */
 export const getCustomerTransactions = async (req, res) => {
     try {

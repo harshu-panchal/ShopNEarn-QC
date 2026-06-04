@@ -123,7 +123,7 @@ const WalletPage = () => {
                         <div className="flex items-start justify-between gap-3">
                             <div className="flex-1">
                                 <p className="text-[11px] font-semibold text-violet-700 uppercase tracking-wide flex items-center gap-1">
-                                    <TrendingUp size={12} /> MLM Earnings
+                                    <TrendingUp size={12} /> Rewards Earnings
                                 </p>
                                 <h2 className="text-3xl font-bold text-slate-900 mt-1">
                                     {loading ? '...' : formatINR(walletBuckets.earningsBalance)}

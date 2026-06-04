@@ -175,6 +175,45 @@ export const listMlmMembers = async (req, res) => {
       });
     }
 
+    // Customer-MLM-rebuild Phase 10 — enrich rows with sponsor name +
+    // referral code so the admin table can show "sponsor" without a
+    // second round-trip. We do this in JS after the main query to keep
+    // the index-friendly sort path.
+    const sponsorIds = Array.from(
+      new Set(
+        items
+          .map((m) => m.sponsorId)
+          .filter(Boolean)
+          .map((id) => String(id)),
+      ),
+    );
+    let sponsorMap = new Map();
+    if (sponsorIds.length > 0) {
+      const sponsors = await MlmMembership.find({
+        userId: { $in: sponsorIds },
+      })
+        .select({ userId: 1, referralCode: 1 })
+        .populate("userId", "name phone")
+        .lean();
+      sponsorMap = new Map(
+        sponsors.map((s) => [String(s.userId?._id || s.userId), s]),
+      );
+    }
+    items = items.map((row) => ({
+      ...row,
+      sponsor: row.sponsorId
+        ? (() => {
+            const sp = sponsorMap.get(String(row.sponsorId));
+            if (!sp) return null;
+            return {
+              name: sp.userId?.name || null,
+              phone: sp.userId?.phone || null,
+              referralCode: sp.referralCode || null,
+            };
+          })()
+        : null,
+    }));
+
     const total = await MlmMembership.countDocuments(query);
 
     return handleResponse(res, 200, "MLM members", {
@@ -197,17 +236,46 @@ export const getMlmMemberDetail = async (req, res) => {
       .lean();
     if (!membership) return handleResponse(res, 404, "Member not found");
 
-    const [directReferrals, commissionHistory, withdrawals] = await Promise.all([
-      MlmMembership.find({ sponsorId: membership.userId._id || membership.userId })
-        .populate("userId", "name phone")
+    const memberUserId = membership.userId._id || membership.userId;
+
+    const [
+      directReferrals,
+      commissionHistory,
+      withdrawals,
+      sponsorMembership,
+      heldBonusEvents,
+    ] = await Promise.all([
+      MlmMembership.find({ sponsorId: memberUserId })
+        .populate("userId", "name phone email")
         .lean(),
-      MlmCommissionEvent.find({ recipientId: membership.userId._id || membership.userId })
+      MlmCommissionEvent.find({ recipientId: memberUserId })
         .sort({ createdAt: -1 })
         .limit(50)
         .lean(),
-      MlmWithdrawalRequest.find({ userId: membership.userId._id || membership.userId })
+      MlmWithdrawalRequest.find({ userId: memberUserId })
         .sort({ createdAt: -1 })
         .limit(20)
+        .lean(),
+      membership.sponsorId
+        ? MlmMembership.findOne({ userId: membership.sponsorId })
+            .select({ userId: 1, referralCode: 1, planType: 1, status: 1 })
+            .populate("userId", "name phone email")
+            .lean()
+        : null,
+      // Customer-MLM-rebuild Phase 10 — held pair bonuses sitting on
+      // this member's sponsor, owed because this member is still
+      // REGISTERED_UNPAID. Surfaced so admins can quickly see why a
+      // sponsor's earnings panel reports a "held" total.
+      MlmCommissionEvent.find({
+        bonusType: "BINARY_PAIR_MATCH",
+        status: "held_awaiting_downline_activation",
+        $or: [
+          { "meta.leftContributorUserId": memberUserId },
+          { "meta.rightContributorUserId": memberUserId },
+        ],
+      })
+        .sort({ createdAt: -1 })
+        .limit(25)
         .lean(),
     ]);
 
@@ -216,6 +284,18 @@ export const getMlmMemberDetail = async (req, res) => {
       directReferrals,
       commissionHistory,
       withdrawals,
+      sponsor: sponsorMembership
+        ? {
+            membershipId: sponsorMembership._id,
+            name: sponsorMembership.userId?.name || null,
+            phone: sponsorMembership.userId?.phone || null,
+            email: sponsorMembership.userId?.email || null,
+            referralCode: sponsorMembership.referralCode || null,
+            planType: sponsorMembership.planType || null,
+            status: sponsorMembership.status || null,
+          }
+        : null,
+      heldBonusEvents,
     });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);

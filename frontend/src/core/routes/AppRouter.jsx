@@ -51,6 +51,17 @@ const MlmEarningsPage = lazy(() => import('../../modules/customer/pages/mlm/MlmE
 const MlmWithdrawalPage = lazy(() => import('../../modules/customer/pages/mlm/MlmWithdrawalPage'));
 const MlmHomeShoppingPage = lazy(() => import('../../modules/customer/pages/mlm/MlmHomeShoppingPage'));
 const ManualPaymentPage = lazy(() => import('../../modules/customer/pages/mlm/ManualPaymentPage'));
+// Customer-MLM-rebuild Phase 8 — new dashboard + Genealogy + Payouts sections.
+const MainDashboardPage = lazy(() => import('../../modules/customer/pages/mlm/MainDashboardPage'));
+const GenealogyLayout = lazy(() => import('../../modules/customer/pages/mlm/genealogy/GenealogyLayout'));
+const TreeViewPage = lazy(() => import('../../modules/customer/pages/mlm/genealogy/TreeViewPage'));
+const BinaryGenealogyPage = lazy(() => import('../../modules/customer/pages/mlm/genealogy/BinaryGenealogyPage'));
+const MatchingReportPage = lazy(() => import('../../modules/customer/pages/mlm/genealogy/MatchingReportPage'));
+const DirectSponsorPage = lazy(() => import('../../modules/customer/pages/mlm/genealogy/DirectSponsorPage'));
+const PayoutsLayout = lazy(() => import('../../modules/customer/pages/mlm/payouts/PayoutsLayout'));
+const MyEarningsPage = lazy(() => import('../../modules/customer/pages/mlm/payouts/MyEarningsPage'));
+const MyPayoutPage = lazy(() => import('../../modules/customer/pages/mlm/payouts/MyPayoutPage'));
+const WalletHistoryPage = lazy(() => import('../../modules/customer/pages/mlm/payouts/WalletHistoryPage'));
 
 // Lazy load heavy modules
 const SellerModule = lazy(() => import('../../modules/seller/routes/index'));
@@ -183,10 +194,44 @@ const AppRouter = () => {
                         { path: 'profile', element: <ProtectedRoute><ProfilePage /></ProtectedRoute> },
                         { path: 'profile/edit', element: <ProtectedRoute><EditProfilePage /></ProtectedRoute> },
                         { path: 'wallet', element: <ProtectedRoute><WalletPage /></ProtectedRoute> },
-                        { path: 'mlm', element: <ProtectedRoute><MlmDashboardPage /></ProtectedRoute> },
+                        // Customer-MLM-rebuild Phase 8 — `/mlm` is the new
+                        // MainDashboardPage. Legacy MlmDashboardPage is
+                        // retained at `/mlm/legacy` for safe rollback.
+                        { path: 'mlm', element: <ProtectedRoute><MainDashboardPage /></ProtectedRoute> },
+                        { path: 'mlm/legacy', element: <ProtectedRoute><MlmDashboardPage /></ProtectedRoute> },
                         { path: 'mlm/referrals', element: <ProtectedRoute><MlmReferralPage /></ProtectedRoute> },
-                        { path: 'mlm/earnings', element: <ProtectedRoute><MlmEarningsPage /></ProtectedRoute> },
-                        { path: 'mlm/withdrawals', element: <ProtectedRoute><MlmWithdrawalPage /></ProtectedRoute> },
+                        // Genealogy section — tabbed layout (Tree / Binary /
+                        // Matching / Sponsor). `/mlm/genealogy` redirects to
+                        // the Tree View by default.
+                        {
+                            path: 'mlm/genealogy',
+                            element: <ProtectedRoute><GenealogyLayout /></ProtectedRoute>,
+                            children: [
+                                { index: true, element: <Navigate to="tree" replace /> },
+                                { path: 'tree', element: <TreeViewPage /> },
+                                { path: 'binary', element: <BinaryGenealogyPage /> },
+                                { path: 'matching-report', element: <MatchingReportPage /> },
+                                { path: 'direct-sponsor', element: <DirectSponsorPage /> },
+                            ],
+                        },
+                        // Payouts section — tabbed layout (Earnings / Payout /
+                        // Wallet History). `/mlm/payouts` redirects to
+                        // Earnings by default.
+                        {
+                            path: 'mlm/payouts',
+                            element: <ProtectedRoute><PayoutsLayout /></ProtectedRoute>,
+                            children: [
+                                { index: true, element: <Navigate to="earnings" replace /> },
+                                { path: 'earnings', element: <MyEarningsPage /> },
+                                { path: 'withdrawals', element: <MyPayoutPage /> },
+                                { path: 'wallet-history', element: <WalletHistoryPage /> },
+                            ],
+                        },
+                        // Legacy direct paths — kept so old notifications /
+                        // deep links keep working; they render the new
+                        // tabbed versions inside the Payouts layout.
+                        { path: 'mlm/earnings', element: <Navigate to="/mlm/payouts/earnings" replace /> },
+                        { path: 'mlm/withdrawals', element: <Navigate to="/mlm/payouts/withdrawals" replace /> },
                         { path: 'mlm/home-shopping', element: <ProtectedRoute><MlmHomeShoppingPage /></ProtectedRoute> },
                         { path: 'mlm/manual-payment/:paymentId', element: <ProtectedRoute><ManualPaymentPage /></ProtectedRoute> },
                         { path: 'search', element: <SearchPage /> },

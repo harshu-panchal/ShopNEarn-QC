@@ -8,6 +8,7 @@ import {
 } from "../../constants/finance.js";
 import {
   MLM_IDEMPOTENCY_PREFIX,
+  MLM_MEMBERSHIP_STATUS,
   MLM_PLAN_TYPE,
 } from "../../constants/mlm.js";
 import { creditWallet } from "../finance/walletService.js";
@@ -16,7 +17,10 @@ import {
   createOrGetMembership,
   syncCustomerMlmProjection,
 } from "./mlmMembershipService.js";
-import { computeAndCreditBinaryPairBonus } from "./mlmBonusEngineService.js";
+import {
+  computeAndCreditBinaryPairBonus,
+  releaseHeldPairBonusesForDownlineActivation,
+} from "./mlmBonusEngineService.js";
 import { getMlmConfig } from "./mlmConfigService.js";
 import { emitNotificationEvent } from "../../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.constants.js";
@@ -125,7 +129,23 @@ export async function activateMembershipFromJoiningPayment(
       throw new Error(`Customer ${customerId} not found for MLM activation`);
     }
 
+    // Customer-MLM-rebuild Phase 4: in the new signup flow the
+    // membership row already exists (status REGISTERED_UNPAID), with
+    // the sponsor edge wired and the binary tree placement done. The
+    // payment flow's only remaining job is to flip the status flag,
+    // seed the shopping wallet, and release HELD sponsor pair-bonuses.
+    //
+    // For legacy customers that never went through the new signup
+    // (no membership row at all yet), `createOrGetMembership` still
+    // mints a fresh ACTIVE row here for back-compat.
     const { membership } = await createOrGetMembership(customerId, { session });
+    const wasPreviouslyUnpaid =
+      membership.status === MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID;
+    if (wasPreviouslyUnpaid) {
+      membership.status = MLM_MEMBERSHIP_STATUS.ACTIVE;
+      membership.planAJoinedAt = membership.planAJoinedAt || new Date();
+      await membership.save({ session });
+    }
 
     // Prefer the snapshot taken at intent time; fall back to the live
     // pendingSponsorReferralCode for payments minted before the
@@ -143,6 +163,13 @@ export async function activateMembershipFromJoiningPayment(
           membership,
           sponsorReferralCode: sponsorCodeForActivation,
           session,
+          // Legacy customers from the OTP-only signup never picked a
+          // leg, so honour the configured strategy (default
+          // BALANCED_AUTO). The new signup flow has already wired
+          // the sponsor edge before activation, so this branch only
+          // fires for those legacy rows.
+          preferredBinaryPosition: customer.pendingSponsorLeg || null,
+          forceManualPlacement: !!customer.pendingSponsorLeg,
         });
         if (updated && updated.sponsorId) {
           sponsorMembership = await MlmMembership.findOne(
@@ -191,22 +218,42 @@ export async function activateMembershipFromJoiningPayment(
 
     // Plan A binary pair-matching bonus.
     //
-    // `assignSponsor` has already bumped the sponsor's
-    // `leftLegDirectCount` / `rightLegDirectCount` for the leg the new
-    // member landed in. The pair-bonus engine reads those freshly
-    // bumped counters, computes
-    //   `min(leftLegDirectCount, rightLegDirectCount)`,
-    // and credits one BINARY_PAIR_MATCH event for every newly-completed
-    // pair (typically 0 or 1 per activation, but the catch-up loop
-    // handles multi-pair jumps if they ever occur).
+    // Customer-MLM-rebuild Phase 4: there are two paths now.
+    //
+    //   (a) NEW signup flow: the member registered earlier with a
+    //       chosen leg, placed in tree, and the pair-bonus engine
+    //       already emitted HELD_AWAITING_DOWNLINE_ACTIVATION events
+    //       for the sponsor. At THIS activation we RELEASE those held
+    //       bonuses into the sponsor's wallet.
+    //
+    //   (b) LEGACY flow: a customer who never went through the new
+    //       signup just paid the joining fee. `assignSponsor` ran
+    //       above, which inline-fired the pair-bonus engine, which
+    //       credited the sponsor directly because the new member was
+    //       already ACTIVE (createOrGetMembership defaulted to
+    //       ACTIVE for legacy rows). No HELD events exist.
+    //
+    // Both branches are idempotent so calling both here is safe.
     let pairBonusEvents = [];
     if (sponsorMembership) {
-      pairBonusEvents = await computeAndCreditBinaryPairBonus({
-        sponsorUserId: sponsorMembership.userId,
-        newReferralUserId: customerId,
+      const releasedEvents = await releaseHeldPairBonusesForDownlineActivation({
+        newActiveUserId: customerId,
         session,
         correlationId,
       });
+      pairBonusEvents = releasedEvents;
+
+      // Defence-in-depth: if the new signup never emitted a HELD
+      // event (e.g. legacy customer minted ACTIVE directly), still
+      // run the pair-bonus engine so the sponsor isn't shorted.
+      if (releasedEvents.length === 0) {
+        pairBonusEvents = await computeAndCreditBinaryPairBonus({
+          sponsorUserId: sponsorMembership.userId,
+          newReferralUserId: customerId,
+          session,
+          correlationId,
+        });
+      }
     }
 
     payment.activationApplied = true;

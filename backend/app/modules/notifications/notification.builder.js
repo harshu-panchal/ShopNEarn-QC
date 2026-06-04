@@ -383,7 +383,7 @@ function eventDefinition(eventType) {
         body: (payload) =>
           payload.data?.referralCode
             ? `Your referral code is ${payload.data.referralCode}. Share it to start earning.`
-            : "Your MLM membership is now active. Open the app to view your dashboard.",
+            : "Your rewards membership is now active. Open the app to view your dashboard.",
       };
     case NOTIFICATION_EVENTS.MLM_BONUS_CREDITED:
       return {
@@ -392,10 +392,14 @@ function eventDefinition(eventType) {
         title: () => "Bonus credited 💰",
         body: (payload) => {
           const amt = Number(payload.data?.amount || 0);
-          const type = String(payload.data?.bonusType || "MLM");
+          // Customer-MLM-rebuild Phase 6: never default to the "MLM"
+          // string for customer-visible push bodies. Fall back to a
+          // generic "reward" label when bonusType is missing.
+          const rawType = String(payload.data?.bonusType || "reward");
+          const type = rawType.replace(/_/g, " ").toLowerCase();
           return amt > 0
-            ? `₹${amt.toLocaleString("en-IN")} ${type.replace(/_/g, " ").toLowerCase()} credited to your pending wallet.`
-            : "A new bonus has been credited to your MLM wallet.";
+            ? `₹${amt.toLocaleString("en-IN")} ${type} credited to your pending wallet.`
+            : "A new bonus has been credited to your rewards wallet.";
         },
       };
     case NOTIFICATION_EVENTS.MLM_PLAN_B_UPGRADED:

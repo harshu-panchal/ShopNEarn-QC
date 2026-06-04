@@ -131,10 +131,10 @@ const MlmJoiningReviews = () => {
   };
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="p-4 sm:p-6 space-y-4">
+      <div className="flex flex-wrap items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
             MLM Joining Reviews
           </h1>
           <p className="text-xs text-slate-500 mt-1">
@@ -142,20 +142,20 @@ const MlmJoiningReviews = () => {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <form
             onSubmit={(e) => {
               e.preventDefault();
               setSearch(searchInput.trim());
             }}
-            className="flex items-center bg-white border border-slate-200 rounded-lg overflow-hidden">
-            <Search size={14} className="ml-2 text-slate-400" />
+            className="flex items-center bg-white border border-slate-200 rounded-lg overflow-hidden flex-1 sm:flex-initial min-w-0 sm:w-auto">
+            <Search size={14} className="ml-2 text-slate-400 shrink-0" />
             <input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search name, phone, txn id…"
-              className="px-2 py-1.5 text-xs bg-transparent focus:outline-none w-56"
+              className="px-2 py-1.5 text-xs bg-transparent focus:outline-none w-full sm:w-56"
             />
             {searchInput && (
               <button
@@ -164,7 +164,7 @@ const MlmJoiningReviews = () => {
                   setSearchInput("");
                   setSearch("");
                 }}
-                className="px-2 text-slate-400 hover:text-slate-600">
+                className="px-2 text-slate-400 hover:text-slate-600 shrink-0">
                 <X size={14} />
               </button>
             )}
@@ -187,8 +187,11 @@ const MlmJoiningReviews = () => {
         </div>
       </div>
 
+      {/* 7-col table wrapped in overflow-x-auto for mobile/tablet
+          swipe-to-scroll instead of broken column collisions. */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[820px]">
           <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-600">
             <tr>
               <th className="text-left px-4 py-3">Submitted</th>
@@ -262,6 +265,7 @@ const MlmJoiningReviews = () => {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {selected && (
@@ -435,6 +439,7 @@ const ReviewModal = ({
         </div>
 
         <div
+          data-lenis-prevent
           className="p-6 space-y-5 overflow-y-auto overscroll-contain flex-1 min-h-0 touch-pan-y"
           style={{ WebkitOverflowScrolling: "touch" }}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

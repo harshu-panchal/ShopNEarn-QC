@@ -237,12 +237,23 @@ async function findBalancedBinarySlot(rootMembership, { session } = {}) {
  * tells the caller which subtree of the sponsor the new member ended
  * up in — the binary pair bonus engine uses this to bump the sponsor's
  * `leftLegDirectCount` / `rightLegDirectCount` counters.
+ *
+ * Customer-MLM-rebuild Phase 4: pass `forceManualPlacement: true` from
+ * the customer signup flow so the user's chosen L/R leg is always
+ * honoured, regardless of the admin's `binaryPlacementStrategy`
+ * setting. If multiple users pick the same leg under the same sponsor,
+ * the placement walks DOWN the chosen leg (sponsor -> chosen-leg child
+ * -> chosen-leg grandchild -> …) and lands in the first empty slot —
+ * a deterministic, leg-preserving spillover that keeps the user's
+ * pick honest without dumping every new joiner directly under the
+ * sponsor (which would overwrite each other's pointers).
  */
 export async function placeInBinaryTree({
   newMembership,
   sponsorMembership,
   session,
   preferredPosition = null, // "L" | "R" | null
+  forceManualPlacement = false,
 }) {
   if (!sponsorMembership) return null;
 
@@ -253,7 +264,34 @@ export async function placeInBinaryTree({
   let position = preferredPosition && ["L", "R"].includes(preferredPosition) ? preferredPosition : null;
   let legUnderSponsor = null;
 
-  if (strategy === MLM_BINARY_PLACEMENT_STRATEGY.BALANCED_AUTO) {
+  // Customer-MLM-rebuild Phase 4: when the caller forces manual
+  // placement (new-signup flow), walk down the chosen leg of the
+  // sponsor until we find an empty slot. The leg stays consistent
+  // with the user's selection but multiple sign-ups on the same leg
+  // are stacked deeply rather than colliding at the root.
+  if (forceManualPlacement && position) {
+    legUnderSponsor = position;
+    let cursor = sponsorMembership;
+    const maxIter = Number(cfg.sponsorChainMaxDepth) || MLM_DEFAULTS.sponsorChainMaxDepth;
+    for (let i = 0; i < maxIter; i += 1) {
+      const childId = position === "L" ? cursor.binaryLeftChildId : cursor.binaryRightChildId;
+      if (!childId) {
+        parentMembership = cursor;
+        break;
+      }
+      const next = await MlmMembership.findOne(
+        { userId: childId },
+        null,
+        session ? { session } : {},
+      );
+      if (!next) {
+        // Defensive: pointer dangling — land here so we don't loop.
+        parentMembership = cursor;
+        break;
+      }
+      cursor = next;
+    }
+  } else if (strategy === MLM_BINARY_PLACEMENT_STRATEGY.BALANCED_AUTO) {
     const slot = await findBalancedBinarySlot(sponsorMembership, { session });
     if (!slot) return null;
     parentMembership = slot.parentMembership;
@@ -376,22 +414,36 @@ export async function incrementUplineDownlineCounts(sponsorChain, { session } = 
  * `assignSponsor` separately. This function ONLY mints the row, the
  * referral code, and the projection.
  *
+ * Customer-MLM-rebuild Phase 4: callers from the signup flow pass
+ * `status: REGISTERED_UNPAID` so the row exists with a usable referral
+ * code while the customer hasn't paid for the joining package yet.
+ * `mlmActivationService.activateMembershipFromJoiningPayment` then
+ * flips the row to ACTIVE once the payment captures.
+ *
  * @returns {Promise<{membership: MlmMembership, created: boolean}>}
  */
-export async function createOrGetMembership(userId, { session } = {}) {
+export async function createOrGetMembership(
+  userId,
+  { session, status = MLM_MEMBERSHIP_STATUS.ACTIVE } = {},
+) {
   const existing = await getMembershipByUserId(userId, { session });
   if (existing) return { membership: existing, created: false };
 
   const referralCode = await generateReferralCode({ session });
+  const now = new Date();
+  const isRegisteredOnly = status === MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID;
   const created = await MlmMembership.create(
     [
       {
         userId,
         referralCode,
         planType: MLM_PLAN_TYPE.A,
-        status: MLM_MEMBERSHIP_STATUS.ACTIVE,
-        joinedAt: new Date(),
-        planAJoinedAt: new Date(),
+        status,
+        joinedAt: now,
+        // For an unpaid registration there is no planA "join" yet — leave
+        // `planAJoinedAt` null so the dashboard can distinguish the
+        // registration timestamp from the actual plan-activation time.
+        planAJoinedAt: isRegisteredOnly ? null : now,
       },
     ],
     session ? { session } : {},
@@ -416,6 +468,12 @@ export async function assignSponsor({
   sponsorReferralCode,
   session,
   preferredBinaryPosition = null,
+  // Customer-MLM-rebuild Phase 4: when true, force the leg to be the
+  // user's chosen `preferredBinaryPosition` regardless of the
+  // admin's `binaryPlacementStrategy` setting (default
+  // BALANCED_AUTO). Used by the new signup flow so the L/R selector
+  // on the signup form is always honored.
+  forceManualPlacement = false,
 }) {
   if (!membership) throw new Error("membership is required");
   if (membership.sponsorId) {
@@ -441,6 +499,7 @@ export async function assignSponsor({
     sponsorMembership,
     session,
     preferredPosition: preferredBinaryPosition,
+    forceManualPlacement,
   });
 
   await membership.save({ session });
@@ -459,6 +518,33 @@ export async function assignSponsor({
       leg: placement.legUnderSponsor,
       session,
     });
+  }
+
+  // Customer-MLM-rebuild Phase 4: fire the binary pair-match bonus
+  // engine inline. If THIS new member is `REGISTERED_UNPAID`, the
+  // engine emits a HELD_AWAITING_DOWNLINE_ACTIVATION event for the
+  // sponsor and bumps the sponsor's `heldPairBonusForSponsor` tracker
+  // instead of crediting the wallet. When the new member's joining
+  // payment is later captured, `mlmActivationService` calls
+  // `releaseHeldPairBonusesForDownlineActivation(newActiveUserId)`
+  // which flips the held event to CREDITED and credits the sponsor's
+  // pending wallet bucket.
+  try {
+    const { computeAndCreditBinaryPairBonus } = await import(
+      "./mlmBonusEngineService.js"
+    );
+    await computeAndCreditBinaryPairBonus({
+      sponsorUserId: sponsorMembership.userId,
+      newReferralUserId: membership.userId,
+      session,
+    });
+  } catch (err) {
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn(
+        "[mlmMembershipService] inline pair-bonus emit failed; will retry at activation",
+        { error: err.message },
+      );
+    }
   }
 
   await syncCustomerMlmProjection(membership.userId, { session });
@@ -499,10 +585,23 @@ export async function getUplineChain(userId, maxDepth, { session } = {}) {
 /**
  * Lightweight summary of a member's direct referrals — for dashboard.
  * Returns at most `limit` rows.
+ *
+ * Customer-MLM-rebuild Phase 4: now includes both ACTIVE and
+ * REGISTERED_UNPAID downlines so the sponsor can see who has signed
+ * up under their code but not yet paid for the program. The frontend
+ * decides how to badge each row by reading `status`.
  */
 export async function getDirectReferrals(userId, { limit = 50, session } = {}) {
   const list = await MlmMembership.find(
-    { sponsorId: userId, status: MLM_MEMBERSHIP_STATUS.ACTIVE },
+    {
+      sponsorId: userId,
+      status: {
+        $in: [
+          MLM_MEMBERSHIP_STATUS.ACTIVE,
+          MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
+        ],
+      },
+    },
     null,
     session ? { session } : {},
   )

@@ -29,6 +29,10 @@ import {
   recordLifetimeEarning,
 } from "./mlmMembershipService.js";
 
+const HELD_BONUS_RECIPIENT_BLOCKED = new Set([
+  MLM_MEMBERSHIP_STATUS.TERMINATED,
+]);
+
 // NOTE: `mlmActivationService` imports back from this file
 // (`computeAndCreditDirectReferralMilestone`). To break the import cycle
 // for the auto-upgrade trigger we dynamic-import the activation service
@@ -504,6 +508,31 @@ export async function computeAndCreditBinaryPairBonus({
     return [];
   }
 
+  // Customer-MLM-rebuild Phase 4: when the new referral that
+  // *triggered* this pair completion is `REGISTERED_UNPAID`, the
+  // pair-bonus credit is HELD instead of paid. The bonus is released
+  // to the sponsor's wallet only when this triggering user later
+  // activates their joining payment, via
+  // `releaseHeldPairBonusesForDownlineActivation` called from
+  // `mlmActivationService`.
+  const newReferralMembership = newReferralUserId
+    ? await getMembershipByUserId(newReferralUserId, { session })
+    : null;
+  const newReferralIsUnpaid =
+    newReferralMembership?.status === MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID;
+
+  // Customer-MLM-rebuild Phase 4: matching-report context — surface
+  // the *other* contributor (the opposite-leg's most recent direct
+  // referral) on the event meta. Lets the customer Matching Report
+  // page show "Pair #N: ALICE (L) + BOB (R)" without an extra join.
+  const otherLeg = newReferralMembership?.binaryPosition === "L" ? "R" : "L";
+  const otherContributor = await findMostRecentDirectReferralOnLeg({
+    sponsorUserId,
+    leg: otherLeg,
+    excludeUserId: newReferralUserId,
+    session,
+  });
+
   const events = [];
   for (let p = lastPaid + 1; p <= newPairCount; p += 1) {
     const bonusAmount = await getPlanAPairBonusForPairIndex(p);
@@ -516,6 +545,40 @@ export async function computeAndCreditBinaryPairBonus({
     }
 
     const idempotencyKey = `${MLM_IDEMPOTENCY_PREFIX.BINARY_PAIR_MATCH}-${sponsorUserId}-P${p}`;
+    const pairMeta = {
+      pairIndex: p,
+      leftLegDirectCount: leftLeg,
+      rightLegDirectCount: rightLeg,
+      leftContributorUserId:
+        newReferralMembership?.binaryPosition === "L"
+          ? String(newReferralUserId)
+          : otherContributor?.userId
+            ? String(otherContributor.userId)
+            : null,
+      rightContributorUserId:
+        newReferralMembership?.binaryPosition === "R"
+          ? String(newReferralUserId)
+          : otherContributor?.userId
+            ? String(otherContributor.userId)
+            : null,
+    };
+
+    if (newReferralIsUnpaid) {
+      const heldEvent = await emitHeldPairBonusEvent({
+        sponsorUserId,
+        sponsorMembershipId: sponsor._id,
+        newReferralUserId,
+        newReferralMembershipId: newReferralMembership?._id || null,
+        pairIndex: p,
+        bonusAmount,
+        meta: pairMeta,
+        idempotencyKey,
+        correlationId,
+        session,
+      });
+      if (heldEvent) events.push(heldEvent);
+      continue;
+    }
 
     const event = await creditBonusToEarningsWallet({
       recipientUserId: sponsorUserId,
@@ -529,11 +592,7 @@ export async function computeAndCreditBinaryPairBonus({
       sourceOrderId: null,
       bucket: "pending",
       description: `Plan A binary pair bonus #${p}`,
-      meta: {
-        pairIndex: p,
-        leftLegDirectCount: leftLeg,
-        rightLegDirectCount: rightLeg,
-      },
+      meta: pairMeta,
       idempotencyKey,
       correlationId,
       session,
@@ -556,6 +615,236 @@ export async function computeAndCreditBinaryPairBonus({
   );
 
   return events;
+}
+
+/**
+ * Customer-MLM-rebuild Phase 4 — helper for Matching Report meta.
+ *
+ * Returns the most recent direct referral of `sponsorUserId` on the
+ * given leg, excluding `excludeUserId`. We use this at pair-completion
+ * time to denormalise the *other* contributor's identity onto the
+ * MlmCommissionEvent's `meta` so the customer-facing Matching Report
+ * can show "Pair #N: <left member> ↔ <right member>" without an
+ * extra lookup. Best-effort — returns null if no candidate exists.
+ */
+async function findMostRecentDirectReferralOnLeg({
+  sponsorUserId,
+  leg,
+  excludeUserId,
+  session,
+}) {
+  if (!sponsorUserId || !["L", "R"].includes(leg)) return null;
+  const filter = {
+    sponsorId: sponsorUserId,
+    binaryPosition: leg,
+  };
+  if (excludeUserId) filter.userId = { $ne: excludeUserId };
+  const row = await MlmMembership.findOne(filter, null, session ? { session } : {})
+    .sort({ createdAt: -1 })
+    .lean();
+  return row || null;
+}
+
+/**
+ * Customer-MLM-rebuild Phase 4 — write a HELD pair-bonus event.
+ *
+ * Side effects (all inside the caller's session):
+ *   1. Inserts an `MlmCommissionEvent` row with
+ *      `status: HELD_AWAITING_DOWNLINE_ACTIVATION`, NO wallet credit,
+ *      NO LedgerEntry. The full computed bonus amount is stored on
+ *      `bonusAmount` for later release.
+ *   2. Bumps `MlmMembership.heldPairBonusForSponsor` on the NEW
+ *      MEMBER's membership so the admin "Held pair-bonus for upline"
+ *      panel can read the running total.
+ *
+ * Idempotent: a re-insert with the same `idempotencyKey` is short-
+ * circuited so the held tracker is not double-incremented.
+ *
+ * The held event is released by
+ * `releaseHeldPairBonusesForDownlineActivation({newActiveUserId})`
+ * when the triggering downline customer activates their joining
+ * payment.
+ */
+async function emitHeldPairBonusEvent({
+  sponsorUserId,
+  sponsorMembershipId,
+  newReferralUserId,
+  newReferralMembershipId,
+  pairIndex,
+  bonusAmount,
+  meta,
+  idempotencyKey,
+  correlationId,
+  session,
+}) {
+  const requested = roundCurrency(bonusAmount || 0);
+  if (requested <= 0) return null;
+
+  const existing = await MlmCommissionEvent.findOne(
+    { idempotencyKey },
+    null,
+    session ? { session } : {},
+  );
+  if (existing) return existing;
+
+  const [eventDoc] = await MlmCommissionEvent.create(
+    [
+      {
+        recipientId: sponsorUserId,
+        recipientMembershipId: sponsorMembershipId || null,
+        sourceUserId: newReferralUserId,
+        sourceOrderId: null,
+        sourceCommissionEventId: null,
+        bonusType: MLM_BONUS_TYPE.BINARY_PAIR_MATCH,
+        planType: MLM_PLAN_TYPE.A,
+        level: null,
+        baseAmount: 0,
+        ratePercent: null,
+        bonusAmount: requested,
+        cappedAmount: 0,
+        rolloverAmount: 0,
+        walletBucket: "pending",
+        ledgerEntryId: null,
+        status: MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_DOWNLINE_ACTIVATION,
+        idempotencyKey,
+        correlationId,
+        description: `Held pair bonus #${pairIndex} — awaiting joiner ${newReferralUserId} to activate`,
+        meta: {
+          ...meta,
+          heldFor: String(newReferralUserId),
+        },
+      },
+    ],
+    session ? { session } : {},
+  );
+
+  if (newReferralUserId) {
+    await MlmMembership.updateOne(
+      { userId: newReferralUserId },
+      { $inc: { heldPairBonusForSponsor: requested } },
+      { session },
+    );
+  }
+
+  return eventDoc;
+}
+
+/**
+ * Customer-MLM-rebuild Phase 4 — release all HELD pair-bonus events
+ * tied to `newActiveUserId` (the user whose joining payment just got
+ * captured).
+ *
+ * For each held event:
+ *   1. Credit the recipient (sponsor)'s `pending` wallet bucket with
+ *      the held amount. Writes a paired `LedgerEntry` of type
+ *      `MLM_BINARY_PAIR_MATCH_RELEASED_ON_DOWNLINE_ACTIVATION` inside
+ *      the same session.
+ *   2. Flip the event's `status` to `CREDITED`, set `cappedAmount`,
+ *      stamp `releasedAt`, link the new `ledgerEntryId`.
+ *   3. Bump the recipient's `lifetimePlanAEarnings` counter (drives
+ *      the Plan A → B auto-upgrade trigger).
+ *   4. Decrement `heldPairBonusForSponsor` on the activating member's
+ *      own membership row so the admin "Held bonus for upline" panel
+ *      drops to 0 once all events are released.
+ *
+ * Idempotent end-to-end: the wallet credit uses a stable
+ * `MLM-BPH-<eventId>` key and the status update is conditional on
+ * `status === HELD_AWAITING_DOWNLINE_ACTIVATION` so a re-run on an
+ * already-released event is a no-op.
+ *
+ * Returns the array of released event ids.
+ */
+export async function releaseHeldPairBonusesForDownlineActivation({
+  newActiveUserId,
+  session,
+  correlationId = null,
+}) {
+  if (!newActiveUserId) return [];
+
+  const heldEvents = await MlmCommissionEvent.find(
+    {
+      sourceUserId: newActiveUserId,
+      bonusType: MLM_BONUS_TYPE.BINARY_PAIR_MATCH,
+      status: MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_DOWNLINE_ACTIVATION,
+    },
+    null,
+    session ? { session } : {},
+  );
+
+  if (heldEvents.length === 0) return [];
+
+  const released = [];
+  for (const heldEvent of heldEvents) {
+    const recipientUserId = heldEvent.recipientId;
+    const amount = roundCurrency(heldEvent.bonusAmount || 0);
+    if (!recipientUserId || amount <= 0) continue;
+
+    const recipientMembership = await getMembershipByUserId(recipientUserId, { session });
+    if (!recipientMembership) continue;
+    if (HELD_BONUS_RECIPIENT_BLOCKED.has(recipientMembership.status)) continue;
+
+    const releaseIdempotencyKey = `${MLM_IDEMPOTENCY_PREFIX.PAIR_BONUS_HELD_RELEASE}-${heldEvent._id}`;
+
+    try {
+      const creditResult = await creditWallet({
+        ownerType: OWNER_TYPE.CUSTOMER,
+        ownerId: recipientUserId,
+        amount,
+        bucket: "pending",
+        session,
+        ledgerType:
+          LEDGER_TRANSACTION_TYPE.MLM_BINARY_PAIR_MATCH_RELEASED_ON_DOWNLINE_ACTIVATION,
+        ledgerReference: releaseIdempotencyKey,
+        ledgerDescription: `Pair bonus released on downline activation (pair #${heldEvent.meta?.pairIndex || "?"})`,
+        idempotencyKey: releaseIdempotencyKey,
+        correlationId,
+        metadata: {
+          originalHeldEventId: String(heldEvent._id),
+          releasedForUserId: String(newActiveUserId),
+          pairIndex: heldEvent.meta?.pairIndex || null,
+        },
+        syncUserWalletBalance: false,
+      });
+
+      heldEvent.status = MLM_COMMISSION_EVENT_STATUS.CREDITED;
+      heldEvent.cappedAmount = amount;
+      heldEvent.walletBucket = "pending";
+      heldEvent.ledgerEntryId = creditResult?.ledgerEntry?._id || null;
+      heldEvent.meta = {
+        ...(heldEvent.meta || {}),
+        releasedOnDownlineActivation: true,
+        releasedAtIso: new Date().toISOString(),
+      };
+      await heldEvent.save({ session });
+
+      await recordLifetimeEarning({
+        userId: recipientUserId,
+        amount,
+        planType: heldEvent.planType || MLM_PLAN_TYPE.A,
+        session,
+      });
+
+      released.push(heldEvent);
+    } catch (err) {
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn(
+          "[mlmBonusEngineService] release of held pair-bonus failed",
+          { eventId: String(heldEvent._id), error: err.message },
+        );
+      }
+    }
+  }
+
+  // Drain heldPairBonusForSponsor on the activating member regardless
+  // of partial failures — the admin can re-run the release manually
+  // via the admin endpoint if any individual event failed.
+  await MlmMembership.updateOne(
+    { userId: newActiveUserId },
+    { $set: { heldPairBonusForSponsor: 0 } },
+    { session },
+  );
+
+  return released;
 }
 
 /**

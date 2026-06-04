@@ -26,7 +26,21 @@ const Modal = ({ isOpen, onClose, title, children, footer, size = 'md' }) => {
                     <DialogDescription className="sr-only">Modal content</DialogDescription>
                 </DialogHeader>
 
+                {/*
+                    `data-lenis-prevent` is REQUIRED here: the global
+                    `LenisScroll` component (App.jsx) installs a
+                    window-level wheel listener that intercepts touchpad
+                    + mouse-wheel events BEFORE React's synthetic event
+                    pipeline runs, so the `onWheel={stopPropagation}`
+                    below isn't sufficient on its own. Without
+                    `data-lenis-prevent`, modal content longer than
+                    80vh becomes unscrollable on desktop.
+
+                    `touch-pan-y` + `overscroll-contain` round out the
+                    touch story (mobile + Apple touchpads).
+                */}
                 <div
+                    data-lenis-prevent
                     className="px-6 pt-3 pb-5 max-h-[80vh] overflow-y-auto overscroll-contain touch-pan-y"
                     tabIndex={0}
                     onWheel={(e) => e.stopPropagation()}

@@ -109,6 +109,22 @@ export const LEDGER_TRANSACTION_TYPE = {
   // a return claim. Each release writes a paired DEBIT(pending) +
   // CREDIT(earnings) row carrying the same idempotency root.
   MLM_BONUS_RELEASED: "MLM_BONUS_RELEASED",
+  // Customer-MLM-rebuild Phase 4: informational ledger row written
+  // when a pair-match bonus is queued for a sponsor whose direct
+  // referral is still `REGISTERED_UNPAID`. Amount stays 0 on the
+  // wallet but the row creates an audit trail tying the held event
+  // back to the sponsor + downline pair. The matching
+  // `MlmCommissionEvent` carries the full computed bonus amount under
+  // status `HELD_AWAITING_DOWNLINE_ACTIVATION`.
+  MLM_BINARY_PAIR_MATCH_HELD_PENDING: "MLM_BINARY_PAIR_MATCH_HELD_PENDING",
+  // Customer-MLM-rebuild Phase 4: emitted by
+  // `releaseHeldPairBonusesForDownlineActivation` when a downline
+  // user activates and the sponsor's previously-HELD pair-bonus is
+  // released to the sponsor's `pending` wallet bucket. Paired with
+  // the original `BINARY_PAIR_MATCH` MlmCommissionEvent flipped to
+  // `CREDITED`.
+  MLM_BINARY_PAIR_MATCH_RELEASED_ON_DOWNLINE_ACTIVATION:
+    "MLM_BINARY_PAIR_MATCH_RELEASED_ON_DOWNLINE_ACTIVATION",
 };
 
 export const PAYOUT_TYPE = {

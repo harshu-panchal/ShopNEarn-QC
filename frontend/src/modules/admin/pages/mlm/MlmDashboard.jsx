@@ -26,13 +26,13 @@ const MlmDashboard = () => {
     }, []);
 
     return (
-        <div className="p-6 space-y-6">
-            <div className="flex items-start justify-between">
+        <div className="p-4 sm:p-6 space-y-6">
+            <div className="flex items-start justify-between flex-wrap gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900">MLM Program</h1>
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900">MLM Program</h1>
                     <p className="text-sm text-slate-500 mt-1">Customer rewards & withdrawal queue</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                     <Link
                         to="/admin/mlm/members"
                         className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
@@ -64,7 +64,7 @@ const MlmDashboard = () => {
                 <div className="text-slate-500 text-sm">Loading...</div>
             ) : data ? (
                 <>
-                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <Kpi label="Total Members" value={data.totalMembers} icon={Users} color="bg-indigo-50 text-indigo-600" />
                         <Kpi label="Plan A" value={data.planACount} icon={Award} color="bg-violet-50 text-violet-600" />
                         <Kpi label="Plan B" value={data.planBCount} icon={Award} color="bg-amber-50 text-amber-600" />
@@ -124,13 +124,14 @@ const Row = ({ label, value }) => (
 );
 
 const Kpi = ({ label, value, icon: Icon, color }) => (
-    <div className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center gap-4">
-        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${color}`}>
-            <Icon size={22} />
+    <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex items-center gap-3 sm:gap-4">
+        <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
+            <Icon size={20} className="sm:hidden" />
+            <Icon size={22} className="hidden sm:block" />
         </div>
-        <div>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">{label}</p>
-            <p className="text-2xl font-black text-slate-900 mt-0.5">{value}</p>
+        <div className="min-w-0 flex-1">
+            <p className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide truncate">{label}</p>
+            <p className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5 truncate">{value}</p>
         </div>
     </div>
 );

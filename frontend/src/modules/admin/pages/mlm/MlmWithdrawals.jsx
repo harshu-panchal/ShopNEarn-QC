@@ -62,10 +62,10 @@ const MlmWithdrawals = () => {
     };
 
     return (
-        <div className="p-6 space-y-4">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-slate-900">MLM Withdrawals</h1>
-                <div className="flex gap-1">
+        <div className="p-4 sm:p-6 space-y-4">
+            <div className="flex items-start sm:items-center justify-between flex-wrap gap-3">
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-900">MLM Withdrawals</h1>
+                <div className="flex gap-1 flex-wrap">
                     {STATUS_FILTERS.map((s) => (
                         <button
                             key={s || 'all'}
@@ -80,8 +80,13 @@ const MlmWithdrawals = () => {
                 </div>
             </div>
 
+            {/* 7-col table wrapped in overflow-x-auto so admins on
+                phones/tablets can swipe instead of triggering column
+                collisions. min-w-[820px] keeps each column comfortable
+                on the desktop layout. */}
             <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[820px]">
                     <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-600">
                         <tr>
                             <th className="text-left px-4 py-3">Requested</th>
@@ -156,6 +161,7 @@ const MlmWithdrawals = () => {
                         ))}
                     </tbody>
                 </table>
+              </div>
             </div>
         </div>
     );

@@ -476,6 +476,7 @@ const Auth = () => {
 
         {/* Form Content Side */}
         <div
+          data-lenis-prevent
           className="w-full md:w-[55%] min-h-0 p-8 pt-12 md:p-12 md:pt-16 flex flex-col justify-center bg-white overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar relative"
           onWheelCapture={handlePanelWheel}
           style={{ WebkitOverflowScrolling: "touch" }}>

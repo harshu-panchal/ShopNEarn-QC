@@ -49,6 +49,30 @@ const userSchema = new mongoose.Schema(
             select: false, // response me password na aaye
         },
 
+        /**
+         * EPHEMERAL FIELD — Customer-MLM-rebuild Phase 3.
+         *
+         * Holds the plaintext password the user entered during signup
+         * for the SOLE purpose of including it in the one-shot welcome
+         * email after OTP verification. Cleared the instant the email
+         * is dispatched (or skipped) inside
+         * `otpAuthService.completeCustomerSignupSideEffects`.
+         *
+         * `select: false` — never returned from any query unless the
+         * caller explicitly opts in. `sanitizeCustomer` also strips it
+         * defensively.
+         *
+         * SECURITY NOTE: storing plaintext passwords — even briefly —
+         * is a known anti-pattern. This field exists only because the
+         * product owner explicitly requested the credentials in the
+         * welcome email and is aware of the trade-off. Do not read it
+         * from any code path other than the welcome-email dispatcher.
+         */
+        _signupPasswordPlaintext: {
+            type: String,
+            select: false,
+        },
+
         role: {
             type: String,
             enum: ["user", "admin", "delivery", "seller"],
@@ -161,6 +185,19 @@ const userSchema = new mongoose.Schema(
             type: String,
             trim: true,
             uppercase: true,
+            default: null,
+        },
+
+        // Customer-MLM-rebuild Phase 1: capture-only field for the
+        // sponsor leg ("L"/"R") the customer selected at signup. The
+        // OTP-verify flow consumes this value when calling
+        // `mlmMembershipService.assignSponsor({preferredBinaryPosition})`
+        // so the new member is placed under the sponsor's chosen leg
+        // (not the BFS weaker-leg auto-balance). Preserved for audit
+        // after the placement is done.
+        pendingSponsorLeg: {
+            type: String,
+            enum: ["L", "R", null],
             default: null,
         },
 

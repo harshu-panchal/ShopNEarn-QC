@@ -98,11 +98,11 @@ const MlmMilestoneRules = () => {
   };
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl">
+      <div className="flex items-start sm:items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <Award size={20} className="text-amber-600" />
-          <h1 className="text-2xl font-bold text-slate-900">Milestone Rules</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Milestone Rules</h1>
         </div>
         {!draft && (
           <button
@@ -139,7 +139,8 @@ const MlmMilestoneRules = () => {
       )}
 
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[640px]">
           <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-600">
             <tr>
               <th className="text-left px-3 py-2.5">Name</th>
@@ -193,6 +194,7 @@ const MlmMilestoneRules = () => {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -201,7 +203,7 @@ const MlmMilestoneRules = () => {
 const MilestoneForm = ({ row, onChange }) => {
   const upd = (patch) => onChange({ ...row, ...patch });
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       <Field label="Name">
         <input
           type="text"

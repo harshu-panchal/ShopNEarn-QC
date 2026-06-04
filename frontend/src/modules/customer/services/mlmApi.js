@@ -75,6 +75,32 @@ export const mlmApi = {
     invalidateCache("/customer/mlm/join/payment");
     return axiosInstance.post("/customer/mlm/join/submit-proof", payload);
   },
+
+  // Customer-MLM-rebuild Phase 5 — Main dashboard one-shot payload.
+  getDashboardOverview: () =>
+    getWithDedupe("/customer/mlm/dashboard-overview", {}, { ttl: 5000 }),
+
+  // Customer-MLM-rebuild Phase 5 — Genealogy section endpoints.
+  getGenealogyTree: (params) =>
+    getWithDedupe("/customer/mlm/genealogy/tree", params || {}, { ttl: 5000 }),
+  getBinaryGenealogy: () =>
+    getWithDedupe("/customer/mlm/genealogy/binary", {}, { ttl: 5000 }),
+  getMatchingReport: (params) =>
+    getWithDedupe("/customer/mlm/genealogy/matching-report", params, { ttl: 3000 }),
+  getDirectSponsor: () =>
+    getWithDedupe("/customer/mlm/genealogy/direct-sponsor", {}, { ttl: 30000 }),
+  getTreeLayout: () =>
+    getWithDedupe("/customer/mlm/genealogy/tree-layout", {}, { ttl: 1500 }),
+  saveTreeLayout: (overrides) => {
+    invalidateCache("/customer/mlm/genealogy/tree-layout");
+    return axiosInstance.put("/customer/mlm/genealogy/tree-layout", {
+      overrides,
+    });
+  },
+
+  // Customer-MLM-rebuild Phase 5 — Payouts > Wallet History (new feed).
+  getWalletHistory: (params) =>
+    getWithDedupe("/customer/mlm/payouts/wallet-history", params, { ttl: 2000 }),
 };
 
 export default mlmApi;
