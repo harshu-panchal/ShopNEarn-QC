@@ -33,8 +33,25 @@ const userSchema = new mongoose.Schema(
         email: {
             type: String,
             lowercase: true,
-            unique: true,
-            sparse: true, // phone login users ke liye
+            /**
+             * NOT `unique`. Customer-MLM-rebuild Phase 7 (PO-request):
+             * multiple customers may register with the same email
+             * address (e.g. a household sharing one mailbox). The
+             * canonical identity is still `phone`, which IS unique.
+             *
+             * Email-based password login (see
+             * `customerAuthController.loginWithPassword`) handles
+             * shared emails by fetching every Customer with that
+             * email and bcrypt-comparing against each row; the first
+             * row whose password matches wins.
+             *
+             * `sparse: true` is preserved because not every customer
+             * supplies an email (phone-only OTP signup is still
+             * supported), and Mongo otherwise indexes every missing
+             * value as `null` — which would block more than one
+             * email-less customer.
+             */
+            sparse: true,
         },
 
         phone: {

@@ -86,8 +86,17 @@ const INDEX_DEFINITIONS = {
     { keys: { phone: 1 }, options: { name: "idx_phone", background: true, sparse: true } },
   ],
 
-  customers: [
+  // Customers live in the `users` collection (the schema registers as
+  // `mongoose.model("User", ...)` which pluralizes to `users`). The old
+  // block keyed by `customers:` was a no-op that created an empty
+  // `customers` collection on every boot — replaced with the correct
+  // collection name below.
+  users: [
     { keys: { phone: 1 }, options: { name: "idx_phone", background: true, sparse: true } },
+    // NOTE: `email` is intentionally NON-UNIQUE (multiple customers
+    // may share an email). The legacy `email_1` unique index that
+    // older deployments still carry is dropped on startup — see
+    // `LEGACY_INDEX_DROPS` below.
     { keys: { email: 1 }, options: { name: "idx_email", background: true, sparse: true } },
     { keys: { createdAt: -1 }, options: { name: "idx_created", background: true } },
   ],
@@ -174,6 +183,46 @@ const INDEX_DEFINITIONS = {
 };
 
 /**
+ * Indexes that must be dropped on startup because the schema once
+ * declared them but no longer does. Mongo never removes an index
+ * automatically — if a deployment was created when the schema had
+ * `unique: true`, the unique index lives on forever until manually
+ * dropped. Each entry is best-effort: missing indexes are silently
+ * ignored, real errors are logged but never crash startup.
+ */
+const LEGACY_INDEX_DROPS = [
+  // Customer email used to be `unique: true` (single-email-per-customer
+  // rule). PO request in Phase 7 (rebuild) relaxed this to allow shared
+  // emails. The legacy `email_1` (unique) index will block duplicate
+  // inserts until dropped — the new `idx_email` (non-unique) is created
+  // immediately after in the standard pass.
+  { collection: "users", indexName: "email_1" },
+];
+
+async function dropLegacyIndexes() {
+  for (const { collection: collectionName, indexName } of LEGACY_INDEX_DROPS) {
+    try {
+      const collection = mongoose.connection.collection(collectionName);
+      const existing = await collection.indexes();
+      const exists = existing.some((idx) => idx.name === indexName);
+      if (!exists) continue;
+
+      await collection.dropIndex(indexName);
+      logger.info(
+        `[DatabaseIndexManager] Dropped legacy index "${indexName}" on ${collectionName}`,
+      );
+    } catch (error) {
+      // NamespaceNotFound (26) → collection doesn't exist yet, ignore.
+      // IndexNotFound (27)     → already dropped, ignore.
+      if (error.code === 26 || error.code === 27) continue;
+      logger.warn(
+        `[DatabaseIndexManager] Failed to drop legacy index "${indexName}" on ${collectionName}: ${error.message}`,
+      );
+    }
+  }
+}
+
+/**
  * Create all required indexes across all collections
  * @returns {Promise<void>}
  */
@@ -187,7 +236,11 @@ export async function createAllIndexes() {
     failed: 0,
     errors: [],
   };
-  
+
+  // Drop schema-retired indexes BEFORE we attempt to create the new
+  // (relaxed) variants — otherwise Mongo refuses with IndexOptionsConflict.
+  await dropLegacyIndexes();
+
   try {
     for (const [collectionName, indexes] of Object.entries(INDEX_DEFINITIONS)) {
       const collection = mongoose.connection.collection(collectionName);

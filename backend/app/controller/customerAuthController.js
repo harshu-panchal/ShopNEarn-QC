@@ -94,36 +94,18 @@ export const signupCustomer = async (req, res) => {
             );
         }
 
-        // Pre-check: a DIFFERENT verified customer already owns this
-        // email. Reject upfront so the user can pick another email
-        // instead of failing at OTP-verify time. (A row that is still
-        // unverified with the same email will be re-used because
-        // issueCustomerOtp's lookup is keyed on phone — so the same
-        // person retrying signup with the same email is fine.)
-        const normalizedPhone = (() => {
-            try {
-                return normalizeAndValidatePhone(payload.phone);
-            } catch {
-                return null;
-            }
-        })();
-        if (!normalizedPhone) {
+        // NOTE: Customer-MLM-rebuild Phase 7 (PO-request): the
+        // email-uniqueness pre-check was removed — multiple customers
+        // are allowed to share the same email (login disambiguates
+        // by password). Phone IS still unique, and `issueCustomerOtp`
+        // keys off phone, so retrying signup with the same phone +
+        // email re-uses the same not-yet-verified row.
+        try {
+            normalizeAndValidatePhone(payload.phone);
+        } catch {
             return handleResponse(res, 400, "Invalid phone number format.", {
                 code: "PHONE_INVALID",
             });
-        }
-        const conflicting = await Customer.findOne({
-            email: emailLower,
-            isVerified: true,
-            phone: { $ne: normalizedPhone },
-        }).select("_id");
-        if (conflicting) {
-            return handleResponse(
-                res,
-                409,
-                "This email is already used by another account.",
-                { code: "EMAIL_ALREADY_USED" },
-            );
         }
 
         const passwordHash = await bcrypt.hash(
@@ -154,16 +136,12 @@ export const signupCustomer = async (req, res) => {
             "If the number is eligible, OTP has been sent",
         );
     } catch (error) {
-        // Handle mongo duplicate-key (race between the email pre-check
-        // and the customer.create call).
-        if (error?.code === 11000 && error?.keyPattern?.email) {
-            return handleResponse(
-                res,
-                409,
-                "This email is already used by another account.",
-                { code: "EMAIL_ALREADY_USED" },
-            );
-        }
+        // Phase 7: the email duplicate-key handler is gone (email is
+        // no longer unique). The only remaining unique index on
+        // `users` is `phone`, and the OTP service short-circuits a
+        // phone-retry by re-using the existing not-yet-verified row,
+        // so a 11000 here would be a genuine race we cannot recover
+        // from cleanly — surface it generically.
         return handleResponse(res, error.statusCode || 500, error.message);
     }
 };
@@ -227,7 +205,7 @@ export const verifyCustomerOTP = async (req, res) => {
 };
 
 /* ===============================
-   LOGIN – Email/Phone + Password (Customer-MLM-rebuild Phase 2)
+   LOGIN – Email/Phone + Password (Customer-MLM-rebuild Phase 2 + 7)
 
    Body: { identifier, password }
      - `identifier` is either an email (contains "@") or a phone number
@@ -235,6 +213,19 @@ export const verifyCustomerOTP = async (req, res) => {
      - Requires an existing VERIFIED customer with a bcrypt-hashed
        password (signup since the rebuild). Pre-rebuild customers who
        only have OTP can still log in via /send-login-otp + /verify-otp.
+
+   Phase 7 (PO-request): emails are no longer unique. If `identifier`
+   is an email and matches multiple Customer rows, the controller
+   bcrypt-compares the supplied password against each candidate (in
+   newest-first order) and logs in the first row that authenticates.
+   Phone-based login is unaffected because phone is still unique.
+
+   Security caveat: a brute-force attacker who steals an email +
+   guesses a weak password can now match ANY account that shares that
+   email + happens to use that password. Combined with the relaxed
+   password rules (Phase 7), this is a noticeably weaker auth surface
+   than the original "unique email" model. Accept this trade-off
+   knowingly — the product owner did.
 ================================ */
 export const loginWithPassword = async (req, res) => {
     try {
@@ -242,11 +233,20 @@ export const loginWithPassword = async (req, res) => {
         const identifier = payload.identifier.trim();
         const looksLikeEmail = identifier.includes("@");
 
-        let customer;
+        // We collect every plausible candidate up-front, then run
+        // bcrypt against each. `.sort({createdAt:-1})` gives a stable,
+        // newest-first match order so behaviour is predictable when
+        // two accounts share BOTH email AND password (which can
+        // happen now that emails are non-unique). The newest account
+        // wins because it is the one the user most likely just
+        // created.
+        let candidates = [];
         if (looksLikeEmail) {
-            customer = await Customer.findOne({
+            candidates = await Customer.find({
                 email: identifier.toLowerCase(),
-            }).select("+password");
+            })
+                .select("+password")
+                .sort({ createdAt: -1 });
         } else {
             let phone;
             try {
@@ -256,29 +256,46 @@ export const loginWithPassword = async (req, res) => {
                     code: "INVALID_CREDENTIALS",
                 });
             }
-            customer = await Customer.findOne({ phone }).select("+password");
+            const byPhone = await Customer.findOne({ phone }).select(
+                "+password",
+            );
+            if (byPhone) candidates = [byPhone];
         }
 
-        if (!customer || !customer.isVerified || !customer.password) {
+        // Walk candidates in order, returning the first one whose
+        // bcrypt comparison succeeds. We deliberately do NOT short-
+        // circuit on the first verified+has-password row — there can
+        // be multiple verified rows sharing the same email, and only
+        // ONE will have the supplied password.
+        let matched = null;
+        for (const candidate of candidates) {
+            if (!candidate || !candidate.isVerified || !candidate.password) {
+                continue;
+            }
+            // eslint-disable-next-line no-await-in-loop -- candidate
+            // bcrypt comparisons must run sequentially; parallelising
+            // would leak a small but measurable timing oracle that
+            // could help an attacker enumerate shared-email accounts.
+            const ok = await bcrypt.compare(payload.password, candidate.password);
+            if (ok) {
+                matched = candidate;
+                break;
+            }
+        }
+
+        if (!matched) {
             return handleResponse(res, 401, "Invalid credentials", {
                 code: "INVALID_CREDENTIALS",
             });
         }
 
-        const ok = await bcrypt.compare(payload.password, customer.password);
-        if (!ok) {
-            return handleResponse(res, 401, "Invalid credentials", {
-                code: "INVALID_CREDENTIALS",
-            });
-        }
+        matched.lastLogin = new Date();
+        await matched.save();
 
-        customer.lastLogin = new Date();
-        await customer.save();
-
-        const token = generateToken(customer);
+        const token = generateToken(matched);
         return handleResponse(res, 200, "Login successful", {
             token,
-            customer: sanitizeCustomer(customer),
+            customer: sanitizeCustomer(matched),
         });
     } catch (error) {
         return handleResponse(res, error.statusCode || 500, error.message);

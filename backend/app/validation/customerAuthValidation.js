@@ -5,8 +5,10 @@ import Joi from "joi";
  *
  * Required:
  *   - name: customer full name
- *   - email: lowercased; uniqueness enforced at controller layer
- *   - phone: 7–24 chars, normalized to E.164 by the auth service
+ *   - email: lowercased. NOT unique (Phase 7 — multiple customers may
+ *     share an email; login disambiguates via bcrypt password match).
+ *   - phone: 7–24 chars, normalized to E.164 by the auth service.
+ *     Phone IS unique — it is the canonical customer identity.
  *   - password: any non-empty string (PO-request: zero complexity rules)
  *   - referralCode: sponsor's referral code (4–16 alphanum chars, uppercase)
  *   - leg: "L" or "R" — which leg under the sponsor the new member chose
