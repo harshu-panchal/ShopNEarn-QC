@@ -342,13 +342,28 @@ const MemberDashboard = ({ overview, navigate }) => {
 
   const shareReferral = async () => {
     if (!membership.referralCode) return;
-    const message = `Join me on the rewards program! Sign up with my referral code ${membership.referralCode}: ${shareUrl}`;
+    // The Web Share API on most platforms (Android, iOS, WhatsApp,
+    // Telegram, etc.) appends `url` to the end of `text` when both are
+    // supplied — so embedding the URL inside `text` AND passing `url`
+    // produces a duplicate link in the final share payload. We pass
+    // them separately so the platform composes the message cleanly:
+    //   - `text` = the human-readable invite (no URL)
+    //   - `url`  = the canonical signup link (added by the OS)
+    //
+    // The clipboard fallback joins them with a newline so the user
+    // still gets a single coherent message when navigator.share is
+    // unavailable.
+    const message = `Join me on the rewards program! Sign up with my referral code ${membership.referralCode}.`;
     try {
       if (navigator.share) {
-        await navigator.share({ text: message, url: shareUrl });
+        await navigator.share({
+          title: "Join the Rewards Program",
+          text: message,
+          url: shareUrl,
+        });
         return;
       }
-      navigator.clipboard?.writeText(message);
+      navigator.clipboard?.writeText(`${message}\n${shareUrl}`);
       toast.success("Share link copied!");
     } catch {
       /* ignore */

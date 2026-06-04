@@ -60,7 +60,13 @@ const MlmReferralPage = () => {
     // so older links shared on WhatsApp / SMS keep working — but new
     // shares should use `/signup` for the cleanest UX.
     const shareUrl = `${window.location.origin}/signup?ref=${encodeURIComponent(code)}`;
-    const shareText = `Use my referral code ${code} when you sign up — get instant shopping credit on your first order! ${shareUrl}`;
+    // `shareMessage` is the URL-free invite copy. The Web Share API
+    // appends `url` to `text` on most platforms, so embedding the URL
+    // here would produce a duplicate link. The clipboard fallback
+    // below joins message + URL with a newline. (Same fix applies to
+    // MainDashboardPage.shareReferral — both files were affected.)
+    const shareMessage = `Use my referral code ${code} when you sign up — get instant shopping credit on your first order!`;
+    const shareTextWithUrl = `${shareMessage}\n${shareUrl}`;
     const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(shareUrl)}`;
 
     const handleCopy = (text) => {
@@ -71,10 +77,14 @@ const MlmReferralPage = () => {
     const handleWebShare = async () => {
         if (navigator.share) {
             try {
-                await navigator.share({ title: 'Join with my code', text: shareText, url: shareUrl });
+                await navigator.share({
+                    title: 'Join with my code',
+                    text: shareMessage,
+                    url: shareUrl,
+                });
             } catch { /* user cancelled */ }
         } else {
-            handleCopy(shareText);
+            handleCopy(shareTextWithUrl);
         }
     };
 
@@ -120,7 +130,7 @@ const MlmReferralPage = () => {
                             <span className="text-[11px] font-bold text-indigo-700">Share</span>
                         </button>
                         <a
-                            href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}
+                            href={`https://wa.me/?text=${encodeURIComponent(shareTextWithUrl)}`}
                             target="_blank"
                             rel="noreferrer"
                             className="flex flex-col items-center gap-1 bg-emerald-50 hover:bg-emerald-100 rounded-xl p-3 transition-colors"
