@@ -698,7 +698,7 @@ function LoginPane({
             <div className="space-y-1 text-center">
                 <h3 className="text-xl font-black text-gray-900 tracking-tight">Welcome Back!</h3>
                 <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest leading-none">
-                    {loginMethod === 'password' ? 'Sign in with email or phone' : 'Sign in with one-time password'}
+                    {loginMethod === 'password' ? 'Sign in with User ID, Email or Phone' : 'Sign in with one-time password'}
                 </p>
             </div>
 
@@ -727,7 +727,7 @@ function LoginPane({
                     <FieldWithIcon
                         icon={<Mail size={18} />}
                         theme={theme}
-                        placeholder="Email or Phone Number"
+                        placeholder="User ID, Email, or Phone Number"
                         value={formData.loginIdentifier}
                         onChange={(v) => updateField('loginIdentifier', v)}
                         autoComplete="username"

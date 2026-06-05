@@ -79,14 +79,23 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
     // Route-based visibility logic
     const path = location.pathname.replace(/\/$/, '') || '/';
 
-    const hideHeaderRoutes = ['/', '/categories', '/orders', '/transactions', '/profile', '/profile/edit', '/wishlist', '/addresses', '/wallet', '/support', '/privacy', '/about', '/terms', '/checkout', '/search', '/chat', '/payment-status'];
+    const hideHeaderRoutes = ['/', '/categories', '/orders', '/transactions', '/profile', '/profile/edit', '/account/credentials', '/wishlist', '/addresses', '/wallet', '/support', '/privacy', '/about', '/terms', '/checkout', '/search', '/chat', '/payment-status'];
     const hideBottomNavRoutes = ['/checkout', '/search', '/chat'];
     const hideCartRoutes = ['/checkout', '/search', '/chat'];
+
+    // Pages that manage their own full-viewport height (genealogy tree
+    // canvas, etc.) must NOT receive the default `pb-16` mobile-nav
+    // gutter from <main> — they pad themselves internally. They also
+    // hide the desktop <Footer> because the page already fills the
+    // viewport and a trailing footer would push total page height
+    // past 100dvh and cause the body to scroll.
+    const fullViewportRoutes = path.startsWith('/mlm/genealogy');
 
     // If props are passed, use them. Otherwise, use route-based logic.
     const showHeader = showHeaderProp !== undefined ? showHeaderProp : (!hideHeaderRoutes.includes(path) && !path.startsWith('/category') && !path.startsWith('/orders') && !path.startsWith('/mlm'));
     const showBottomNav = showBottomNavProp !== undefined ? showBottomNavProp : !hideBottomNavRoutes.includes(path);
     const showCart = showCartProp !== undefined ? showCartProp : (!hideCartRoutes.includes(path) && !path.startsWith('/orders'));
+    const effectiveFullHeight = fullHeight || fullViewportRoutes;
 
     // Condition to hide the MobileFooterMessage ("India's last minute app") on specific pages
     const hideFooterMessageRoutes = ['/profile', '/profile/edit'];
@@ -114,16 +123,18 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
                 </>
             )}
 
-            <main className={cn("flex-1 md:pb-0", !showHeader && "pt-0", !fullHeight && "pb-16")}>
+            <main className={cn("flex-1 md:pb-0", !showHeader && "pt-0", !effectiveFullHeight && "pb-16", fullViewportRoutes && "flex flex-col")}>
                 {children}
             </main>
 
             {showCart && <MiniCart />}
             <ProductDetailSheet />
 
-            <div className="hidden md:block">
-                <Footer />
-            </div>
+            {!fullViewportRoutes && (
+                <div className="hidden md:block">
+                    <Footer />
+                </div>
+            )}
 
             {/* Mobile Footer Message logic */}
             <div className="md:hidden">

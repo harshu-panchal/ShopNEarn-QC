@@ -45,6 +45,10 @@ export function buildCustomerWelcomeEmail({
   loginEmail,
   loginPhone,
   loginPassword,
+  // Phase 7 (PO-request): short public-facing User ID. Doubles as
+  // a login identifier on its own (User ID + password). Documented
+  // on `app/utils/userIdGenerator.js`.
+  loginUserId,
 }) {
   const safeName = escapeHtml(name || "there");
   const safeCode = escapeHtml(referralCode || "");
@@ -56,8 +60,12 @@ export function buildCustomerWelcomeEmail({
   const safeLoginEmail = escapeHtml(loginEmail || "");
   const safeLoginPhone = escapeHtml(loginPhone || "");
   const safeLoginPassword = escapeHtml(loginPassword || "");
+  const safeLoginUserId = escapeHtml(loginUserId || "");
   const hasCredentials = Boolean(
-    safeLoginEmail || safeLoginPhone || safeLoginPassword,
+    safeLoginEmail ||
+      safeLoginPhone ||
+      safeLoginPassword ||
+      safeLoginUserId,
   );
 
   const subject = `Welcome to the Rewards Program, ${name || "there"}!`;
@@ -66,10 +74,12 @@ export function buildCustomerWelcomeEmail({
     ? [
         "",
         "Your login credentials:",
+        loginUserId ? `  • User ID:  ${loginUserId}` : "",
         loginEmail ? `  • Email:    ${loginEmail}` : "",
         loginPhone ? `  • Phone:    ${loginPhone}` : "",
         loginPassword ? `  • Password: ${loginPassword}` : "",
         "",
+        "You can sign in with any of: User ID + password, Email + password, or Phone + OTP.",
         "Keep this email private — anyone who can read it can sign in as you. We recommend changing your password after your first login.",
       ].filter(Boolean)
     : [];
@@ -138,6 +148,14 @@ export function buildCustomerWelcomeEmail({
                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;">
                   <p style="margin:0;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#475569;font-weight:700;">Your Login Credentials</p>
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;font-size:14px;color:#0f172a;">
+                    ${
+                      safeLoginUserId
+                        ? `<tr>
+                              <td style="padding:6px 0;width:96px;color:#64748b;">User ID</td>
+                              <td style="padding:6px 0;font-family:'Courier New',monospace;font-weight:700;letter-spacing:0.08em;">${safeLoginUserId}</td>
+                            </tr>`
+                        : ""
+                    }
                     ${
                       safeLoginEmail
                         ? `<tr>

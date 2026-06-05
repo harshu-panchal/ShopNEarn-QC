@@ -17,6 +17,7 @@ import TermsPage from '../pages/TermsPage';
 import PrivacyPage from '../pages/PrivacyPage';
 import AboutPage from '../pages/AboutPage';
 import EditProfilePage from '../pages/EditProfilePage';
+import AccountCredentialsPage from '../pages/AccountCredentialsPage';
 import OrderDetailPage from '../pages/OrderDetailPage';
 import ProductDetailPage from '../pages/ProductDetailPage';
 import CheckoutPage from '../pages/CheckoutPage';
@@ -76,6 +77,7 @@ const CustomerRoutes = () => {
                             <Route path="payment-status" element={<ProtectedRoute><PaymentStatusPage /></ProtectedRoute>} />
                             <Route path="profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                             <Route path="profile/edit" element={<ProtectedRoute><EditProfilePage /></ProtectedRoute>} />
+                            <Route path="account/credentials" element={<ProtectedRoute><AccountCredentialsPage /></ProtectedRoute>} />
                             {/* Wallet page (pre-existing gap fixed in MLM Phase 1) */}
                             <Route path="wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
                             {/* Customer-MLM-rebuild Phase 8 — new main dashboard,

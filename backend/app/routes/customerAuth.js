@@ -5,6 +5,8 @@ import {
     loginWithPassword,
     verifyCustomerOTP,
     getCustomerProfile,
+    getCustomerCredentials,
+    changeCustomerPassword,
     updateCustomerProfile,
     getCustomerTransactions,
 } from "../controller/customerAuthController.js";
@@ -33,6 +35,21 @@ router.post("/login-password", authRouteRateLimiter, smallAuthPayload, loginWith
 // Profile routes
 router.get("/profile", verifyToken, getCustomerProfile);
 router.put("/profile", verifyToken, updateCustomerProfile);
+
+// Phase 7 (PO-request): in-app "Account Credentials" reveal screen.
+// Returns email + phone + plaintext password. See SECURITY NOTE on
+// `Customer._signupPasswordPlaintext`.
+router.get("/credentials", verifyToken, getCustomerCredentials);
+
+// Phase 7 (PO-request): in-app change-password flow. Authenticated,
+// requires the current password as proof of knowledge before
+// rotating to a new one. Writes both hash + plaintext copy.
+router.post(
+    "/change-password",
+    verifyToken,
+    smallAuthPayload,
+    changeCustomerPassword,
+);
 
 // Wallet
 router.get("/transactions", verifyToken, getCustomerTransactions);

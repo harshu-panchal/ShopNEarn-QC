@@ -12,6 +12,15 @@ export const customerApi = {
     axiosInstance.post("/customer/login-password", data),
   getProfile: () => getWithDedupe("/customer/profile", {}, { ttl: 5000 }), // Short cache for profile
   updateProfile: (data) => axiosInstance.put("/customer/profile", data),
+  // Phase 7 (PO-request): in-app credential reveal. Returns
+  // { email, phone, password, hasStoredPassword }. Skips the dedupe
+  // cache so the customer always sees the latest values immediately
+  // after any change.
+  getCredentials: () => axiosInstance.get("/customer/credentials"),
+  // Phase 7 (PO-request): change-password.
+  // Body: { currentPassword, newPassword }
+  changePassword: (data) =>
+    axiosInstance.post("/customer/change-password", data),
   getWalletTransactions: (params) =>
     getWithDedupe("/customer/transactions", params),
   getCategories: (params) =>

@@ -32,21 +32,27 @@ const DirectSponsorPage = () => {
     };
   }, []);
 
+  // `max-w-6xl mx-auto` was hoisted out of GenealogyLayout into each
+  // list page so the Tree View can render edge-to-edge.
   if (loading) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 flex justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 w-full overflow-y-auto pb-24">
+        <div className="bg-white rounded-2xl border border-slate-200 p-8 flex justify-center">
+          <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+        </div>
       </div>
     );
   }
 
   if (!sponsor) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-        <User className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-        <p className="text-sm text-slate-500">
-          You don't have a sponsor on record.
-        </p>
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 w-full overflow-y-auto pb-24">
+        <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+          <User className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+          <p className="text-sm text-slate-500">
+            You don't have a sponsor on record.
+          </p>
+        </div>
       </div>
     );
   }
@@ -66,7 +72,7 @@ const DirectSponsorPage = () => {
   }[sponsor.status] || "bg-slate-100 text-slate-700";
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 w-full overflow-y-auto pb-24 space-y-4">
       <div className="bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 rounded-2xl p-6 text-white shadow-lg">
         <div className="flex items-start gap-4">
           <div className="w-16 h-16 rounded-2xl bg-white/15 flex items-center justify-center flex-shrink-0">

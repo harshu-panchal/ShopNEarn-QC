@@ -24,6 +24,7 @@ import {
   approveManualJoiningPayment,
   rejectManualJoiningPayment,
 } from "../../services/mlm/mlmJoiningPaymentService.js";
+import { adminActivateMembership } from "../../services/mlm/mlmActivationService.js";
 import MlmJoiningPayment from "../../models/mlmJoiningPayment.js";
 import Customer from "../../models/customer.js";
 import { PAYMENT_STATUS } from "../../constants/payment.js";
@@ -162,14 +163,16 @@ export const listMlmMembers = async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate("userId", "name phone email mlm")
+      .populate("userId", "name phone email mlm userId")
       .lean();
 
     if (req.query.q) {
       const needle = String(req.query.q).toLowerCase();
       items = items.filter((row) => {
         const u = row.userId || {};
-        return `${u.name || ""} ${u.phone || ""} ${u.email || ""} ${row.referralCode || ""}`
+        // Phase 7 (PO-request): also match the customer's public
+        // User ID so admins can paste it from a support ticket.
+        return `${u.name || ""} ${u.phone || ""} ${u.email || ""} ${u.userId || ""} ${row.referralCode || ""}`
           .toLowerCase()
           .includes(needle);
       });
@@ -193,7 +196,7 @@ export const listMlmMembers = async (req, res) => {
         userId: { $in: sponsorIds },
       })
         .select({ userId: 1, referralCode: 1 })
-        .populate("userId", "name phone")
+        .populate("userId", "name phone userId")
         .lean();
       sponsorMap = new Map(
         sponsors.map((s) => [String(s.userId?._id || s.userId), s]),
@@ -208,6 +211,7 @@ export const listMlmMembers = async (req, res) => {
             return {
               name: sp.userId?.name || null,
               phone: sp.userId?.phone || null,
+              userId: sp.userId?.userId || null,
               referralCode: sp.referralCode || null,
             };
           })()
@@ -232,7 +236,7 @@ export const listMlmMembers = async (req, res) => {
 export const getMlmMemberDetail = async (req, res) => {
   try {
     const membership = await MlmMembership.findById(req.params.id)
-      .populate("userId", "name phone email mlm walletBalance")
+      .populate("userId", "name phone email mlm walletBalance userId")
       .lean();
     if (!membership) return handleResponse(res, 404, "Member not found");
 
@@ -246,7 +250,7 @@ export const getMlmMemberDetail = async (req, res) => {
       heldBonusEvents,
     ] = await Promise.all([
       MlmMembership.find({ sponsorId: memberUserId })
-        .populate("userId", "name phone email")
+        .populate("userId", "name phone email userId")
         .lean(),
       MlmCommissionEvent.find({ recipientId: memberUserId })
         .sort({ createdAt: -1 })
@@ -259,7 +263,7 @@ export const getMlmMemberDetail = async (req, res) => {
       membership.sponsorId
         ? MlmMembership.findOne({ userId: membership.sponsorId })
             .select({ userId: 1, referralCode: 1, planType: 1, status: 1 })
-            .populate("userId", "name phone email")
+            .populate("userId", "name phone email userId")
             .lean()
         : null,
       // Customer-MLM-rebuild Phase 10 — held pair bonuses sitting on
@@ -290,6 +294,7 @@ export const getMlmMemberDetail = async (req, res) => {
             name: sponsorMembership.userId?.name || null,
             phone: sponsorMembership.userId?.phone || null,
             email: sponsorMembership.userId?.email || null,
+            userId: sponsorMembership.userId?.userId || null,
             referralCode: sponsorMembership.referralCode || null,
             planType: sponsorMembership.planType || null,
             status: sponsorMembership.status || null,
@@ -299,6 +304,62 @@ export const getMlmMemberDetail = async (req, res) => {
     });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * POST /api/admin/mlm/members/:id/approve
+ *
+ * Customer-MLM-rebuild Phase 7 (PO-request): admin-initiated Plan A
+ * activation, bypassing the joining-payment flow entirely.
+ *
+ * Use case: support agent confirms a customer should be activated
+ * for free (gift / promo / KYC reconciliation / etc.). The customer
+ * goes from REGISTERED_UNPAID → ACTIVE without any wallet seed
+ * (admin can grant that separately via the Manual Wallet Adjustment
+ * panel).
+ *
+ * Idempotent: re-running on an ACTIVE row returns 200 + skipped.
+ * Refuses to approve SUSPENDED / TERMINATED rows.
+ */
+export const approveMlmMember = async (req, res) => {
+  try {
+    const reason = String(req.body?.reason || "").trim();
+    const result = await adminActivateMembership({
+      membershipId: req.params.id,
+      adminId: req.user?.id,
+      reason,
+    });
+
+    // Invalidate any cached admin listings / member detail reads
+    // (best-effort — caches that don't exist are no-ops).
+    try {
+      await invalidate(`/admin/mlm/members`);
+      await invalidate(`/admin/mlm/members/${req.params.id}`);
+    } catch (_) {
+      /* non-fatal */
+    }
+
+    if (result.skipped) {
+      return handleResponse(
+        res,
+        200,
+        "Member is already active.",
+        { skipped: true, reason: result.reason },
+      );
+    }
+
+    return handleResponse(res, 200, "Member approved for Plan A", {
+      activated: true,
+      releasedHeldBonusCount: result.releasedEvents?.length || 0,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message,
+      error.code ? { code: error.code } : {},
+    );
   }
 };
 

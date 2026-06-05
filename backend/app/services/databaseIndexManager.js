@@ -98,6 +98,14 @@ const INDEX_DEFINITIONS = {
     // older deployments still carry is dropped on startup — see
     // `LEGACY_INDEX_DROPS` below.
     { keys: { email: 1 }, options: { name: "idx_email", background: true, sparse: true } },
+    // Phase 7 (PO-request): public-facing User ID used as a third
+    // login identifier. Unique because two customers must NEVER
+    // share a User ID. Sparse so legacy rows without a backfilled
+    // value don't all collide on `null`. The schema also declares
+    // `unique:true, sparse:true` on the field itself; this duplicate
+    // declaration is harmless (Mongo no-ops the duplicate) and
+    // documents the intent in the central index registry.
+    { keys: { userId: 1 }, options: { name: "idx_userId_unique", background: true, sparse: true, unique: true } },
     { keys: { createdAt: -1 }, options: { name: "idx_created", background: true } },
   ],
 

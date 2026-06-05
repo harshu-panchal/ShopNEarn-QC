@@ -36,27 +36,35 @@ const BinaryGenealogyPage = () => {
     };
   }, []);
 
+  // `max-w-6xl mx-auto` was hoisted out of GenealogyLayout into each
+  // list page so the Tree View can render edge-to-edge. The outer
+  // wrapper here also handles vertical scrolling within the layout's
+  // flex-1 outlet shell.
   if (loading) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 flex justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 w-full overflow-y-auto pb-24">
+        <div className="bg-white rounded-2xl border border-slate-200 p-8 flex justify-center">
+          <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+        </div>
       </div>
     );
   }
 
   if (!data?.isMember) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-        <Sparkles className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-        <p className="text-sm text-slate-500">
-          Your binary tree will appear once you become a member.
-        </p>
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 w-full overflow-y-auto pb-24">
+        <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+          <Sparkles className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+          <p className="text-sm text-slate-500">
+            Your binary tree will appear once you become a member.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 w-full overflow-y-auto pb-24 space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <SummaryCard
           label="Left Leg Directs"

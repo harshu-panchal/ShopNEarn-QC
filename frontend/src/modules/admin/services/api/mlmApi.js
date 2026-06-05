@@ -15,6 +15,11 @@ export const adminMlmApi = {
         axiosInstance.get(`/admin/mlm/members/${id}/downline`, { params }),
     adjustMemberWallet: (id, data) =>
         axiosInstance.post(`/admin/mlm/members/${id}/adjust-wallet`, data),
+    // Phase 7 (PO-request): admin-initiated "approve without payment".
+    // Flips a REGISTERED_UNPAID member to ACTIVE / Plan A directly.
+    // Optional body: { reason }. Idempotent on already-active rows.
+    approveMember: (id, data) =>
+        axiosInstance.post(`/admin/mlm/members/${id}/approve`, data || {}),
 
     listWithdrawals: (params) =>
         axiosInstance.get('/admin/mlm/withdrawals', { params }),

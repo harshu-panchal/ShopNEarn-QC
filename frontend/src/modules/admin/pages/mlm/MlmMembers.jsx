@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Search, Check, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { adminMlmApi } from '../../services/api/mlmApi';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -44,28 +45,59 @@ const MlmMembers = () => {
     const [status, setStatus] = useState('');
     const [q, setQ] = useState('');
     const [loading, setLoading] = useState(false);
+    // Per-row approval pending state so each Approve button shows
+    // its own spinner and disables independently.
+    const [approvingId, setApprovingId] = useState(null);
+
+    const fetchMembers = async ({ signal } = {}) => {
+        setLoading(true);
+        try {
+            const params = { page, limit: 25 };
+            if (planType) params.planType = planType;
+            if (status) params.status = status;
+            if (q) params.q = q;
+            const res = await adminMlmApi.listMembers(params);
+            const data = res.data?.result ?? res.data?.data;
+            if (signal?.aborted) return;
+            setItems(data?.items || []);
+            setTotalPages(data?.totalPages || 1);
+        } finally {
+            if (!signal?.aborted) setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        let mounted = true;
-        (async () => {
-            setLoading(true);
-            try {
-                const params = { page, limit: 25 };
-                if (planType) params.planType = planType;
-                if (status) params.status = status;
-                if (q) params.q = q;
-                const res = await adminMlmApi.listMembers(params);
-                const data = res.data?.result ?? res.data?.data;
-                if (mounted) {
-                    setItems(data?.items || []);
-                    setTotalPages(data?.totalPages || 1);
-                }
-            } finally {
-                if (mounted) setLoading(false);
-            }
-        })();
-        return () => { mounted = false; };
+        const controller = new AbortController();
+        fetchMembers({ signal: controller.signal });
+        return () => controller.abort();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [page, planType, status, q]);
+
+    const handleApprove = async (member) => {
+        if (!member?._id) return;
+        const memberName = member.userId?.name || 'this member';
+        if (!window.confirm(`Approve ${memberName} for Plan A without payment? This will activate their membership immediately and release any held bonuses to their sponsor.`)) {
+            return;
+        }
+        setApprovingId(member._id);
+        try {
+            const res = await adminMlmApi.approveMember(member._id);
+            const result = res.data?.result ?? res.data?.data ?? {};
+            if (result.skipped) {
+                toast.info('Already active — no change made.');
+            } else {
+                const heldMsg = result.releasedHeldBonusCount > 0
+                    ? ` ${result.releasedHeldBonusCount} held bonus${result.releasedHeldBonusCount === 1 ? '' : 'es'} released to sponsor.`
+                    : '';
+                toast.success(`${memberName} activated for Plan A.${heldMsg}`);
+            }
+            await fetchMembers();
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Failed to approve member');
+        } finally {
+            setApprovingId(null);
+        }
+    };
 
     return (
         <div className="p-4 sm:p-6 space-y-4">
@@ -175,7 +207,30 @@ const MlmMembers = () => {
                                     {new Date(m.joinedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                                 </td>
                                 <td className="px-4 py-3 text-right">
-                                    <Link to={`/admin/mlm/members/${m._id}`} className="text-xs font-bold text-indigo-600 hover:underline">View</Link>
+                                    <div className="flex items-center justify-end gap-2">
+                                        <Link
+                                            to={`/admin/mlm/members/${m._id}`}
+                                            className="text-xs font-bold text-indigo-600 hover:underline"
+                                        >
+                                            View
+                                        </Link>
+                                        {m.status === 'registered_unpaid' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleApprove(m)}
+                                                disabled={approvingId === m._id}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white transition-colors"
+                                                title="Activate Plan A without payment"
+                                            >
+                                                {approvingId === m._id ? (
+                                                    <Loader2 size={12} className="animate-spin" />
+                                                ) : (
+                                                    <Check size={12} />
+                                                )}
+                                                {approvingId === m._id ? 'Approving' : 'Approve'}
+                                            </button>
+                                        )}
+                                    </div>
                                 </td>
                             </tr>
                         ))}

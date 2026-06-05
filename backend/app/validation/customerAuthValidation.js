@@ -57,6 +57,21 @@ export const loginWithPasswordSchema = Joi.object({
   password: Joi.string().min(1).max(128).required(),
 });
 
+/**
+ * Customer-MLM-rebuild Phase 7 (PO-request): change-password payload.
+ *
+ * Authenticated endpoint. The session JWT identifies WHICH customer;
+ * the body authorises the WRITE by proving knowledge of the current
+ * password (bcrypt-compared against the stored hash).
+ *
+ * Like signup, `newPassword` has zero complexity rules — just a
+ * non-empty string with a sane upper bound to prevent abuse.
+ */
+export const changePasswordSchema = Joi.object({
+  currentPassword: Joi.string().min(1).max(1024).required(),
+  newPassword: Joi.string().min(1).max(1024).required(),
+});
+
 export function validateSchema(schema, payload) {
   const { error, value } = schema.validate(payload, {
     abortEarly: false,

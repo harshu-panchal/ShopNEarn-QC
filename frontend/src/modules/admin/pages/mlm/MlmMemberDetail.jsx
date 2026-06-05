@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, ChevronDown, Users, ShieldCheck, AlertTriangle, ArrowDownLeft, ArrowDownRight, GitBranch, UserPlus, Hourglass, Award } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Users, ShieldCheck, AlertTriangle, ArrowDownLeft, ArrowDownRight, GitBranch, UserPlus, Hourglass, Award, Check, Loader2 } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -31,6 +31,7 @@ const MlmMemberDetail = () => {
     const [adjusting, setAdjusting] = useState(false);
     const [verification, setVerification] = useState(null);
     const [verifying, setVerifying] = useState(false);
+    const [approving, setApproving] = useState(false);
 
     const load = async () => {
         setLoading(true);
@@ -100,6 +101,31 @@ const MlmMemberDetail = () => {
         }
     };
 
+    const handleApprove = async () => {
+        const memberName = data?.membership?.userId?.name || 'this member';
+        if (!window.confirm(`Approve ${memberName} for Plan A without payment? This will activate their membership immediately and release any held bonuses to their sponsor.`)) {
+            return;
+        }
+        setApproving(true);
+        try {
+            const res = await adminMlmApi.approveMember(id);
+            const result = res.data?.result ?? res.data?.data ?? {};
+            if (result.skipped) {
+                toast.info('Already active — no change made.');
+            } else {
+                const heldMsg = result.releasedHeldBonusCount > 0
+                    ? ` ${result.releasedHeldBonusCount} held bonus${result.releasedHeldBonusCount === 1 ? '' : 'es'} released to sponsor.`
+                    : '';
+                toast.success(`${memberName} activated for Plan A.${heldMsg}`);
+            }
+            await load();
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Failed to approve member');
+        } finally {
+            setApproving(false);
+        }
+    };
+
     if (loading) return <div className="p-6 text-slate-500">Loading...</div>;
     if (!data) return <div className="p-6 text-slate-500">Not found</div>;
 
@@ -108,6 +134,10 @@ const MlmMemberDetail = () => {
 
     return (
         <div className="p-4 sm:p-6 space-y-6">
+            {/* Header row — title + badges on the left, admin action
+                buttons pinned to the right. `ml-auto` on the action
+                cluster keeps it right-aligned regardless of how the
+                badges wrap. */}
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                 <Link to="/admin/mlm/members" className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full shrink-0">
                     <ChevronLeft size={20} />
@@ -123,6 +153,22 @@ const MlmMemberDetail = () => {
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
                         Leg {m.position === 'L' ? 'Left' : 'Right'}
                     </span>
+                )}
+                {m.status === 'registered_unpaid' && (
+                    <button
+                        type="button"
+                        onClick={handleApprove}
+                        disabled={approving}
+                        className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white transition-colors shadow-sm"
+                        title="Activate Plan A without payment"
+                    >
+                        {approving ? (
+                            <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                            <Check size={14} />
+                        )}
+                        {approving ? 'Approving…' : 'Approve Plan A'}
+                    </button>
                 )}
             </div>
 

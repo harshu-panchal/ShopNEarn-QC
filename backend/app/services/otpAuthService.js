@@ -12,6 +12,7 @@ import {
   getMembershipByUserId,
 } from "./mlm/mlmMembershipService.js";
 import { sendCustomerWelcomeEmail } from "./emailService.js";
+import { generateUniqueUserId } from "../utils/userIdGenerator.js";
 
 const OTP_EXPIRY_MINUTES = () => parseInt(process.env.OTP_EXPIRY_MINUTES || "5", 10);
 const OTP_RESEND_COOLDOWN_SECONDS = () =>
@@ -184,10 +185,18 @@ export async function issueCustomerOtp({
 
   if (!customer) {
     // Reachable only on the signup flow now — login bails above.
+    // Mint the public-facing User ID up-front so it lives on the
+    // row even if the user abandons OTP verification. The unique
+    // sparse index on `Customer.userId` is the authoritative
+    // backstop against the (vanishingly rare) collision case;
+    // `generateUniqueUserId` retries until it finds a free value.
+    const userIdAssigned = await generateUniqueUserId(Customer);
+
     customer = await Customer.create({
       name: name || "Customer",
       phone,
       isVerified: false,
+      userId: userIdAssigned,
       ...(normalizedEmail ? { email: normalizedEmail } : {}),
       ...(passwordHash ? { password: passwordHash } : {}),
       ...(plaintextPassword
@@ -213,6 +222,11 @@ export async function issueCustomerOtp({
     if (normalizedLeg) customer.pendingSponsorLeg = normalizedLeg;
     if (normalizedReferralCode) {
       customer.pendingSponsorReferralCode = normalizedReferralCode;
+    }
+    // Pre-Phase-7 retry rows have no userId yet — assign one on the
+    // spot so the welcome email has something to echo.
+    if (!customer.userId) {
+      customer.userId = await generateUniqueUserId(Customer);
     }
     await customer.save();
   }
@@ -438,11 +452,11 @@ async function completeCustomerSignupSideEffects(customer, { ipAddress } = {}) {
 
   // Welcome email — best effort, never blocks the signup response.
   //
-  // We snapshot the plaintext password BEFORE clearing it, then
-  // unconditionally wipe the ephemeral field on the doc — even if the
-  // email transport fails. Rationale: the user can always recover
-  // their password via the reset flow, but we never want plaintext
-  // lingering in Mongo because the mail server hiccupped.
+  // The plaintext password is intentionally NOT wiped after dispatch
+  // (PO-request, Phase 7 second iteration). It is now a permanent
+  // store so the customer-facing "Account Credentials" screen can
+  // echo the password back on demand. See the SECURITY NOTE on
+  // `Customer._signupPasswordPlaintext` for the full trade-off.
   if (customer.email && membership?.referralCode) {
     const loginPasswordSnapshot = customer._signupPasswordPlaintext || "";
     try {
@@ -453,11 +467,16 @@ async function completeCustomerSignupSideEffects(customer, { ipAddress } = {}) {
         loginEmail: customer.email,
         loginPhone: customer.phone,
         loginPassword: loginPasswordSnapshot,
+        // Phase 7 (PO-request): echo the User ID so the customer
+        // always has at least one stable login handle on hand even
+        // if they change email or phone later.
+        loginUserId: customer.userId || "",
       });
       otpAuditLog("customer_welcome_email_dispatched", {
         phone: maskPhone(customer.phone),
         ipAddress,
         includedCredentials: Boolean(loginPasswordSnapshot),
+        includedUserId: Boolean(customer.userId),
       });
     } catch (mailErr) {
       otpAuditLog("customer_welcome_email_failed", {
@@ -465,27 +484,6 @@ async function completeCustomerSignupSideEffects(customer, { ipAddress } = {}) {
         ipAddress,
         error: mailErr.message,
       });
-    } finally {
-      if (customer._signupPasswordPlaintext) {
-        customer._signupPasswordPlaintext = undefined;
-        try {
-          await customer.save();
-        } catch (wipeErr) {
-          otpAuditLog("customer_signup_password_wipe_failed", {
-            phone: maskPhone(customer.phone),
-            ipAddress,
-            error: wipeErr.message,
-          });
-        }
-      }
-    }
-  } else if (customer._signupPasswordPlaintext) {
-    // No email / no membership — still don't leave plaintext at rest.
-    customer._signupPasswordPlaintext = undefined;
-    try {
-      await customer.save();
-    } catch {
-      /* swallow — wipe is best-effort */
     }
   }
 }

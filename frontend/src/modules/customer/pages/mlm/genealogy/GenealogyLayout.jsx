@@ -33,8 +33,22 @@ const TABS = [
 const GenealogyLayout = () => {
   const navigate = useNavigate();
   return (
-    <div className="min-h-screen bg-slate-50 pb-24">
-      <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm px-4 pt-4 pb-2 border-b border-slate-200/60">
+    // EXACT viewport height, never more. `CustomerLayout` detects the
+    // `/mlm/genealogy` prefix and skips its default `pb-16` gutter
+    // + desktop `<Footer />` so this layout owns the whole screen.
+    //
+    // The internal `pb-[80px] md:pb-0` reserves clearance for the
+    // mobile `BottomNav` (which is `position:fixed h-[70px]` + safe
+    // area) — without it the bottom of the tree canvas would be
+    // hidden under the nav on mobile. On desktop the nav is
+    // `md:hidden`, so no reservation is needed.
+    //
+    // `overflow-hidden` guarantees no internal element can push the
+    // body into a scroll state — every scrollable region (canvas
+    // pan, list-page scroll) lives strictly inside the
+    // `flex-1 min-h-0` outlet below.
+    <div className="h-dvh bg-slate-50 flex flex-col overflow-hidden pb-[80px] md:pb-0">
+      <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm px-4 pt-4 pb-2 border-b border-slate-200/60 shrink-0">
         <div className="flex items-center gap-2 mb-3">
           <button
             onClick={() => navigate("/mlm")}
@@ -68,10 +82,7 @@ const GenealogyLayout = () => {
         </nav>
       </div>
 
-      {/* Tree canvas, leg lists, and report tables can be wide;
-          allow the layout to grow up to 6xl on desktop while
-          keeping comfortable mobile padding. */}
-      <div className="max-w-6xl mx-auto px-3 sm:px-4 pt-4">
+      <div className="flex-1 min-h-0 flex flex-col">
         <Outlet />
       </div>
     </div>

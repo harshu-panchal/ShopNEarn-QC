@@ -30,6 +30,34 @@ const userSchema = new mongoose.Schema(
             trim: true,
         },
 
+        /**
+         * Customer-MLM-rebuild Phase 7 (PO-request): public-facing
+         * User ID. Independent of `_id` so the customer has a short,
+         * human-readable handle to share with support or use as a
+         * login identifier.
+         *
+         * Format: `SE` + 8 alphanumeric chars from a 32-char
+         * unambiguous alphabet (no 0/O/1/I/L). See
+         * `app/utils/userIdGenerator.js` for the generator + login
+         * routing helpers.
+         *
+         * `unique: true, sparse: true` — every new signup is given a
+         * userId immediately, but legacy customers created before
+         * this field existed start with `userId === undefined`.
+         * Sparse keeps the index from blocking those rows; the
+         * `backfill-customer-userids.js` migration assigns them a
+         * value retroactively. Once the backfill is verified, this
+         * could be tightened to `required: true` in a follow-up.
+         */
+        userId: {
+            type: String,
+            uppercase: true,
+            trim: true,
+            unique: true,
+            sparse: true,
+            index: true,
+        },
+
         email: {
             type: String,
             lowercase: true,
@@ -67,23 +95,40 @@ const userSchema = new mongoose.Schema(
         },
 
         /**
-         * EPHEMERAL FIELD — Customer-MLM-rebuild Phase 3.
+         * PERMANENT plaintext password copy — Customer-MLM-rebuild
+         * Phase 7 (second iteration, PO-request).
          *
-         * Holds the plaintext password the user entered during signup
-         * for the SOLE purpose of including it in the one-shot welcome
-         * email after OTP verification. Cleared the instant the email
-         * is dispatched (or skipped) inside
-         * `otpAuthService.completeCustomerSignupSideEffects`.
+         * Stores the plaintext password the user entered at signup
+         * (and at every subsequent password change) so the customer
+         * app can show it back to them in the "Account Credentials"
+         * screen, and so the welcome email can echo it on signup.
          *
-         * `select: false` — never returned from any query unless the
-         * caller explicitly opts in. `sanitizeCustomer` also strips it
-         * defensively.
+         * Historically this was an ephemeral field (kept only between
+         * OTP-send and welcome-email dispatch). It is now PERMANENT
+         * — the wipe in `otpAuthService.completeCustomerSignupSideEffects`
+         * was removed.
          *
-         * SECURITY NOTE: storing plaintext passwords — even briefly —
-         * is a known anti-pattern. This field exists only because the
-         * product owner explicitly requested the credentials in the
-         * welcome email and is aware of the trade-off. Do not read it
-         * from any code path other than the welcome-email dispatcher.
+         * Field name kept as `_signupPasswordPlaintext` for backward
+         * compat with existing data and references; the leading
+         * underscore signals "internal — never serialise to clients
+         * blindly". `sanitizeCustomer` strips it from API responses;
+         * the credentials endpoint reads it explicitly.
+         *
+         * SECURITY NOTE — this is a known anti-pattern. Plaintext at
+         * rest means a single DB dump or backup leak exposes every
+         * customer's actual login password. Combined with the
+         * relaxed password rules + shared-email login (Phase 7), this
+         * is a substantially weaker security posture than the
+         * pre-rebuild model. The product owner is aware. Do not add
+         * new read sites beyond:
+         *   - `sendCustomerWelcomeEmail` (signup time)
+         *   - `getCustomerCredentials` controller (in-app reveal)
+         *
+         * EXISTING ROWS: customers who signed up BEFORE this field
+         * became permanent have `_signupPasswordPlaintext === undefined`.
+         * Their stored bcrypt hash is one-way and cannot be reversed,
+         * so the credentials screen will display "—" until they
+         * change their password and the new plaintext gets persisted.
          */
         _signupPasswordPlaintext: {
             type: String,

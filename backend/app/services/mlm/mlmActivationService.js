@@ -296,6 +296,132 @@ export async function activateMembershipFromJoiningPayment(
 }
 
 /**
+ * Customer-MLM-rebuild Phase 7 (PO-request): admin-initiated
+ * "approve without payment" activation.
+ *
+ * Same end-state as `activateMembershipFromJoiningPayment` MINUS the
+ * shopping-wallet seed (no payment ⇒ no goods are being purchased,
+ * so no shopping credit is granted). The admin can still grant a
+ * complementary shopping credit afterwards via the existing
+ * "Manual Wallet Adjustment" panel if they choose to.
+ *
+ * Operations (all inside one session):
+ *   1. Reload the membership; require status REGISTERED_UNPAID.
+ *      ACTIVE → idempotent no-op.
+ *      SUSPENDED / TERMINATED → 409 (admin must lift first).
+ *   2. Flip status to ACTIVE, planType to A, set planAJoinedAt.
+ *   3. Stamp `meta.adminApprovedActivation = { adminId, at, ... }`
+ *      and `updatedBy = adminId` for the audit trail.
+ *   4. Release any HELD pair-bonuses sitting on this member's
+ *      sponsor (the exact same path the paid activation takes).
+ *   5. Resync the customer's denormalised `Customer.mlm` projection.
+ *   6. Fire the MLM_MEMBERSHIP_ACTIVATED notification.
+ *
+ * Returns `{ activated, membership, releasedEvents }`. Idempotent:
+ * re-running on an already-active membership returns
+ * `{ skipped: true, reason: "already_active" }`.
+ */
+export async function adminActivateMembership({
+  membershipId,
+  adminId,
+  reason = "",
+  correlationId = null,
+  session: externalSession,
+} = {}) {
+  if (!membershipId) {
+    const err = new Error("membershipId is required");
+    err.statusCode = 422;
+    throw err;
+  }
+  if (!adminId) {
+    const err = new Error("adminId is required");
+    err.statusCode = 401;
+    throw err;
+  }
+
+  return runInSession(externalSession, async (session) => {
+    const membership = await MlmMembership.findById(membershipId).session(
+      session,
+    );
+    if (!membership) {
+      const err = new Error("Membership not found");
+      err.statusCode = 404;
+      err.code = "MEMBERSHIP_NOT_FOUND";
+      throw err;
+    }
+
+    if (membership.status === MLM_MEMBERSHIP_STATUS.ACTIVE) {
+      return {
+        skipped: true,
+        reason: "already_active",
+        membership,
+      };
+    }
+
+    if (membership.status !== MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID) {
+      const err = new Error(
+        `Cannot admin-activate a membership in status ${membership.status}.`,
+      );
+      err.statusCode = 409;
+      err.code = "INVALID_STATUS";
+      throw err;
+    }
+
+    const customerId = membership.userId;
+
+    // Flip to ACTIVE / Plan A and stamp the audit fields.
+    membership.status = MLM_MEMBERSHIP_STATUS.ACTIVE;
+    membership.planType = MLM_PLAN_TYPE.A;
+    membership.planAJoinedAt = membership.planAJoinedAt || new Date();
+    membership.updatedBy = adminId;
+
+    const meta = membership.meta || {};
+    meta.adminApprovedActivation = {
+      adminId: String(adminId),
+      at: new Date(),
+      source: "admin_manual",
+      reason: String(reason || "").slice(0, 1000),
+    };
+    membership.meta = meta;
+    // Mongoose Mixed paths require an explicit markModified before
+    // save() picks up nested changes.
+    membership.markModified("meta");
+
+    await membership.save({ session });
+
+    // Release any held pair-bonuses for this member's sponsor — same
+    // path the paid activation takes. Idempotent: re-running emits
+    // zero new events if there are no held rows.
+    const releasedEvents = await releaseHeldPairBonusesForDownlineActivation({
+      newActiveUserId: customerId,
+      session,
+      correlationId,
+    });
+
+    await syncCustomerMlmProjection(customerId, { session });
+
+    try {
+      emitNotificationEvent(NOTIFICATION_EVENTS.MLM_MEMBERSHIP_ACTIVATED, {
+        userId: String(customerId),
+        data: {
+          referralCode: membership?.referralCode,
+          membershipId: String(membership?._id || ""),
+          activationSource: "admin_manual",
+        },
+      });
+    } catch (_) {
+      /* non-fatal */
+    }
+
+    return {
+      activated: true,
+      membership,
+      releasedEvents,
+    };
+  });
+}
+
+/**
  * If the customer's lifetime Plan A earnings have crossed the
  * configured threshold AND they are still on Plan A, promote them to
  * Plan B atomically:

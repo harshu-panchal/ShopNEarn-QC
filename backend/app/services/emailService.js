@@ -151,6 +151,10 @@ export async function sendCustomerWelcomeEmail({
   loginEmail,
   loginPhone,
   loginPassword,
+  // Phase 7 (PO-request): the new short public-facing User ID. Acts
+  // as a third login identifier alongside email + phone. Format is
+  // documented on `app/utils/userIdGenerator.js`.
+  loginUserId,
 }) {
   if (!email) {
     logger.warn("sendCustomerWelcomeEmail called without email — skipping");
@@ -165,6 +169,7 @@ export async function sendCustomerWelcomeEmail({
     loginEmail,
     loginPhone,
     loginPassword,
+    loginUserId,
   });
 
   if (!useRealEmailOTP()) {

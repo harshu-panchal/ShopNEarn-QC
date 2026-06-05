@@ -2,6 +2,7 @@ import express from "express";
 import {
   adjustMemberWallet,
   approveJoiningReview,
+  approveMlmMember,
   approveWithdrawal,
   createMilestoneRule,
   deleteMilestoneRule,
@@ -30,6 +31,10 @@ router.get("/members/:id", ...adminGuard, getMlmMemberDetail);
 router.get("/members/:id/downline", ...adminGuard, getMlmMemberDownlineTree);
 router.post("/members/:id/adjust-wallet", ...adminGuard, adjustMemberWallet);
 router.get("/members/:id/wallet-verification", ...adminGuard, verifyMemberWalletEndpoint);
+
+// Phase 7 (PO-request): admin-initiated "approve without payment".
+// Flips a REGISTERED_UNPAID member to ACTIVE / Plan A. Idempotent.
+router.post("/members/:id/approve", ...adminGuard, approveMlmMember);
 
 router.get("/withdrawals", ...adminGuard, listAdminWithdrawals);
 router.post("/withdrawals/:id/approve", ...adminGuard, approveWithdrawal);

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Plus, Minus, RotateCcw, Move, User, Sparkles } from "lucide-react";
+import { Loader2, Plus, Minus, RotateCcw, Move, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../../services/mlmApi";
 
@@ -36,20 +36,17 @@ import { mlmApi } from "../../../services/mlmApi";
  * Pan + zoom keep their setState model because they intentionally
  * need to move the whole stage on every event.
  */
-const NODE_WIDTH = 200;
-const NODE_HEIGHT = 92;
+// Node "slot" dimensions — Phase 8 (PO-request, second iteration):
+// the visual node is no longer a card at all. It's a coloured pill
+// holding the referral code with the name as plain text below. The
+// numbers here drive the tidy-tree layout math (column spacing,
+// edge endpoints) and the inline `width`/`height` of each slot's
+// hit area — they intentionally encompass both the pill and the
+// name label so the pointer-down target remains comfortable.
+const NODE_WIDTH = 130;
+const NODE_HEIGHT = 50;
 const HORIZONTAL_GAP = 32;
-const VERTICAL_GAP = 110;
-
-const STATUS_LABEL = {
-  active: { label: "Active", className: "bg-emerald-100 text-emerald-700" },
-  registered_unpaid: {
-    label: "Unpaid",
-    className: "bg-amber-100 text-amber-700",
-  },
-  suspended: { label: "Suspended", className: "bg-rose-100 text-rose-700" },
-  terminated: { label: "Terminated", className: "bg-slate-200 text-slate-700" },
-};
+const VERTICAL_GAP = 70;
 
 const TreeViewPage = () => {
   const containerRef = useRef(null);
@@ -375,7 +372,7 @@ const TreeViewPage = () => {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 flex flex-col items-center gap-3">
+      <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 p-8">
         <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
         <p className="text-sm text-slate-500">Loading your tree…</p>
       </div>
@@ -384,9 +381,9 @@ const TreeViewPage = () => {
 
   if (!treePayload?.isMember) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-        <Sparkles className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-        <p className="text-sm text-slate-500">
+      <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-8 text-center">
+        <Sparkles className="w-10 h-10 text-slate-300 mb-2" />
+        <p className="text-sm text-slate-500 max-w-sm">
           Your tree appears once you become a member. Activate your account to
           see your network.
         </p>
@@ -396,8 +393,8 @@ const TreeViewPage = () => {
 
   if (!treePayload?.tree) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-        <p className="text-sm text-slate-500">
+      <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-8 text-center">
+        <p className="text-sm text-slate-500 max-w-sm">
           Your network is empty — share your referral code to start building
           your team.
         </p>
@@ -406,7 +403,11 @@ const TreeViewPage = () => {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    // Full-bleed: this page consumes the entire `flex-1 min-h-0`
+    // outlet area handed down by GenealogyLayout. No card chrome —
+    // toolbar sits at the top, canvas fills the rest, footer hint
+    // sits at the bottom.
+    <div className="flex-1 min-h-0 flex flex-col bg-white">
       {/* Toolbar — wraps to a second row on narrow viewports so the
           zoom controls never spill out of the card. */}
       <div className="flex items-center justify-between flex-wrap gap-2 p-3 border-b border-slate-200 bg-slate-50">
@@ -460,11 +461,13 @@ const TreeViewPage = () => {
         </div>
       </div>
 
-      {/* Canvas — height grows with viewport so PC users get a
-          proper canvas, mobile users a compact swipe area. */}
+      {/* Canvas — flex-1 fills the entire viewport space below the
+          toolbar (and above the footer hint). Combined with the
+          parent layout's `flex-1 min-h-0` chain, this gives the user
+          a true full-page canvas on every viewport. */}
       <div
         ref={containerRef}
-        className="relative w-full h-[460px] sm:h-[560px] lg:h-[640px] bg-[radial-gradient(circle_at_1px_1px,_#e2e8f0_1px,_transparent_0)] [background-size:16px_16px] cursor-grab active:cursor-grabbing select-none overflow-hidden touch-pan-y"
+        className="relative w-full flex-1 min-h-0 bg-[radial-gradient(circle_at_1px_1px,_#e2e8f0_1px,_transparent_0)] [background-size:16px_16px] cursor-grab active:cursor-grabbing select-none overflow-hidden touch-pan-y"
         onPointerDown={onPanStart}
         onPointerMove={onPanMove}
         onPointerUp={onPanEnd}
@@ -489,23 +492,57 @@ const TreeViewPage = () => {
             height={treeHeight}
             className="absolute top-0 left-0 pointer-events-none"
           >
+            {/* Connector style — org-chart trails: a short vertical
+                stub down from the parent's pill, a horizontal dashed
+                bar joining the children at midY, and a short vertical
+                stub up to each child's pill. This matches the
+                reference (admin-area genealogy) more faithfully than
+                the previous coloured bezier curves. Stroke is kept
+                deliberately light so the data takes visual priority. */}
             {edges.map((edge) => {
               const from = positionedNodes.find((n) => n.id === edge.fromId);
               const to = positionedNodes.find((n) => n.id === edge.toId);
               if (!from || !to) return null;
+              // Pill sits at the top of the slot (~y+22 from the
+              // 50px slot, 22px tall pill). We anchor connectors to
+              // the BOTTOM of the parent's name label and the TOP of
+              // the child's pill so the lines read cleanly.
               const x1 = from.x + NODE_WIDTH / 2;
               const y1 = from.y + NODE_HEIGHT;
               const x2 = to.x + NODE_WIDTH / 2;
               const y2 = to.y;
               const midY = (y1 + y2) / 2;
               return (
-                <path
-                  key={`${edge.fromId}-${edge.toId}`}
-                  d={`M ${x1},${y1} C ${x1},${midY} ${x2},${midY} ${x2},${y2}`}
-                  stroke={edge.side === "L" ? "#6366f1" : "#10b981"}
-                  strokeWidth={1.5}
-                  fill="none"
-                />
+                <g key={`${edge.fromId}-${edge.toId}`}>
+                  {/* parent stub down */}
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x1}
+                    y2={midY}
+                    stroke="#94a3b8"
+                    strokeWidth={1}
+                  />
+                  {/* sibling cross-bar (dashed) */}
+                  <line
+                    x1={x1}
+                    y1={midY}
+                    x2={x2}
+                    y2={midY}
+                    stroke="#94a3b8"
+                    strokeWidth={1}
+                    strokeDasharray="4 3"
+                  />
+                  {/* child stub up */}
+                  <line
+                    x1={x2}
+                    y1={midY}
+                    x2={x2}
+                    y2={y2}
+                    stroke="#94a3b8"
+                    strokeWidth={1}
+                  />
+                </g>
               );
             })}
           </svg>
@@ -539,17 +576,32 @@ const TreeViewPage = () => {
   );
 };
 
+/**
+ * NodeCard — pill + label.
+ *
+ * Renders a coloured pill containing the referral code on top and
+ * the customer's name in plain text directly below. There is no
+ * card background, border or shadow — the node sits on the canvas
+ * grid directly (PO-request, second iteration of Phase 8). This
+ * mirrors a classic org-chart / genealogy look:
+ *
+ *      ┌──────────┐
+ *      │  RR0001  │
+ *      └──────────┘
+ *         ADMIN
+ *
+ * Status hints survive as colour-only cues:
+ *   - Root → indigo pill + "You" suffix appended to the name.
+ *   - Unpaid downline → amber pill.
+ *   - Active downline → slate-700 pill (neutral).
+ */
 const NodeCard = ({ node, onPointerDown, registerEl }) => {
   const data = node.data || {};
-  const statusInfo = STATUS_LABEL[data.status] || {
-    label: data.status,
-    className: "bg-slate-100 text-slate-700",
-  };
-  // Always render — but show "YOU" pill for the root (depth=0).
   const isRoot = data.position === null;
+  const isUnpaid = data.status === "registered_unpaid";
 
   // Hand the DOM element back up to TreeViewPage so the imperative
-  // drag code can mutate this card's left/top during a drag without
+  // drag code can mutate this slot's left/top during a drag without
   // triggering a React re-render.
   const elRef = useCallback(
     (el) => {
@@ -557,6 +609,12 @@ const NodeCard = ({ node, onPointerDown, registerEl }) => {
     },
     [node.id, registerEl],
   );
+
+  const pillClass = isRoot
+    ? "bg-indigo-600 text-white"
+    : isUnpaid
+      ? "bg-amber-500 text-white"
+      : "bg-slate-700 text-white";
 
   return (
     <div
@@ -569,44 +627,21 @@ const NodeCard = ({ node, onPointerDown, registerEl }) => {
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
       }}
-      className={`bg-white border-2 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing p-2.5 ${
-        isRoot
-          ? "border-indigo-400 bg-indigo-50"
-          : data.status === "registered_unpaid"
-            ? "border-amber-300"
-            : "border-slate-200"
-      }`}
+      className="flex flex-col items-center justify-start cursor-grab active:cursor-grabbing select-none"
     >
-      <div className="flex items-start gap-2">
-        <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 flex-shrink-0">
-          <User size={14} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1">
-            <p className="text-xs font-bold text-slate-900 truncate">
-              {data.name || "Member"}
-            </p>
-            {isRoot && (
-              <span className="bg-indigo-600 text-white text-[8px] font-bold uppercase tracking-widest px-1.5 rounded">
-                You
-              </span>
-            )}
-          </div>
-          <p className="text-[10px] text-slate-500 truncate">
-            {data.referralCode || "—"}
-          </p>
-        </div>
-      </div>
-      <div className="flex items-center justify-between mt-1.5">
-        <span
-          className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${statusInfo.className}`}
-        >
-          {statusInfo.label}
-        </span>
-        <span className="text-[10px] text-slate-500">
-          ↙ {data.leftLegDirectCount || 0} · ↘ {data.rightLegDirectCount || 0}
-        </span>
-      </div>
+      <span
+        className={`px-3 py-1 rounded-md text-[11px] font-mono font-bold tracking-wider shadow-sm whitespace-nowrap ${pillClass}`}
+      >
+        {data.referralCode || "—"}
+      </span>
+      <span className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 truncate max-w-full">
+        {data.name || "Member"}
+        {isRoot && (
+          <span className="ml-1 text-indigo-600 normal-case font-bold">
+            (You)
+          </span>
+        )}
+      </span>
     </div>
   );
 };

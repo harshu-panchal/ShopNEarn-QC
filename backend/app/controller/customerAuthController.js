@@ -10,6 +10,7 @@ import {
     verifyCustomerOtpCode,
 } from "../services/otpAuthService.js";
 import {
+    changePasswordSchema,
     loginWithPasswordSchema,
     sendLoginOtpSchema,
     sendSignupOtpSchema,
@@ -19,6 +20,7 @@ import {
 import { getMlmConfig } from "../services/mlm/mlmConfigService.js";
 import { getMembershipByReferralCode } from "../services/mlm/mlmMembershipService.js";
 import { MLM_MEMBERSHIP_STATUS } from "../constants/mlm.js";
+import { isLikelyUserId } from "../utils/userIdGenerator.js";
 
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "10", 10);
 
@@ -205,11 +207,14 @@ export const verifyCustomerOTP = async (req, res) => {
 };
 
 /* ===============================
-   LOGIN – Email/Phone + Password (Customer-MLM-rebuild Phase 2 + 7)
+   LOGIN – User ID / Email / Phone + Password (Customer-MLM-rebuild
+   Phase 2 + 7)
 
    Body: { identifier, password }
-     - `identifier` is either an email (contains "@") or a phone number
-       (normalized to E.164 by the auth service).
+     - `identifier` is one of:
+         • Email   — contains `@`
+         • User ID — `SE` prefix + 8 alphanumeric chars (`isLikelyUserId`)
+         • Phone   — normalised to E.164 by the auth service
      - Requires an existing VERIFIED customer with a bcrypt-hashed
        password (signup since the rebuild). Pre-rebuild customers who
        only have OTP can still log in via /send-login-otp + /verify-otp.
@@ -218,7 +223,8 @@ export const verifyCustomerOTP = async (req, res) => {
    is an email and matches multiple Customer rows, the controller
    bcrypt-compares the supplied password against each candidate (in
    newest-first order) and logs in the first row that authenticates.
-   Phone-based login is unaffected because phone is still unique.
+   User ID and phone lookups always return at most one candidate
+   because both fields carry unique indexes.
 
    Security caveat: a brute-force attacker who steals an email +
    guesses a weak password can now match ANY account that shares that
@@ -232,14 +238,15 @@ export const loginWithPassword = async (req, res) => {
         const payload = validateSchema(loginWithPasswordSchema, req.body || {});
         const identifier = payload.identifier.trim();
         const looksLikeEmail = identifier.includes("@");
+        const looksLikeUserId = !looksLikeEmail && isLikelyUserId(identifier);
 
         // We collect every plausible candidate up-front, then run
         // bcrypt against each. `.sort({createdAt:-1})` gives a stable,
         // newest-first match order so behaviour is predictable when
         // two accounts share BOTH email AND password (which can
-        // happen now that emails are non-unique). The newest account
-        // wins because it is the one the user most likely just
-        // created.
+        // happen now that emails are non-unique). The User ID and
+        // phone paths always yield at most one row, so the sort is
+        // a no-op for them.
         let candidates = [];
         if (looksLikeEmail) {
             candidates = await Customer.find({
@@ -247,6 +254,11 @@ export const loginWithPassword = async (req, res) => {
             })
                 .select("+password")
                 .sort({ createdAt: -1 });
+        } else if (looksLikeUserId) {
+            const byUserId = await Customer.findOne({
+                userId: identifier.toUpperCase(),
+            }).select("+password");
+            if (byUserId) candidates = [byUserId];
         } else {
             let phone;
             try {
@@ -297,6 +309,118 @@ export const loginWithPassword = async (req, res) => {
             token,
             customer: sanitizeCustomer(matched),
         });
+    } catch (error) {
+        return handleResponse(res, error.statusCode || 500, error.message);
+    }
+};
+
+/* ===============================
+   GET CREDENTIALS (Phase 7 second iteration, PO-request)
+
+   Returns the customer's email, phone, and plaintext password so the
+   in-app "Account Credentials" screen can echo them back. The
+   plaintext is read from `Customer._signupPasswordPlaintext` — see
+   the SECURITY NOTE on that field for trade-offs.
+
+   For pre-existing customers (rows created before the plaintext
+   field became permanent) the `password` value will be an empty
+   string; the frontend should render that as "—" / "Not available"
+   and prompt the user to set a new password if they want it
+   recorded.
+================================ */
+export const getCustomerCredentials = async (req, res) => {
+    try {
+        const customer = await Customer.findById(req.user.id).select(
+            "+_signupPasswordPlaintext userId email phone",
+        );
+        if (!customer) {
+            return handleResponse(res, 404, "Customer not found");
+        }
+        return handleResponse(res, 200, "Credentials fetched", {
+            // Phase 7 (PO-request): public-facing User ID, the third
+            // login identifier alongside email + phone. Empty string
+            // for the brief window between row creation and the
+            // backfill migration completing on legacy data.
+            userId: customer.userId || "",
+            email: customer.email || "",
+            phone: customer.phone || "",
+            password: customer._signupPasswordPlaintext || "",
+            // Flag the frontend can use to decide whether to render
+            // the "—" placeholder + "Set a password" CTA. True when
+            // a hash exists but no plaintext copy is stored (i.e.
+            // pre-rebuild signup).
+            hasStoredPassword: Boolean(customer._signupPasswordPlaintext),
+        });
+    } catch (error) {
+        return handleResponse(res, 500, error.message);
+    }
+};
+
+/* ===============================
+   CHANGE PASSWORD (Phase 7 second iteration, PO-request)
+
+   Body: { currentPassword, newPassword }
+
+   Authenticated. The customer must prove they know their current
+   password (bcrypt-checked against the stored hash) before the new
+   one is accepted. Writes BOTH the bcrypt hash AND the plaintext
+   copy in `_signupPasswordPlaintext` in the same `save()` so the
+   "Account Credentials" reveal screen always reflects the latest
+   value.
+
+   For pre-rebuild customers who have a bcrypt hash but no plaintext
+   copy, this is the canonical path to populate the field.
+
+   For customers who DON'T know their current password (e.g. signed
+   up via phone OTP only and never set a password), the flow is to
+   sign in via phone OTP — that path doesn't reach here.
+================================ */
+export const changeCustomerPassword = async (req, res) => {
+    try {
+        const payload = validateSchema(changePasswordSchema, req.body || {});
+
+        const customer = await Customer.findById(req.user.id).select(
+            "+password +_signupPasswordPlaintext",
+        );
+        if (!customer) {
+            return handleResponse(res, 404, "Customer not found");
+        }
+        if (!customer.password) {
+            // Account was created via phone-OTP only and never had a
+            // password set. We could allow "set" here, but the
+            // current UX only surfaces this endpoint via the
+            // Credentials screen which assumes there IS a current
+            // password to verify. Reject explicitly so a future
+            // "set password" flow can be added cleanly.
+            return handleResponse(
+                res,
+                400,
+                "Your account has no password set. Sign in via OTP and contact support to set one.",
+                { code: "NO_PASSWORD_SET" },
+            );
+        }
+
+        const ok = await bcrypt.compare(
+            payload.currentPassword,
+            customer.password,
+        );
+        if (!ok) {
+            return handleResponse(res, 401, "Current password is incorrect.", {
+                code: "INVALID_CURRENT_PASSWORD",
+            });
+        }
+
+        // No "same as old" check on purpose — the user could be
+        // re-entering the same value to populate the plaintext copy
+        // for a pre-rebuild row. That's a feature, not a bug.
+        customer.password = await bcrypt.hash(
+            payload.newPassword,
+            BCRYPT_ROUNDS,
+        );
+        customer._signupPasswordPlaintext = payload.newPassword;
+        await customer.save();
+
+        return handleResponse(res, 200, "Password updated successfully");
     } catch (error) {
         return handleResponse(res, error.statusCode || 500, error.message);
     }

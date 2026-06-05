@@ -39,6 +39,7 @@ const TermsPage = lazy(() => import('../../modules/customer/pages/TermsPage'));
 const PrivacyPage = lazy(() => import('../../modules/customer/pages/PrivacyPage'));
 const AboutPage = lazy(() => import('../../modules/customer/pages/AboutPage'));
 const EditProfilePage = lazy(() => import('../../modules/customer/pages/EditProfilePage'));
+const AccountCredentialsPage = lazy(() => import('../../modules/customer/pages/AccountCredentialsPage'));
 const OrderDetailPage = lazy(() => import('../../modules/customer/pages/OrderDetailPage'));
 const ProductDetailPage = lazy(() => import('../../modules/customer/pages/ProductDetailPage'));
 const CheckoutPage = lazy(() => import('../../modules/customer/pages/CheckoutPage'));
@@ -193,6 +194,8 @@ const AppRouter = () => {
                         { path: 'payment-status', element: <PaymentStatusPage /> },
                         { path: 'profile', element: <ProtectedRoute><ProfilePage /></ProtectedRoute> },
                         { path: 'profile/edit', element: <ProtectedRoute><EditProfilePage /></ProtectedRoute> },
+                        // Phase 7 (PO-request): in-app credential reveal.
+                        { path: 'account/credentials', element: <ProtectedRoute><AccountCredentialsPage /></ProtectedRoute> },
                         { path: 'wallet', element: <ProtectedRoute><WalletPage /></ProtectedRoute> },
                         // Customer-MLM-rebuild Phase 8 — `/mlm` is the new
                         // MainDashboardPage. Legacy MlmDashboardPage is

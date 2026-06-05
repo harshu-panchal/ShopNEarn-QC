@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
     User, MapPin, Package, CreditCard, Wallet, ChevronRight,
     LogOut, ShieldCheck, Heart, HelpCircle, Info, Edit2, ChevronLeft, Bell,
-    Network
+    Network, KeyRound
 } from 'lucide-react';
 import { useAuth } from '@core/context/AuthContext';
 import { useSettings } from '@core/context/SettingsContext';
@@ -198,6 +198,14 @@ const ProfilePage = () => {
                                 path="/addresses"
                                 color="var(--primary)"
                                 bg="rgba(56,189,248,0.10)"
+                            />
+                            <MenuItem
+                                icon={KeyRound}
+                                label="Account Credentials"
+                                sub="View your email, phone & password"
+                                path="/account/credentials"
+                                color="#475569"
+                                bg="rgba(71,85,105,0.10)"
                             />
                         </div>
                     </div>
