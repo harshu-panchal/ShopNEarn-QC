@@ -520,7 +520,7 @@ const MlmMemberDetail = () => {
                     </h3>
                     <p className="text-[11px] text-slate-500 mt-0.5">
                         Hover any node to see member details · tap a node to drill into their downline ·
-                        use the zoom controls (or ⌘/Ctrl + scroll) to resize.
+                        drag the background to pan · hold ⌘/Ctrl + scroll to zoom.
                     </p>
                 </div>
                 {/* Fixed-height canvas frame. The shared component
@@ -541,10 +541,10 @@ const MlmMemberDetail = () => {
                             <>
                                 <span className="hidden sm:inline">
                                     Hover for details · tap a node to drill into their downline ·
-                                    use the zoom controls (or ⌘/Ctrl + scroll) to resize.
+                                    drag the background to pan · hold ⌘/Ctrl + scroll to zoom.
                                 </span>
                                 <span className="sm:hidden">
-                                    Tap a node to drill in · use the zoom buttons to resize.
+                                    Tap a node to drill in · drag background to pan · pinch to zoom.
                                 </span>
                             </>
                         }

@@ -9,6 +9,7 @@ import {
   Loader2,
   Plus,
   Minus,
+  Move,
   Sparkles,
   Users,
   TrendingUp,
@@ -31,7 +32,7 @@ import {
  *
  * Responsibilities:
  *   - Tidy-tree layout math (nodes locked in deterministic positions)
- *   - Auto-centered, zoomable rendering
+ *   - Pan + zoom of the whole canvas
  *   - Hover tooltip with the full member detail card
  *   - Tap-to-recenter callback (parent decides what to fetch)
  *   - Depth selector + zoom controls
@@ -42,18 +43,15 @@ import {
  *   - Navigation history / breadcrumb (different UX for each surface)
  *
  * Interaction model:
- *   - The whole tree is locked in place — there is no per-node drag
- *     and no canvas pan. The stage is centered horizontally inside
- *     its container and scales from the top-center, so zooming in
- *     or out grows / shrinks the chart symmetrically without ever
- *     drifting sideways.
- *   - Tap on a node fires `onNodeTap`; the browser's synthetic
- *     `click` event guarantees an actual press-and-release on the
- *     same element (so an accidental drag is a no-op rather than a
- *     navigation event).
- *   - Zooming past the container's bounds simply clips the tree at
- *     the canvas edges — there is no pan to scroll back into view.
- *     Use the zoom-out button or wheel to bring it back.
+ *   - Per-node drag is intentionally disabled — every node sits at
+ *     the position computed by the tidy-tree algorithm so the chart
+ *     remains visually consistent for every viewer (no per-user
+ *     drift). To move the chart, drag the background to pan or use
+ *     the zoom controls.
+ *   - Tap detection on a node piggybacks on the browser's synthetic
+ *     `click` event so the canvas's `pointerdown → pan` flow on the
+ *     background is unaffected: a true tap (no movement) fires
+ *     `onNodeTap`, a press-and-drag pans the canvas as usual.
  */
 
 // Node "slot" dimensions. The visual node is a coloured pill holding
@@ -81,6 +79,10 @@ const GenealogyTreeCanvas = ({
   emptyTreeMessage = "No downline yet — referrals will populate this canvas as they join.",
   footerHint = null,
 }) => {
+  const containerRef = useRef(null);
+  const stageRef = useRef(null);
+
+  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(0.85);
   // Hovered node — when set, renders a fixed-position tooltip with
   // the full member details. We capture the node's screen rect at
@@ -188,17 +190,64 @@ const GenealogyTreeCanvas = ({
   // disabled (see header).
   const positionedNodes = nodes;
 
+  // ----- Pan (drag on background) -----
+  const panState = useRef({ active: false, startX: 0, startY: 0, panX: 0, panY: 0 });
+  const onPanStart = useCallback((e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    panState.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      panX: pan.x,
+      panY: pan.y,
+    };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setHoveredNode(null);
+  }, [pan]);
+  const onPanMove = useCallback((e) => {
+    if (!panState.current.active) return;
+    const dx = e.clientX - panState.current.startX;
+    const dy = e.clientY - panState.current.startY;
+    setPan({ x: panState.current.panX + dx, y: panState.current.panY + dy });
+  }, []);
+  const onPanEnd = useCallback((e) => {
+    if (panState.current.active) {
+      panState.current.active = false;
+      e.currentTarget?.releasePointerCapture?.(e.pointerId);
+    }
+  }, []);
+
   // ----- Zoom (wheel + buttons) -----
-  // The wheel handler only kicks in when the user holds ⌘/Ctrl so
-  // ordinary scrolling on the page (or inside a parent flex column)
-  // is never hijacked. The canvas itself does not pan or scroll;
-  // zooming past the container simply clips the tree at the edges.
   const onWheel = useCallback((e) => {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     setZoom((z) => Math.max(0.3, Math.min(2.5, z + (e.deltaY < 0 ? 0.08 : -0.08))));
   }, []);
 
+  const fitToCenter = useCallback(() => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    setPan({
+      x: (rect.width - treeWidth * zoom) / 2,
+      y: 32,
+    });
+  }, [treeWidth, zoom]);
+
+  // Refit whenever the tree changes (e.g. parent fetched a new
+  // sub-tree after a tap). Also fires after the initial mount.
+  useEffect(() => {
+    if (!loading && treeWidth > 0) {
+      fitToCenter();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, treeWidth, tree]);
+
+  // Node tap — the browser's synthetic `click` event handles the
+  // drag-vs-tap distinction natively, so we don't have to track
+  // pointermove distance ourselves. `onClick` only fires when
+  // pointerdown and pointerup land on the same element with
+  // negligible movement; anything beyond that is treated as a pan
+  // and the canvas listeners get the event instead.
   const handleNodeClick = useCallback(
     (node) => {
       onNodeTap?.(node);
@@ -296,25 +345,35 @@ const GenealogyTreeCanvas = ({
           >
             <Plus size={14} />
           </button>
+          <button
+            onClick={fitToCenter}
+            className="w-8 h-8 rounded-md border border-slate-200 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-600 ml-1"
+            aria-label="Center tree"
+            type="button"
+          >
+            <Move size={14} />
+          </button>
         </div>
       </div>
 
-      {/* Canvas — pan is intentionally disabled. The stage is
-          absolute-positioned with `left: 50%` + `translateX(-50%)`
-          so it stays centered horizontally inside the container at
-          every zoom level, and `transform-origin: top center` keeps
-          the root locked to the top while zooming. */}
+      {/* Canvas */}
       <div
-        className="relative w-full flex-1 min-h-0 bg-[radial-gradient(circle_at_1px_1px,_#e2e8f0_1px,_transparent_0)] [background-size:16px_16px] select-none overflow-hidden"
+        ref={containerRef}
+        className="relative w-full flex-1 min-h-0 bg-[radial-gradient(circle_at_1px_1px,_#e2e8f0_1px,_transparent_0)] [background-size:16px_16px] cursor-grab active:cursor-grabbing select-none overflow-hidden touch-pan-y"
+        onPointerDown={onPanStart}
+        onPointerMove={onPanMove}
+        onPointerUp={onPanEnd}
+        onPointerCancel={onPanEnd}
         onWheel={onWheel}
       >
         <div
+          ref={stageRef}
           style={{
             position: "absolute",
-            left: "50%",
-            top: 24,
-            transform: `translateX(-50%) scale(${zoom})`,
-            transformOrigin: "top center",
+            left: 0,
+            top: 0,
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: "0 0",
             width: treeWidth,
             height: treeHeight,
           }}
@@ -387,12 +446,12 @@ const GenealogyTreeCanvas = ({
           {footerHint || (
             <>
               <span className="hidden sm:inline">
-                Hover a node for details • Tap to view their downline • Use
-                the zoom controls (or ⌘/Ctrl + scroll) to resize.
+                Hover a node for details • Tap to view their downline • Drag
+                the background to pan • Hold ⌘/Ctrl + scroll to zoom.
               </span>
               <span className="sm:hidden">
-                Tap a node to view their downline • Use the zoom buttons to
-                resize.
+                Tap a node to view their downline • Drag the background to
+                pan • Pinch to zoom.
               </span>
             </>
           )}
