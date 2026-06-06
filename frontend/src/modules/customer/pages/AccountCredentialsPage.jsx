@@ -138,6 +138,12 @@ const AccountCredentialsPage = () => {
                             value={creds?.email || ''}
                             placeholder="No email on record"
                             onCopy={() => copy('Email', creds?.email)}
+                            footer={
+                                <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                                    Used for account updates only — not for sign-in.
+                                    Use your User ID or phone number to log in.
+                                </p>
+                            }
                         />
 
                         <CredentialRow

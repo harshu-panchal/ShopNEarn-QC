@@ -785,18 +785,29 @@ export const getDashboardOverview = async (req, res) => {
  * scoped to the caller's downline. Returns each node with at most
  * `left` and `right` children. Phone numbers are masked except for
  * direct (L1) referrals so privacy holds for distant downline members.
+ *
+ * Per-node payload intentionally includes everything the frontend
+ * tooltip needs (public User ID, name, code, plan, status, joined,
+ * leg counts, lifetime earnings) so a hover/click on any node never
+ * has to issue a second roundtrip.
  */
 async function buildCustomerBinaryTree(rootMembership, depthLeft, position) {
+  // `userId` on the membership is populated to the User document so
+  // we can surface the public-facing User ID (the SE-prefixed code
+  // displayed on the credentials page) directly in the tooltip.
+  const u = rootMembership.userId || {};
   const node = {
     _id: rootMembership._id,
     userId: rootMembership.userId,
-    name: rootMembership.userId?.name || null,
-    phone: maskPhoneForDownline(rootMembership.userId?.phone || null),
+    name: u?.name || null,
+    phone: maskPhoneForDownline(u?.phone || null),
+    publicUserId: u?.userId || null,
     referralCode: rootMembership.referralCode,
     planType: rootMembership.planType,
     status: rootMembership.status,
     position,
     joinedAt: rootMembership.joinedAt,
+    planAJoinedAt: rootMembership.planAJoinedAt || null,
     directReferralsCount: rootMembership.directReferralsCount || 0,
     totalDownlineCount: rootMembership.totalDownlineCount || 0,
     leftLegDirectCount: rootMembership.leftLegDirectCount || 0,
@@ -812,12 +823,12 @@ async function buildCustomerBinaryTree(rootMembership, depthLeft, position) {
   const [leftChild, rightChild] = await Promise.all([
     rootMembership.binaryLeftChildId
       ? MlmMembership.findOne({ userId: rootMembership.binaryLeftChildId })
-          .populate("userId", "name phone")
+          .populate("userId", "name phone userId")
           .lean()
       : null,
     rootMembership.binaryRightChildId
       ? MlmMembership.findOne({ userId: rootMembership.binaryRightChildId })
-          .populate("userId", "name phone")
+          .populate("userId", "name phone userId")
           .lean()
       : null,
   ]);
@@ -832,31 +843,101 @@ async function buildCustomerBinaryTree(rootMembership, depthLeft, position) {
 }
 
 /**
- * GET /api/customer/mlm/genealogy/tree?depth=4
+ * Authorisation for sub-tree navigation (`?rootUserId=...`): the
+ * caller must own the requested root, OR the requested root must be
+ * a descendant of the caller in the binary tree (which is the only
+ * tree the frontend renders).
  *
- * Recursive binary downline tree rooted at the caller's membership.
- * Depth capped at 6 to keep payload bounded; the frontend's tree
- * canvas supports lazy-expand via a follow-up call rooted at a child.
+ * Two-stage check:
+ *  1. Cheap O(1) `sponsorChain` membership check — covers the
+ *     common case where the caller is in the requested member's
+ *     unilevel upline (which always holds for non-spillover trees).
+ *  2. Defensive walk up `binaryParentId` for at most 20 hops to
+ *     catch pure-binary-spillover descendants whose unilevel
+ *     sponsor differs from their binary parent.
+ *
+ * Returns `true` when the caller may view the requested sub-tree.
+ */
+async function isCallerAuthorisedForTreeRoot(callerUserId, rootMembership) {
+  if (!rootMembership) return false;
+  if (String(rootMembership.userId?._id || rootMembership.userId) === String(callerUserId)) {
+    return true;
+  }
+  const chain = (rootMembership.sponsorChain || []).map((id) => String(id));
+  if (chain.includes(String(callerUserId))) return true;
+
+  let cursor = rootMembership.binaryParentId;
+  let safety = 20;
+  while (cursor && safety-- > 0) {
+    if (String(cursor) === String(callerUserId)) return true;
+    const parent = await MlmMembership.findOne(
+      { userId: cursor },
+      { binaryParentId: 1 },
+    ).lean();
+    if (!parent) break;
+    cursor = parent.binaryParentId;
+  }
+  return false;
+}
+
+/**
+ * GET /api/customer/mlm/genealogy/tree?depth=4&rootUserId=<User._id>
+ *
+ * Recursive binary downline tree rooted at the caller's membership
+ * (default) OR at any descendant in the caller's binary tree when
+ * `rootUserId` is provided. The frontend uses the latter to power
+ * the "click a node to view its sub-tree" interaction without ever
+ * leaking strangers' networks (see `isCallerAuthorisedForTreeRoot`
+ * for the auth model).
+ *
+ * Depth capped at 6 to keep payload bounded.
  */
 export const getMyGenealogyTree = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const callerUserId = req.user.id;
     const depth = Math.min(Math.max(parseInt(req.query.depth, 10) || 4, 1), 6);
-    const rootMembership = await MlmMembership.findOne({ userId })
-      .populate("userId", "name phone email")
+    const rawRoot = typeof req.query.rootUserId === "string"
+      ? req.query.rootUserId.trim()
+      : "";
+    const requestedRoot = rawRoot && mongoose.isValidObjectId(rawRoot)
+      ? rawRoot
+      : callerUserId;
+    const isOwnTree = String(requestedRoot) === String(callerUserId);
+
+    const rootMembership = await MlmMembership.findOne({ userId: requestedRoot })
+      .populate("userId", "name phone email userId")
       .lean();
     if (!rootMembership) {
       return handleResponse(res, 200, "Tree", {
         depth,
         tree: null,
         isMember: false,
+        isOwnTree,
+        requestedRootUserId: String(requestedRoot),
       });
     }
+
+    if (!isOwnTree) {
+      const allowed = await isCallerAuthorisedForTreeRoot(
+        callerUserId,
+        rootMembership,
+      );
+      if (!allowed) {
+        return handleResponse(
+          res,
+          403,
+          "You can only view the genealogy of members in your own network.",
+        );
+      }
+    }
+
     const tree = await buildCustomerBinaryTree(rootMembership, depth, null);
     return handleResponse(res, 200, "Tree", {
       depth,
       tree,
       isMember: true,
+      isOwnTree,
+      requestedRootUserId: String(requestedRoot),
     });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);

@@ -207,54 +207,58 @@ export const verifyCustomerOTP = async (req, res) => {
 };
 
 /* ===============================
-   LOGIN – User ID / Email / Phone + Password (Customer-MLM-rebuild
-   Phase 2 + 7)
+   LOGIN – User ID / Phone + Password (Customer-MLM-rebuild
+   Phase 2 + 7, second iteration)
 
    Body: { identifier, password }
      - `identifier` is one of:
-         • Email   — contains `@`
          • User ID — `SE` prefix + 8 alphanumeric chars (`isLikelyUserId`)
          • Phone   — normalised to E.164 by the auth service
-     - Requires an existing VERIFIED customer with a bcrypt-hashed
-       password (signup since the rebuild). Pre-rebuild customers who
-       only have OTP can still log in via /send-login-otp + /verify-otp.
 
-   Phase 7 (PO-request): emails are no longer unique. If `identifier`
-   is an email and matches multiple Customer rows, the controller
-   bcrypt-compares the supplied password against each candidate (in
-   newest-first order) and logs in the first row that authenticates.
+   Email-based password login was REMOVED on PO-request — emails are
+   captured at signup (and used for the welcome mail) but are NOT a
+   valid login identifier any more. The only password-login routes
+   are now User ID and Phone. Phone-OTP login (`/send-login-otp` +
+   `/verify-otp`) is the second permitted path and is unchanged.
+
+   Removing the email branch also closes the shared-email attack
+   surface that the "non-unique email" change had opened: a brute
+   forcer who knew a customer's email could previously cycle through
+   every account on that email; now the attacker must know the
+   per-account User ID or phone number to even reach the bcrypt
+   step.
+
+   Requires an existing VERIFIED customer with a bcrypt-hashed
+   password (signup since the rebuild). Pre-rebuild customers who
+   only have OTP can still log in via /send-login-otp + /verify-otp.
+
    User ID and phone lookups always return at most one candidate
-   because both fields carry unique indexes.
-
-   Security caveat: a brute-force attacker who steals an email +
-   guesses a weak password can now match ANY account that shares that
-   email + happens to use that password. Combined with the relaxed
-   password rules (Phase 7), this is a noticeably weaker auth surface
-   than the original "unique email" model. Accept this trade-off
-   knowingly — the product owner did.
+   because both fields carry unique indexes — the candidate list is
+   kept as a one-element array purely so the bcrypt-walk loop below
+   stays generic.
 ================================ */
 export const loginWithPassword = async (req, res) => {
     try {
         const payload = validateSchema(loginWithPasswordSchema, req.body || {});
         const identifier = payload.identifier.trim();
-        const looksLikeEmail = identifier.includes("@");
-        const looksLikeUserId = !looksLikeEmail && isLikelyUserId(identifier);
 
-        // We collect every plausible candidate up-front, then run
-        // bcrypt against each. `.sort({createdAt:-1})` gives a stable,
-        // newest-first match order so behaviour is predictable when
-        // two accounts share BOTH email AND password (which can
-        // happen now that emails are non-unique). The User ID and
-        // phone paths always yield at most one row, so the sort is
-        // a no-op for them.
+        // Email-shaped identifiers used to be accepted; they aren't
+        // any more. Surface a clear error instead of letting the
+        // request slip into a phone-normalisation failure that would
+        // produce the same generic "Invalid credentials" toast.
+        if (identifier.includes("@")) {
+            return handleResponse(
+                res,
+                401,
+                "Email sign-in is no longer supported. Please use your User ID or phone number.",
+                { code: "EMAIL_LOGIN_DISABLED" },
+            );
+        }
+
+        const looksLikeUserId = isLikelyUserId(identifier);
+
         let candidates = [];
-        if (looksLikeEmail) {
-            candidates = await Customer.find({
-                email: identifier.toLowerCase(),
-            })
-                .select("+password")
-                .sort({ createdAt: -1 });
-        } else if (looksLikeUserId) {
+        if (looksLikeUserId) {
             const byUserId = await Customer.findOne({
                 userId: identifier.toUpperCase(),
             }).select("+password");
@@ -275,19 +279,18 @@ export const loginWithPassword = async (req, res) => {
         }
 
         // Walk candidates in order, returning the first one whose
-        // bcrypt comparison succeeds. We deliberately do NOT short-
-        // circuit on the first verified+has-password row — there can
-        // be multiple verified rows sharing the same email, and only
-        // ONE will have the supplied password.
+        // bcrypt comparison succeeds. The list is effectively always
+        // one row (User ID and phone both have unique indexes); the
+        // loop survives as a generic shape in case a future
+        // identifier type is added.
         let matched = null;
         for (const candidate of candidates) {
             if (!candidate || !candidate.isVerified || !candidate.password) {
                 continue;
             }
             // eslint-disable-next-line no-await-in-loop -- candidate
-            // bcrypt comparisons must run sequentially; parallelising
-            // would leak a small but measurable timing oracle that
-            // could help an attacker enumerate shared-email accounts.
+            // bcrypt comparisons run sequentially; the loop is short
+            // (currently always at most one iteration).
             const ok = await bcrypt.compare(payload.password, candidate.password);
             if (ok) {
                 matched = candidate;

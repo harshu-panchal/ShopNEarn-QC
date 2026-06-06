@@ -22,6 +22,7 @@ import {
     ArrowLeftRight,
     ArrowLeft,
     ArrowRight,
+    BadgeCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { customerApi } from '../services/customerApi';
@@ -248,7 +249,14 @@ const CustomerAuth = () => {
         const identifier = (formData.loginIdentifier || '').trim();
         const password = formData.loginPassword || '';
         if (!identifier) {
-            toast.error('Enter your email or phone number.');
+            toast.error('Enter your User ID or phone number.');
+            return;
+        }
+        // Email-shaped identifiers are no longer accepted by the
+        // backend — short-circuit with a clear, local error instead
+        // of round-tripping for the EMAIL_LOGIN_DISABLED response.
+        if (identifier.includes('@')) {
+            toast.error('Email sign-in is no longer supported. Use your User ID or phone number.');
             return;
         }
         if (!password) {
@@ -698,7 +706,7 @@ function LoginPane({
             <div className="space-y-1 text-center">
                 <h3 className="text-xl font-black text-gray-900 tracking-tight">Welcome Back!</h3>
                 <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest leading-none">
-                    {loginMethod === 'password' ? 'Sign in with User ID, Email or Phone' : 'Sign in with one-time password'}
+                    {loginMethod === 'password' ? 'Sign in with User ID or Phone' : 'Sign in with one-time password'}
                 </p>
             </div>
 
@@ -725,9 +733,9 @@ function LoginPane({
             {loginMethod === 'password' ? (
                 <form onSubmit={onSubmitPassword} className="space-y-4">
                     <FieldWithIcon
-                        icon={<Mail size={18} />}
+                        icon={<BadgeCheck size={18} />}
                         theme={theme}
-                        placeholder="User ID, Email, or Phone Number"
+                        placeholder="User ID or Phone Number"
                         value={formData.loginIdentifier}
                         onChange={(v) => updateField('loginIdentifier', v)}
                         autoComplete="username"

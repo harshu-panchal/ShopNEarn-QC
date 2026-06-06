@@ -73,13 +73,13 @@ export function buildCustomerWelcomeEmail({
   const credentialsTextLines = hasCredentials
     ? [
         "",
-        "Your login credentials:",
+        "Your account details:",
         loginUserId ? `  • User ID:  ${loginUserId}` : "",
-        loginEmail ? `  • Email:    ${loginEmail}` : "",
+        loginEmail ? `  • Email:    ${loginEmail} (for updates only)` : "",
         loginPhone ? `  • Phone:    ${loginPhone}` : "",
         loginPassword ? `  • Password: ${loginPassword}` : "",
         "",
-        "You can sign in with any of: User ID + password, Email + password, or Phone + OTP.",
+        "Sign-in options: User ID + password, or Phone + OTP. Email is used for account communications only.",
         "Keep this email private — anyone who can read it can sign in as you. We recommend changing your password after your first login.",
       ].filter(Boolean)
     : [];
@@ -146,7 +146,8 @@ export function buildCustomerWelcomeEmail({
             <tr>
               <td style="padding:24px 32px 0 32px;">
                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;">
-                  <p style="margin:0;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#475569;font-weight:700;">Your Login Credentials</p>
+                  <p style="margin:0;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#475569;font-weight:700;">Your Account Details</p>
+                  <p style="margin:6px 0 0;font-size:12px;color:#64748b;">Sign in with your <strong>User ID + password</strong> or <strong>Phone + OTP</strong>. Email is used for updates only.</p>
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;font-size:14px;color:#0f172a;">
                     ${
                       safeLoginUserId

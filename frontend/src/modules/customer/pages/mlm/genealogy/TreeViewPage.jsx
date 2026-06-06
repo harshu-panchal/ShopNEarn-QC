@@ -1,5 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Plus, Minus, RotateCcw, Move, Sparkles } from "lucide-react";
+import {
+  Loader2,
+  Plus,
+  Minus,
+  RotateCcw,
+  Move,
+  Sparkles,
+  ArrowLeft,
+  Users,
+  TrendingUp,
+  Calendar,
+  BadgeCheck,
+  Hash,
+  ChevronLeft,
+  ChevronRight,
+  Crown,
+} from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../../services/mlmApi";
 
@@ -36,17 +52,24 @@ import { mlmApi } from "../../../services/mlmApi";
  * Pan + zoom keep their setState model because they intentionally
  * need to move the whole stage on every event.
  */
-// Node "slot" dimensions — Phase 8 (PO-request, second iteration):
+// Node "slot" dimensions — Phase 8 (PO-request, third iteration):
 // the visual node is no longer a card at all. It's a coloured pill
 // holding the referral code with the name as plain text below. The
 // numbers here drive the tidy-tree layout math (column spacing,
 // edge endpoints) and the inline `width`/`height` of each slot's
 // hit area — they intentionally encompass both the pill and the
 // name label so the pointer-down target remains comfortable.
-const NODE_WIDTH = 130;
-const NODE_HEIGHT = 50;
-const HORIZONTAL_GAP = 32;
-const VERTICAL_GAP = 70;
+//
+// Slot width was originally 130px with a 32px gap, which produced
+// a noticeably wide tree at depth 4+ (~16 leaf columns ⇒ ~2.6k px
+// of horizontal real estate). Tightened to 96 + 12 so the same
+// tree compresses to ~1.7k px and reads as a coherent network
+// rather than a sprawling chart. The pill itself sizes from its
+// own content so the referral code never clips at the new width.
+const NODE_WIDTH = 96;
+const NODE_HEIGHT = 46;
+const HORIZONTAL_GAP = 12;
+const VERTICAL_GAP = 56;
 
 const TreeViewPage = () => {
   const containerRef = useRef(null);
@@ -59,6 +82,19 @@ const TreeViewPage = () => {
   const [depth, setDepth] = useState(4);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(0.85);
+  // Sub-tree navigation: `rootUserId` is null when the user is viewing
+  // their own root. Clicking a downline node pushes its User._id here,
+  // which re-runs the fetch effect and re-renders the canvas. The
+  // `rootStack` keeps the breadcrumb history so the back button
+  // unwinds one level at a time instead of jumping straight to self.
+  const [rootUserId, setRootUserId] = useState(null);
+  const [rootStack, setRootStack] = useState([]);
+  // Hovered node — when set, renders a fixed-position tooltip with
+  // the full member details. We capture the node's screen rect at
+  // hover-enter time so the tooltip can be positioned relative to
+  // the pill regardless of pan/zoom or scroll inside the canvas.
+  const [hoveredNode, setHoveredNode] = useState(null);
+  const hideHoverTimerRef = useRef(null);
 
   // ----- Fetch tree + saved layout -----
   useEffect(() => {
@@ -66,8 +102,10 @@ const TreeViewPage = () => {
     setLoading(true);
     (async () => {
       try {
+        const treeParams = { depth };
+        if (rootUserId) treeParams.rootUserId = rootUserId;
         const [treeRes, layoutRes] = await Promise.all([
-          mlmApi.getGenealogyTree({ depth }),
+          mlmApi.getGenealogyTree(treeParams),
           mlmApi.getTreeLayout(),
         ]);
         if (!mounted) return;
@@ -76,9 +114,23 @@ const TreeViewPage = () => {
         setTreePayload(t);
         setLayoutOverrides(l?.overrides || {});
       } catch (err) {
+        const code = err?.response?.status;
+        const msg = err?.response?.data?.message;
         toast.error(
-          err?.response?.data?.message || "Failed to load tree",
+          msg ||
+            (code === 403
+              ? "You can only view members in your own network."
+              : "Failed to load tree"),
         );
+        if (code === 403 && rootUserId) {
+          // Roll back to whatever root we came from instead of
+          // leaving the user stranded on an empty canvas.
+          setRootStack((prev) => {
+            const next = prev.slice(0, -1);
+            setRootUserId(next.length ? next[next.length - 1] : null);
+            return next;
+          });
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -86,7 +138,20 @@ const TreeViewPage = () => {
     return () => {
       mounted = false;
     };
-  }, [depth]);
+  }, [depth, rootUserId]);
+
+  // Clear any pending hover dismissal timer when the component
+  // unmounts so we don't try to `setHoveredNode(null)` after the
+  // tree page has gone away (eg. user navigates to a sibling page).
+  useEffect(
+    () => () => {
+      if (hideHoverTimerRef.current) {
+        clearTimeout(hideHoverTimerRef.current);
+        hideHoverTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   // ----- Compute default tidy layout (recursive divide-and-conquer) -----
   const { nodes, edges, treeWidth, treeHeight } = useMemo(() => {
@@ -194,6 +259,10 @@ const TreeViewPage = () => {
       panY: pan.y,
     };
     e.currentTarget.setPointerCapture?.(e.pointerId);
+    // A pan grab anywhere on the canvas should immediately dismiss
+    // any open tooltip — its anchor rect is about to scroll out
+    // from under it as the stage transform changes.
+    setHoveredNode(null);
   }, [pan]);
   const onPanMove = useCallback((e) => {
     if (!panState.current.active) return;
@@ -262,6 +331,14 @@ const TreeViewPage = () => {
   const dragStateRef = useRef(null);
   const moveHandlerRef = useRef(null);
   const endHandlerRef = useRef(null);
+  // `handleNodeTap` is read inside the window-level pointerup
+  // listener installed by `startNodeDrag`. The tap handler itself
+  // depends on `rootUserId` / `treePayload`, both of which change
+  // every time the user navigates into a sub-tree. Threading those
+  // deps into `startNodeDrag` would force a NodeCard re-render and
+  // break the live drag. We use a ref so the listener always sees
+  // the freshest version regardless of when it was installed.
+  const handleNodeTapRef = useRef(() => {});
 
   // Tear-down for any active drag — used both by the normal pointerup
   // path and by the cleanup `useEffect` so a hot-reload / unmount
@@ -287,6 +364,12 @@ const TreeViewPage = () => {
     if (e.button !== undefined && e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
+
+    // Dismiss the hover tooltip immediately — the user is interacting
+    // with the node and is about to either drag or click into the
+    // sub-tree. Either way, keeping the tooltip up is just visual
+    // noise and would race the layout transition that follows.
+    setHoveredNode(null);
 
     const startEl = nodeElementsRef.current.get(node.id);
     dragStateRef.current = {
@@ -329,10 +412,13 @@ const TreeViewPage = () => {
       if (!s) return;
       const el = s.el || nodeElementsRef.current.get(s.id);
       if (el) el.style.zIndex = "";
-      // Skip the commit (and the PUT) if the user merely clicked
-      // without actually moving the cursor — that's an accidental
-      // no-op, no need to dirty the layout overrides.
-      if (!s.moved) return;
+      // No movement → treat as a tap. Recenter the canvas on the
+      // tapped node's sub-tree (unless they tapped the current root
+      // itself, in which case it's a true no-op).
+      if (!s.moved) {
+        handleNodeTapRef.current?.(node);
+        return;
+      }
       setLayoutOverrides((prev) => {
         const next = {
           ...prev,
@@ -369,6 +455,100 @@ const TreeViewPage = () => {
       /* ignore */
     }
   };
+
+  // ----- Hover tooltip plumbing -----
+  // NodeCard fires `onHoverEnter` with the node and its current
+  // bounding rect. We delay tooltip hide on leave by ~120ms so the
+  // pointer can briefly slip off the pill (eg. crossing the gap to
+  // the name label) without the tooltip flickering.
+  const handleNodeHoverEnter = useCallback((node, rect) => {
+    if (hideHoverTimerRef.current) {
+      clearTimeout(hideHoverTimerRef.current);
+      hideHoverTimerRef.current = null;
+    }
+    if (!rect) return;
+    setHoveredNode({ node, rect });
+  }, []);
+
+  const handleNodeHoverLeave = useCallback(() => {
+    if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
+    hideHoverTimerRef.current = setTimeout(() => {
+      setHoveredNode(null);
+      hideHoverTimerRef.current = null;
+    }, 120);
+  }, []);
+
+  // ----- Click-to-recenter -----
+  // Tapping a node fetches its sub-tree with the same `depth`. The
+  // current root is pushed onto `rootStack` so the breadcrumb back
+  // button can walk us back one level at a time. Tapping the current
+  // root is a no-op (we're already showing it).
+  const handleNodeTap = useCallback(
+    (node) => {
+      const targetId = node?.data?.userId?._id
+        ? String(node.data.userId._id)
+        : typeof node?.data?.userId === "string"
+          ? node.data.userId
+          : null;
+      if (!targetId) return;
+      const currentRoot = rootUserId || null;
+      if (currentRoot && String(currentRoot) === targetId) return;
+      // If they tap the visible root (their own root when stack is
+      // empty, or the current sub-tree root), do nothing.
+      if (!currentRoot && treePayload?.tree) {
+        const ownRootId = treePayload.tree.userId?._id
+          ? String(treePayload.tree.userId._id)
+          : null;
+        if (ownRootId && ownRootId === targetId) return;
+      }
+      setRootStack((prev) => {
+        const next = currentRoot ? [...prev, currentRoot] : [...prev];
+        // De-dupe: pushing the same id twice in a row would walk
+        // the stack the wrong way on back-button presses.
+        if (next.length && next[next.length - 1] === targetId) return prev;
+        return next;
+      });
+      setRootUserId(targetId);
+    },
+    [rootUserId, treePayload],
+  );
+
+  const handleBackOneLevel = useCallback(() => {
+    setRootStack((prev) => {
+      if (!prev.length) {
+        setRootUserId(null);
+        return prev;
+      }
+      const next = prev.slice(0, -1);
+      setRootUserId(next.length ? next[next.length - 1] : null);
+      return next;
+    });
+  }, []);
+
+  const handleResetToOwnTree = useCallback(() => {
+    setRootStack([]);
+    setRootUserId(null);
+  }, []);
+
+  // Keep the ref in sync so the pointerup listener installed by
+  // `startNodeDrag` always invokes the freshest tap handler.
+  useEffect(() => {
+    handleNodeTapRef.current = handleNodeTap;
+  }, [handleNodeTap]);
+
+  // Resolve the current root's display name + public ID. Used by
+  // the breadcrumb pill so the user knows whose sub-tree they are
+  // currently inspecting without having to hunt for the root node.
+  const currentRootInfo = useMemo(() => {
+    const root = treePayload?.tree;
+    if (!root) return null;
+    const u = root.userId;
+    const name = (typeof u === "object" && u?.name) || root.name || "Member";
+    const publicId =
+      (typeof u === "object" && u?.userId) || root.publicUserId || null;
+    return { name, publicId, referralCode: root.referralCode || null };
+  }, [treePayload]);
+  const viewingOwnTree = !rootUserId;
 
   if (loading) {
     return (
@@ -411,7 +591,7 @@ const TreeViewPage = () => {
       {/* Toolbar — wraps to a second row on narrow viewports so the
           zoom controls never spill out of the card. */}
       <div className="flex items-center justify-between flex-wrap gap-2 p-3 border-b border-slate-200 bg-slate-50">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
             Depth
           </label>
@@ -426,6 +606,43 @@ const TreeViewPage = () => {
               </option>
             ))}
           </select>
+
+          {/* Sub-tree breadcrumb. Only renders when the user has
+              clicked into a downline member's tree — back walks one
+              level up the navigation stack; "My tree" jumps straight
+              back to root regardless of how deep we are. */}
+          {!viewingOwnTree && currentRootInfo && (
+            <div className="flex items-center gap-1.5 ml-1">
+              <button
+                type="button"
+                onClick={handleBackOneLevel}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-100 text-[11px] font-bold text-slate-600"
+                title="Back one level"
+              >
+                <ArrowLeft size={12} />
+                Back
+              </button>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-[11px] text-indigo-700">
+                <Users size={12} className="text-indigo-500" />
+                <span className="font-bold uppercase tracking-wide truncate max-w-[140px]">
+                  {currentRootInfo.name}
+                </span>
+                {currentRootInfo.publicId && (
+                  <span className="font-mono font-bold text-indigo-500/80">
+                    · {currentRootInfo.publicId}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleResetToOwnTree}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-100 text-[11px] font-bold text-slate-600"
+                title="Return to your own tree"
+              >
+                My tree
+              </button>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1 flex-wrap">
           <button
@@ -557,19 +774,36 @@ const TreeViewPage = () => {
               node={n}
               registerEl={registerNodeEl}
               onPointerDown={(e) => startNodeDrag(e, n)}
+              onHoverEnter={handleNodeHoverEnter}
+              onHoverLeave={handleNodeHoverLeave}
+              isHovered={hoveredNode?.node?.id === n.id}
             />
           ))}
         </div>
+
+        {/* Hover tooltip. Rendered OUTSIDE the panned/zoomed stage so
+            its position uses raw viewport coordinates and it doesn't
+            inherit the scale (which would shrink the text at low
+            zoom). Anchored to the hovered node's bounding rect with
+            a flip-above-the-node fallback when the node sits near
+            the bottom of the canvas. */}
+        {hoveredNode && (
+          <NodeHoverTooltip
+            anchorRect={hoveredNode.rect}
+            node={hoveredNode.node}
+          />
+        )}
       </div>
 
       <div className="px-3 py-2 border-t border-slate-200 bg-slate-50 text-[10px] text-slate-500 leading-relaxed">
         <span className="hidden sm:inline">
-          Drag a card to reposition it • Drag the background to pan • Hold
-          ⌘/Ctrl + scroll to zoom • Your layout is saved automatically.
+          Hover a node for details • Tap to view their downline • Drag a card
+          to reposition it • Drag the background to pan • Hold ⌘/Ctrl + scroll
+          to zoom.
         </span>
         <span className="sm:hidden">
-          Tap-drag a card to move it • Drag background to pan • Use the
-          buttons to zoom • Layout saves automatically.
+          Tap a node to view their downline • Tap-drag to move • Drag
+          background to pan • Layout saves automatically.
         </span>
       </div>
     </div>
@@ -595,10 +829,18 @@ const TreeViewPage = () => {
  *   - Unpaid downline → amber pill.
  *   - Active downline → slate-700 pill (neutral).
  */
-const NodeCard = ({ node, onPointerDown, registerEl }) => {
+const NodeCard = ({
+  node,
+  onPointerDown,
+  registerEl,
+  onHoverEnter,
+  onHoverLeave,
+  isHovered,
+}) => {
   const data = node.data || {};
   const isRoot = data.position === null;
   const isUnpaid = data.status === "registered_unpaid";
+  const pillRef = useRef(null);
 
   // Hand the DOM element back up to TreeViewPage so the imperative
   // drag code can mutate this slot's left/top during a drag without
@@ -616,10 +858,25 @@ const NodeCard = ({ node, onPointerDown, registerEl }) => {
       ? "bg-amber-500 text-white"
       : "bg-slate-700 text-white";
 
+  // Hover handlers — capture the pill's screen rect at enter time
+  // and hand it back up to TreeViewPage so the tooltip can anchor
+  // itself precisely above/below the pill in viewport coordinates.
+  const handleEnter = useCallback(() => {
+    if (!onHoverEnter) return;
+    const rect = pillRef.current?.getBoundingClientRect();
+    onHoverEnter(node, rect);
+  }, [node, onHoverEnter]);
+
+  const handleLeave = useCallback(() => {
+    onHoverLeave?.();
+  }, [onHoverLeave]);
+
   return (
     <div
       ref={elRef}
       onPointerDown={onPointerDown}
+      onPointerEnter={handleEnter}
+      onPointerLeave={handleLeave}
       style={{
         position: "absolute",
         left: node.x,
@@ -627,10 +884,13 @@ const NodeCard = ({ node, onPointerDown, registerEl }) => {
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
       }}
-      className="flex flex-col items-center justify-start cursor-grab active:cursor-grabbing select-none"
+      className="flex flex-col items-center justify-start cursor-pointer active:cursor-grabbing select-none"
     >
       <span
-        className={`px-3 py-1 rounded-md text-[11px] font-mono font-bold tracking-wider shadow-sm whitespace-nowrap ${pillClass}`}
+        ref={pillRef}
+        className={`px-3 py-1 rounded-md text-[11px] font-mono font-bold tracking-wider shadow-sm whitespace-nowrap transition-transform ${pillClass} ${
+          isHovered ? "ring-2 ring-offset-1 ring-indigo-400 scale-[1.04]" : ""
+        }`}
       >
         {data.referralCode || "—"}
       </span>
@@ -642,6 +902,231 @@ const NodeCard = ({ node, onPointerDown, registerEl }) => {
           </span>
         )}
       </span>
+    </div>
+  );
+};
+
+/**
+ * Floating details tooltip for a hovered node.
+ *
+ * Positioned in fixed viewport coordinates so it never inherits the
+ * canvas's pan / zoom transform. The pointer-events are disabled so
+ * the tooltip never steals hover from the underlying pill (which
+ * would cause an enter/leave flicker loop as the cursor passes over
+ * the tooltip edge). Auto-flips to render above the node when the
+ * anchor sits in the bottom half of the viewport.
+ */
+const NodeHoverTooltip = ({ anchorRect, node }) => {
+  const data = node?.data || {};
+  const u = data.userId;
+  const publicUserId =
+    (typeof u === "object" && u?.userId) || data.publicUserId || null;
+  const name = (typeof u === "object" && u?.name) || data.name || "Member";
+  const phone = data.phone || (typeof u === "object" ? u?.phone : null) || null;
+  const referralCode = data.referralCode || null;
+  const status = data.status || "unknown";
+  const planType = data.planType || "—";
+  const joinedAt = data.planAJoinedAt || data.joinedAt || null;
+  const left = Number(data.leftLegDirectCount || 0);
+  const right = Number(data.rightLegDirectCount || 0);
+  const pairs = Number(data.pairsCompleted || 0);
+  const totalDownline = Number(data.totalDownlineCount || 0);
+  const lifetime =
+    Number(data.lifetimePlanAEarnings || 0) +
+    Number(data.lifetimePlanBEarnings || 0);
+  const isRoot = data.position === null;
+  const isUnpaid = status === "registered_unpaid";
+
+  // Position math: prefer below the node, flip above when there's
+  // not enough room (within ~260px of viewport bottom). Horizontal
+  // origin is centered on the pill and clamped to the viewport so
+  // the card never spills off-screen on narrow phones.
+  const TOOLTIP_W = 280;
+  const GAP = 10;
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1024;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 768;
+  const anchorCenterX = anchorRect ? anchorRect.left + anchorRect.width / 2 : vw / 2;
+  let left_ = Math.max(8, Math.min(anchorCenterX - TOOLTIP_W / 2, vw - TOOLTIP_W - 8));
+  const placeAbove = anchorRect && anchorRect.bottom > vh - 260;
+  const top_ = anchorRect
+    ? placeAbove
+      ? Math.max(8, anchorRect.top - GAP - 240)
+      : anchorRect.bottom + GAP
+    : 60;
+
+  const statusLabel = isRoot
+    ? "Root (you)"
+    : isUnpaid
+      ? "Registered (unpaid)"
+      : status === "active"
+        ? "Active"
+        : status.replace(/_/g, " ");
+  const statusClass = isRoot
+    ? "bg-indigo-100 text-indigo-700"
+    : isUnpaid
+      ? "bg-amber-100 text-amber-800"
+      : "bg-emerald-100 text-emerald-700";
+
+  const fmtMoney = (n) =>
+    `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+  const fmtDate = (d) => {
+    if (!d) return "—";
+    try {
+      return new Date(d).toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return "—";
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        left: left_,
+        top: top_,
+        width: TOOLTIP_W,
+        zIndex: 60,
+        pointerEvents: "none",
+      }}
+      className="rounded-xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+    >
+      <div className="px-3 py-2.5 bg-linear-to-br from-indigo-50 to-white border-b border-slate-100">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+              Member
+            </p>
+            <p className="mt-0.5 text-sm font-bold text-slate-900 truncate">
+              {name}
+              {isRoot && (
+                <Crown size={12} className="inline ml-1 text-indigo-500" />
+              )}
+            </p>
+          </div>
+          <span
+            className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${statusClass}`}
+          >
+            {statusLabel}
+          </span>
+        </div>
+      </div>
+
+      <div className="px-3 py-2 space-y-1.5 text-[12px]">
+        {publicUserId && (
+          <TooltipRow
+            icon={<BadgeCheck size={13} className="text-indigo-500" />}
+            label="User ID"
+            value={publicUserId}
+            mono
+          />
+        )}
+        {referralCode && (
+          <TooltipRow
+            icon={<Hash size={13} className="text-slate-400" />}
+            label="Referral"
+            value={referralCode}
+            mono
+          />
+        )}
+        <TooltipRow
+          icon={<Sparkles size={13} className="text-amber-500" />}
+          label="Plan"
+          value={planType && planType !== "—" ? `Plan ${planType}` : "—"}
+        />
+        <TooltipRow
+          icon={<Calendar size={13} className="text-slate-400" />}
+          label="Joined"
+          value={fmtDate(joinedAt)}
+        />
+        {phone && (
+          <TooltipRow
+            icon={<Users size={13} className="text-slate-400" />}
+            label="Phone"
+            value={phone}
+          />
+        )}
+      </div>
+
+      <div className="px-3 py-2 border-t border-slate-100 grid grid-cols-3 gap-1.5">
+        <Stat
+          icon={<ChevronLeft size={11} />}
+          label="Left"
+          value={left}
+          tone="emerald"
+        />
+        <Stat
+          icon={<ChevronRight size={11} />}
+          label="Right"
+          value={right}
+          tone="indigo"
+        />
+        <Stat
+          icon={<Users size={11} />}
+          label="Pairs"
+          value={pairs}
+          tone="amber"
+        />
+      </div>
+
+      <div className="px-3 py-2 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50">
+        <div className="flex items-center gap-1 text-[11px] text-slate-500">
+          <Users size={11} />
+          <span className="font-semibold">{totalDownline}</span>
+          <span>downline</span>
+        </div>
+        <div className="flex items-center gap-1 text-[11px] text-slate-700 font-bold">
+          <TrendingUp size={11} className="text-emerald-500" />
+          {fmtMoney(lifetime)}
+        </div>
+      </div>
+
+      {!isRoot && (
+        <div className="px-3 py-1.5 bg-indigo-600 text-[10px] text-white font-bold uppercase tracking-wider text-center">
+          Tap to view this member&apos;s downline
+        </div>
+      )}
+    </div>
+  );
+};
+
+const TooltipRow = ({ icon, label, value, mono = false }) => (
+  <div className="flex items-center justify-between gap-2 min-w-0">
+    <div className="flex items-center gap-1.5 text-slate-500 shrink-0">
+      {icon}
+      <span className="text-[10px] font-bold uppercase tracking-wider">
+        {label}
+      </span>
+    </div>
+    <span
+      className={`text-[12px] text-slate-900 truncate ${
+        mono ? "font-mono font-bold tracking-wide" : "font-semibold"
+      }`}
+    >
+      {value}
+    </span>
+  </div>
+);
+
+const Stat = ({ icon, label, value, tone = "slate" }) => {
+  const toneClass =
+    tone === "emerald"
+      ? "bg-emerald-50 text-emerald-700"
+      : tone === "indigo"
+        ? "bg-indigo-50 text-indigo-700"
+        : tone === "amber"
+          ? "bg-amber-50 text-amber-800"
+          : "bg-slate-100 text-slate-700";
+  return (
+    <div className={`rounded-md px-1.5 py-1 ${toneClass}`}>
+      <div className="flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider opacity-70">
+        {icon}
+        {label}
+      </div>
+      <div className="text-[13px] font-bold leading-tight">{value}</div>
     </div>
   );
 };
