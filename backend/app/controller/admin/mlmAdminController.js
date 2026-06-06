@@ -384,12 +384,16 @@ export const getMlmMemberDownlineTree = async (req, res) => {
   try {
     const depth = Math.min(Math.max(parseInt(req.query.depth, 10) || 4, 1), 6);
     const membership = await MlmMembership.findById(req.params.id)
-      .populate("userId", "name phone email")
+      .populate("userId", "name phone email userId")
       .lean();
     if (!membership) return handleResponse(res, 404, "Member not found");
 
     const tree = await buildBinaryDownlineTree(membership, depth, null);
-    return handleResponse(res, 200, "Downline tree", { depth, tree });
+    return handleResponse(res, 200, "Downline tree", {
+      depth,
+      tree,
+      rootMembershipId: String(membership._id),
+    });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
   }
@@ -400,17 +404,28 @@ export const getMlmMemberDownlineTree = async (req, res) => {
  *   { ...meta, position, left: <node|null>, right: <node|null> }
  * `position` is the position THIS node occupies under its parent
  * ("L"/"R"/null for root) — the UI uses it for per-row labels.
+ *
+ * Per-node payload mirrors the customer-side `buildCustomerBinaryTree`
+ * so the same `GenealogyTreeCanvas` component (shared in
+ * `frontend/src/shared/components/mlm/`) can render either tree with
+ * an identical tooltip. The User document's `userId` (public-facing
+ * SE-prefixed ID) is populated so the tooltip's "User ID" row reads
+ * the human-facing identifier directly without an extra round-trip.
  */
 async function buildBinaryDownlineTree(rootMembership, depthLeft, position) {
+  const u = rootMembership.userId || {};
   const node = {
     _id: rootMembership._id,
-    userId: rootMembership.userId?._id || rootMembership.userId,
-    name: rootMembership.userId?.name || null,
-    phone: rootMembership.userId?.phone || null,
+    userId: rootMembership.userId,
+    name: u?.name || null,
+    phone: u?.phone || null,
+    publicUserId: u?.userId || null,
     referralCode: rootMembership.referralCode,
     planType: rootMembership.planType,
     status: rootMembership.status,
     position,
+    joinedAt: rootMembership.joinedAt || null,
+    planAJoinedAt: rootMembership.planAJoinedAt || null,
     directReferralsCount: rootMembership.directReferralsCount || 0,
     totalDownlineCount: rootMembership.totalDownlineCount || 0,
     leftLegDirectCount: rootMembership.leftLegDirectCount || 0,
@@ -426,12 +441,12 @@ async function buildBinaryDownlineTree(rootMembership, depthLeft, position) {
   const [leftChild, rightChild] = await Promise.all([
     rootMembership.binaryLeftChildId
       ? MlmMembership.findOne({ userId: rootMembership.binaryLeftChildId })
-          .populate("userId", "name phone")
+          .populate("userId", "name phone userId")
           .lean()
       : null,
     rootMembership.binaryRightChildId
       ? MlmMembership.findOne({ userId: rootMembership.binaryRightChildId })
-          .populate("userId", "name phone")
+          .populate("userId", "name phone userId")
           .lean()
       : null,
   ]);

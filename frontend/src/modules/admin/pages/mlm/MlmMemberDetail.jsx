@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, ChevronDown, Users, ShieldCheck, AlertTriangle, ArrowDownLeft, ArrowDownRight, GitBranch, UserPlus, Hourglass, Award, Check, Loader2 } from 'lucide-react';
+import { ChevronLeft, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, ExternalLink } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
+import GenealogyTreeCanvas from '@shared/components/mlm/GenealogyTreeCanvas';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDate = (d) => new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -22,10 +23,23 @@ const STATUS_LABEL = {
 
 const MlmMemberDetail = () => {
     const { id } = useParams();
+    const navigate = useNavigate();
     const [data, setData] = useState(null);
     const [downlineTree, setDownlineTree] = useState(null);
     const [downlineDepth, setDownlineDepth] = useState(3);
     const [downlineLoading, setDownlineLoading] = useState(false);
+    // Sub-tree navigation: `downlineRootId` is the membership ID
+    // currently rendered on the canvas. Starts as the URL `id` (the
+    // member whose page we're on) and changes whenever the admin
+    // taps a downline node. The `downlineStack` is the breadcrumb
+    // history so the back button walks up one level at a time and
+    // "Reset" returns to the URL-anchored member.
+    const [downlineRootId, setDownlineRootId] = useState(id);
+    const [downlineStack, setDownlineStack] = useState([]);
+    // Layout overrides are ephemeral on the admin canvas — we never
+    // persist them server-side because that would corrupt the
+    // member's own customer-side saved layout.
+    const [downlineOverrides, setDownlineOverrides] = useState({});
     const [loading, setLoading] = useState(true);
     const [adjustForm, setAdjustForm] = useState({ direction: 'CREDIT', amount: '', bucket: 'earnings', reason: '' });
     const [adjusting, setAdjusting] = useState(false);
@@ -45,10 +59,10 @@ const MlmMemberDetail = () => {
         }
     };
 
-    const loadDownline = async (depth) => {
+    const loadDownline = async (depth, targetMembershipId) => {
         setDownlineLoading(true);
         try {
-            const res = await adminMlmApi.getMemberDownline(id, { depth });
+            const res = await adminMlmApi.getMemberDownline(targetMembershipId, { depth });
             const d = res.data?.result ?? res.data?.data;
             setDownlineTree(d?.tree || null);
         } catch (err) {
@@ -59,7 +73,16 @@ const MlmMemberDetail = () => {
     };
 
     useEffect(() => { load(); }, [id]);
-    useEffect(() => { loadDownline(downlineDepth); }, [id, downlineDepth]);
+    // Reset sub-tree navigation whenever the URL member changes.
+    useEffect(() => {
+        setDownlineRootId(id);
+        setDownlineStack([]);
+        setDownlineOverrides({});
+    }, [id]);
+    useEffect(() => {
+        if (!downlineRootId) return;
+        loadDownline(downlineDepth, downlineRootId);
+    }, [downlineRootId, downlineDepth]);
 
     const handleAdjust = async (e) => {
         e.preventDefault();
@@ -125,6 +148,92 @@ const MlmMemberDetail = () => {
             setApproving(false);
         }
     };
+
+    // ----- Sub-tree navigation handlers -----
+    // Tap a node → push current root onto the stack and recenter
+    // the canvas on the tapped member. The admin tree builder
+    // returns each node's membership `_id`, which is the URL key
+    // for both the downline endpoint and the per-member detail
+    // page.
+    const handleNodeTap = useCallback((node) => {
+        const targetId = node?.data?._id ? String(node.data._id) : null;
+        if (!targetId) return;
+        if (String(targetId) === String(downlineRootId)) return;
+        setDownlineStack((prev) => [...prev, downlineRootId]);
+        setDownlineRootId(targetId);
+        setDownlineOverrides({});
+    }, [downlineRootId]);
+
+    const handleBackOneLevel = useCallback(() => {
+        setDownlineStack((prev) => {
+            if (!prev.length) return prev;
+            const next = prev.slice(0, -1);
+            setDownlineRootId(prev[prev.length - 1]);
+            setDownlineOverrides({});
+            return next;
+        });
+    }, []);
+
+    const handleResetToAnchor = useCallback(() => {
+        setDownlineStack([]);
+        setDownlineRootId(id);
+        setDownlineOverrides({});
+    }, [id]);
+
+    const isViewingAnchor = String(downlineRootId) === String(id);
+
+    // Current root's display info — pulled from the loaded sub-tree
+    // payload so the breadcrumb always reflects what's actually
+    // rendered (not the URL id, which may differ once you drill in).
+    const currentRootInfo = useMemo(() => {
+        if (!downlineTree) return null;
+        const u = downlineTree.userId;
+        const name = (typeof u === 'object' && u?.name) || downlineTree.name || 'Member';
+        const publicId = (typeof u === 'object' && u?.userId) || downlineTree.publicUserId || null;
+        return { name, publicId };
+    }, [downlineTree]);
+
+    const downlineBreadcrumb = !isViewingAnchor && currentRootInfo ? (
+        <div className="flex items-center gap-1.5 ml-1 flex-wrap">
+            <button
+                type="button"
+                onClick={handleBackOneLevel}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-100 text-[11px] font-bold text-slate-600"
+                title="Back one level"
+            >
+                <ArrowLeft size={12} />
+                Back
+            </button>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-[11px] text-indigo-700">
+                <Users size={12} className="text-indigo-500" />
+                <span className="font-bold uppercase tracking-wide truncate max-w-[140px]">
+                    {currentRootInfo.name}
+                </span>
+                {currentRootInfo.publicId && (
+                    <span className="font-mono font-bold text-indigo-500/80">
+                        · {currentRootInfo.publicId}
+                    </span>
+                )}
+            </div>
+            <button
+                type="button"
+                onClick={handleResetToAnchor}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-100 text-[11px] font-bold text-slate-600"
+                title="Return to the member you started from"
+            >
+                Reset
+            </button>
+            <button
+                type="button"
+                onClick={() => navigate(`/admin/mlm/members/${downlineRootId}`)}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-200 bg-indigo-600 hover:bg-indigo-700 text-[11px] font-bold text-white"
+                title="Open this member's full profile"
+            >
+                <ExternalLink size={11} />
+                Open profile
+            </button>
+        </div>
+    ) : null;
 
     if (loading) return <div className="p-6 text-slate-500">Loading...</div>;
     if (!data) return <div className="p-6 text-slate-500">Not found</div>;
@@ -412,250 +521,45 @@ const MlmMemberDetail = () => {
                 )}
             </Card>
 
-            <div className="bg-white border border-slate-200 rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-                    <div>
-                        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide flex items-center gap-2">
-                            <GitBranch size={16} /> Binary Downline Tree
-                        </h3>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                            Plan A placement chain — left and right legs that drive pair-match earnings.
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        {[2, 3, 4, 5, 6].map((d) => (
-                            <button
-                                key={d}
-                                onClick={() => setDownlineDepth(d)}
-                                className={`px-2 py-1 text-[10px] font-bold rounded ${
-                                    downlineDepth === d ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                }`}
-                            >
-                                L{d}
-                            </button>
-                        ))}
-                    </div>
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="px-5 pt-5 pb-3 border-b border-slate-100">
+                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide flex items-center gap-2">
+                        <GitBranch size={16} /> Binary Downline Tree
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                        Hover any node to see member details · tap a node to drill into their downline ·
+                        drag the background to pan · hold ⌘/Ctrl + scroll to zoom.
+                    </p>
                 </div>
-                {downlineLoading ? (
-                    <p className="text-sm text-slate-500">Loading tree...</p>
-                ) : downlineTree ? (
-                    <BinaryDownlineView root={downlineTree} />
-                ) : (
-                    <p className="text-sm text-slate-500">No downline data.</p>
-                )}
-            </div>
-        </div>
-    );
-};
-
-/**
- * Two-column binary tree view: root at top, then a Left Leg column
- * and a Right Leg column rendered side by side. Each column is its
- * own indented sub-tree so deeper L4-L6 expansions remain readable
- * without horizontal blowup.
- */
-const BinaryDownlineView = ({ root }) => {
-    const leftCount = root.leftLegDirectCount || 0;
-    const rightCount = root.rightLegDirectCount || 0;
-    const pairs = root.pairsCompleted || 0;
-
-    return (
-        <div className="space-y-4">
-            <div className="bg-gradient-to-br from-indigo-50 to-slate-50 border border-indigo-100 rounded-xl p-4">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center text-base font-bold shrink-0">
-                            {(root.name || '?').charAt(0).toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded ${root.planType === 'B' ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'}`}>
-                                    Plan {root.planType}
+                {/* Fixed-height canvas frame. The shared component
+                    expects to live inside a `flex-1 min-h-0` parent
+                    (it stretches to fill via its internal flex-1) —
+                    a 620px tall flex column gives that. */}
+                <div className="flex h-[620px] flex-col">
+                    <GenealogyTreeCanvas
+                        tree={downlineTree}
+                        loading={downlineLoading}
+                        isMember
+                        depth={downlineDepth}
+                        onDepthChange={setDownlineDepth}
+                        layoutOverrides={downlineOverrides}
+                        onChangeLayout={setDownlineOverrides}
+                        onNodeTap={handleNodeTap}
+                        breadcrumb={downlineBreadcrumb}
+                        emptyTreeMessage="No downline data for this member yet."
+                        footerHint={
+                            <>
+                                <span className="hidden sm:inline">
+                                    Hover for details · tap to drill into a member · drag to reposition ·
+                                    pan/zoom the canvas · layout changes are not saved on the admin view.
                                 </span>
-                                <p className="text-sm font-bold text-slate-900 truncate">{root.name || 'Unknown'}</p>
-                            </div>
-                            <code className="text-[11px] text-slate-500">{root.referralCode}</code>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-[11px] flex-wrap">
-                        <Stat label="Pairs" value={pairs} tone="indigo" />
-                        <Stat label="Left" value={leftCount} tone="emerald" />
-                        <Stat label="Right" value={rightCount} tone="rose" />
-                    </div>
+                                <span className="sm:hidden">
+                                    Tap a node to drill in · tap-drag to move · pan background · admin layout is not saved.
+                                </span>
+                            </>
+                        }
+                    />
                 </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <LegColumn
-                    title="Left Leg"
-                    icon={ArrowDownLeft}
-                    tone="emerald"
-                    legDirectCount={leftCount}
-                    childNode={root.left}
-                />
-                <LegColumn
-                    title="Right Leg"
-                    icon={ArrowDownRight}
-                    tone="rose"
-                    legDirectCount={rightCount}
-                    childNode={root.right}
-                />
-            </div>
-        </div>
-    );
-};
-
-const Stat = ({ label, value, tone = 'slate' }) => {
-    const toneMap = {
-        indigo: 'bg-indigo-100 text-indigo-700',
-        emerald: 'bg-emerald-100 text-emerald-700',
-        rose: 'bg-rose-100 text-rose-700',
-        slate: 'bg-slate-100 text-slate-700',
-    };
-    return (
-        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold ${toneMap[tone]}`}>
-            <span className="uppercase tracking-wider text-[9px] opacity-75">{label}</span>
-            <span className="text-sm">{value}</span>
-        </div>
-    );
-};
-
-const LegColumn = ({ title, icon: Icon, tone, legDirectCount, childNode }) => {
-    const headerToneMap = {
-        emerald: 'bg-emerald-50 border-emerald-200 text-emerald-800',
-        rose: 'bg-rose-50 border-rose-200 text-rose-800',
-    };
-    return (
-        <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <div className={`px-3 py-2 border-b flex items-center justify-between ${headerToneMap[tone]}`}>
-                <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider">
-                    <Icon size={14} /> {title}
-                </span>
-                <span className="text-[10px] font-semibold opacity-80">
-                    {legDirectCount} direct{legDirectCount === 1 ? '' : 's'}
-                </span>
-            </div>
-            <div className="p-3 bg-slate-50/40 min-h-[80px]">
-                {childNode ? (
-                    <BinaryTreeNode node={childNode} tone={tone} />
-                ) : (
-                    <EmptySlot tone={tone} />
-                )}
-            </div>
-        </div>
-    );
-};
-
-const EmptySlot = ({ tone }) => {
-    const toneMap = {
-        emerald: 'border-emerald-200 text-emerald-600 bg-emerald-50/50',
-        rose: 'border-rose-200 text-rose-600 bg-rose-50/50',
-    };
-    return (
-        <div className={`flex items-center gap-2 px-3 py-3 rounded-lg border-2 border-dashed text-xs font-medium ${toneMap[tone]}`}>
-            <UserPlus size={14} />
-            <span>Slot available — next placement lands here.</span>
-        </div>
-    );
-};
-
-/**
- * A single binary-tree node, recursively rendering its `left` and
- * `right` children as indented branches with position pills. The
- * `tone` prop colours the leg's vertical guide line so the user
- * never loses track of which side of the binary tree they're
- * looking at.
- */
-const BinaryTreeNode = ({ node, tone, depth = 0 }) => {
-    const [expanded, setExpanded] = useState(true);
-    const hasLeft = Boolean(node.left);
-    const hasRight = Boolean(node.right);
-    const hasChildren = hasLeft || hasRight;
-
-    const guideToneMap = {
-        emerald: 'border-emerald-300',
-        rose: 'border-rose-300',
-    };
-
-    return (
-        <div className={depth === 0 ? '' : `ml-3 border-l-2 ${guideToneMap[tone]} pl-3 mt-2`}>
-            <div className="flex items-center gap-x-2 gap-y-1 flex-wrap group">
-                {hasChildren ? (
-                    <button
-                        type="button"
-                        onClick={() => setExpanded(!expanded)}
-                        className="w-5 h-5 flex items-center justify-center rounded text-slate-500 hover:bg-slate-200 shrink-0"
-                        aria-label={expanded ? 'Collapse' : 'Expand'}>
-                        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    </button>
-                ) : (
-                    <span className="w-5 h-5 inline-flex items-center justify-center text-slate-300 shrink-0">
-                        ·
-                    </span>
-                )}
-                <PositionPill position={node.position} />
-                <Link
-                    to={`/admin/mlm/members/${node._id}`}
-                    className="text-sm font-semibold text-slate-900 hover:text-indigo-700 hover:underline truncate max-w-[140px] sm:max-w-[180px]">
-                    {node.name || 'Unknown'}
-                </Link>
-                <code className="text-[10px] text-slate-500 font-mono">{node.referralCode}</code>
-                <span className="hidden sm:inline text-[10px] text-slate-400">·</span>
-                <span className="text-[10px] text-slate-500">
-                    L{node.leftLegDirectCount || 0}/R{node.rightLegDirectCount || 0}
-                </span>
-                <span className="hidden sm:inline text-[10px] text-slate-400">·</span>
-                <span className="text-[10px] font-semibold text-slate-700">
-                    ₹{((node.lifetimePlanAEarnings || 0) + (node.lifetimePlanBEarnings || 0)).toLocaleString('en-IN')}
-                </span>
-            </div>
-
-            {expanded && hasChildren && (
-                <div className="mt-1">
-                    {hasLeft ? (
-                        <BinaryTreeNode node={node.left} tone={tone} depth={depth + 1} />
-                    ) : (
-                        <BranchPlaceholder position="L" tone={tone} depth={depth + 1} />
-                    )}
-                    {hasRight ? (
-                        <BinaryTreeNode node={node.right} tone={tone} depth={depth + 1} />
-                    ) : (
-                        <BranchPlaceholder position="R" tone={tone} depth={depth + 1} />
-                    )}
-                </div>
-            )}
-        </div>
-    );
-};
-
-const PositionPill = ({ position }) => {
-    if (position === 'L') {
-        return (
-            <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-black bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200">
-                L
-            </span>
-        );
-    }
-    if (position === 'R') {
-        return (
-            <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-black bg-rose-100 text-rose-700 ring-1 ring-rose-200">
-                R
-            </span>
-        );
-    }
-    return null;
-};
-
-const BranchPlaceholder = ({ position, tone, depth }) => {
-    const guideToneMap = {
-        emerald: 'border-emerald-300',
-        rose: 'border-rose-300',
-    };
-    return (
-        <div className={`ml-3 border-l-2 ${guideToneMap[tone]} pl-3 mt-2`}>
-            <div className="flex items-center gap-2 text-[11px] text-slate-400 italic">
-                <PositionPill position={position} />
-                <span>vacant</span>
             </div>
         </div>
     );
