@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Users } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../../services/mlmApi";
@@ -11,23 +11,24 @@ import GenealogyTreeCanvas from "@shared/components/mlm/GenealogyTreeCanvas";
  *   - Fetches the tree (`mlmApi.getGenealogyTree`) with depth
  *     selection and an optional `rootUserId` to recenter on any
  *     descendant.
- *   - Loads + persists per-user layout overrides
- *     (`mlmApi.getTreeLayout` / `saveTreeLayout`).
  *   - Maintains the in-page navigation stack so the user can walk
  *     into sub-trees (click a node) and back out one level at a
  *     time without ever leaving this page or the canvas.
  *
- * All rendering (pan / zoom / drag / hover tooltip / pill nodes /
- * edges / toolbar) lives in the shared `GenealogyTreeCanvas`
- * component, which is shared with the admin member detail page so
- * the two surfaces always present an identical interaction model.
+ * Per-user layout overrides have been retired — every node sits at
+ * its deterministic tidy-tree position so the chart looks the same
+ * for every viewer. The legacy `tree-layout` endpoints stay alive
+ * on the backend for now but are intentionally never read or
+ * written by this page.
+ *
+ * All rendering (pan / zoom / hover tooltip / pill nodes / edges /
+ * toolbar) lives in the shared `GenealogyTreeCanvas` component,
+ * which is shared with the admin member detail page so the two
+ * surfaces always present an identical interaction model.
  */
 const TreeViewPage = () => {
-  const saveTimerRef = useRef(null);
-
   const [loading, setLoading] = useState(true);
   const [treePayload, setTreePayload] = useState(null);
-  const [layoutOverrides, setLayoutOverrides] = useState({});
   const [depth, setDepth] = useState(4);
 
   // Sub-tree navigation: `rootUserId` is null when the user is
@@ -39,7 +40,7 @@ const TreeViewPage = () => {
   const [rootUserId, setRootUserId] = useState(null);
   const [rootStack, setRootStack] = useState([]);
 
-  // ----- Fetch tree + saved layout -----
+  // ----- Fetch tree -----
   useEffect(() => {
     let mounted = true;
     setLoading(true);
@@ -47,15 +48,10 @@ const TreeViewPage = () => {
       try {
         const treeParams = { depth };
         if (rootUserId) treeParams.rootUserId = rootUserId;
-        const [treeRes, layoutRes] = await Promise.all([
-          mlmApi.getGenealogyTree(treeParams),
-          mlmApi.getTreeLayout(),
-        ]);
+        const treeRes = await mlmApi.getGenealogyTree(treeParams);
         if (!mounted) return;
         const t = treeRes.data?.result ?? treeRes.data?.data ?? treeRes.data;
-        const l = layoutRes.data?.result ?? layoutRes.data?.data ?? layoutRes.data;
         setTreePayload(t);
-        setLayoutOverrides(l?.overrides || {});
       } catch (err) {
         const code = err?.response?.status;
         const msg = err?.response?.data?.message;
@@ -82,27 +78,6 @@ const TreeViewPage = () => {
       mounted = false;
     };
   }, [depth, rootUserId]);
-
-  useEffect(
-    () => () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    },
-    [],
-  );
-
-  // Debounced persistence for layout overrides. Both drag commits
-  // and Reset funnel through here — Reset just emits an empty map.
-  const handleChangeLayout = useCallback((next) => {
-    setLayoutOverrides(next);
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(async () => {
-      try {
-        await mlmApi.saveTreeLayout(next);
-      } catch (err) {
-        console.warn("Save tree layout failed", err?.message || err);
-      }
-    }, 600);
-  }, []);
 
   // Tap a node → push current root onto the back-stack and recenter
   // the canvas on the tapped node. No-op if the user taps the
@@ -212,8 +187,6 @@ const TreeViewPage = () => {
       isMember={Boolean(treePayload?.isMember)}
       depth={depth}
       onDepthChange={setDepth}
-      layoutOverrides={layoutOverrides}
-      onChangeLayout={handleChangeLayout}
       onNodeTap={handleNodeTap}
       breadcrumb={breadcrumb}
       emptyMemberMessage="Your tree appears once you become a member. Activate your account to see your network."

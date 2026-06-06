@@ -9,8 +9,6 @@ import {
   Loader2,
   Plus,
   Minus,
-  RotateCcw,
-  Move,
   Sparkles,
   Users,
   TrendingUp,
@@ -32,39 +30,30 @@ import {
  *     (`frontend/src/modules/admin/pages/mlm/MlmMemberDetail.jsx`)
  *
  * Responsibilities:
- *   - Tidy-tree layout math, pan / zoom, per-node drag (cosmetic)
+ *   - Tidy-tree layout math (nodes locked in deterministic positions)
+ *   - Auto-centered, zoomable rendering
  *   - Hover tooltip with the full member detail card
  *   - Tap-to-recenter callback (parent decides what to fetch)
- *   - Depth selector, zoom controls, layout-reset button
+ *   - Depth selector + zoom controls
  *   - Empty / loading / "not a member" states
  *
  * Out of scope (left to the parent):
  *   - Data fetching (different APIs for customer vs admin)
  *   - Navigation history / breadcrumb (different UX for each surface)
- *   - Layout-override persistence (per-user for customer, ephemeral
- *     for admin) — the canvas just emits a single `onChangeLayout`
- *     callback with the new full overrides map and lets the parent
- *     decide whether to debounce-save, toast, etc.
  *
- * Drag model (must be bulletproof — earlier per-node setState-on-move
- * caused every pointermove to re-render the entire stage, which
- * fought with the captured-pointer model and made the other cards
- * flicker / disappear during drag):
- *
- *   1. `startNodeDrag` records the dragged card's id + start coords
- *      in a ref and attaches `pointermove` / `pointerup` listeners
- *      directly on `window`. No React state changes.
- *   2. On each pointermove we mutate ONLY the dragged card's inline
- *      style (left/top) imperatively via a ref-lookup map. No
- *      React re-render fires while the user is dragging, so the
- *      other cards / edges keep their initial DOM intact.
- *   3. On pointerup we commit the final position via the parent's
- *      `onChangeLayout` callback. That triggers a single re-render
- *      with the override applied — by then the drag is over so
- *      pointer capture isn't at risk.
- *
- * Pan + zoom keep their setState model because they intentionally
- * need to move the whole stage on every event.
+ * Interaction model:
+ *   - The whole tree is locked in place — there is no per-node drag
+ *     and no canvas pan. The stage is centered horizontally inside
+ *     its container and scales from the top-center, so zooming in
+ *     or out grows / shrinks the chart symmetrically without ever
+ *     drifting sideways.
+ *   - Tap on a node fires `onNodeTap`; the browser's synthetic
+ *     `click` event guarantees an actual press-and-release on the
+ *     same element (so an accidental drag is a no-op rather than a
+ *     navigation event).
+ *   - Zooming past the container's bounds simply clips the tree at
+ *     the canvas edges — there is no pan to scroll back into view.
+ *     Use the zoom-out button or wheel to bring it back.
  */
 
 // Node "slot" dimensions. The visual node is a coloured pill holding
@@ -86,18 +75,12 @@ const GenealogyTreeCanvas = ({
   isMember = true,
   depth,
   onDepthChange,
-  layoutOverrides = {},
-  onChangeLayout,
   onNodeTap,
   breadcrumb = null,
   emptyMemberMessage = "Your tree appears once you become a member. Activate your account to see your network.",
   emptyTreeMessage = "No downline yet — referrals will populate this canvas as they join.",
   footerHint = null,
 }) => {
-  const containerRef = useRef(null);
-  const stageRef = useRef(null);
-
-  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(0.85);
   // Hovered node — when set, renders a fixed-position tooltip with
   // the full member details. We capture the node's screen rect at
@@ -200,188 +183,28 @@ const GenealogyTreeCanvas = ({
     };
   }, [tree]);
 
-  // Apply user overrides on top of the default tidy layout.
-  const positionedNodes = useMemo(() => {
-    return nodes.map((n) => {
-      const override = layoutOverrides[n.id];
-      if (override && Number.isFinite(override.x) && Number.isFinite(override.y)) {
-        return { ...n, x: override.x, y: override.y };
-      }
-      return n;
-    });
-  }, [nodes, layoutOverrides]);
-
-  // ----- Pan (drag on background) -----
-  const panState = useRef({ active: false, startX: 0, startY: 0, panX: 0, panY: 0 });
-  const onPanStart = useCallback((e) => {
-    if (e.button !== undefined && e.button !== 0) return;
-    panState.current = {
-      active: true,
-      startX: e.clientX,
-      startY: e.clientY,
-      panX: pan.x,
-      panY: pan.y,
-    };
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    setHoveredNode(null);
-  }, [pan]);
-  const onPanMove = useCallback((e) => {
-    if (!panState.current.active) return;
-    const dx = e.clientX - panState.current.startX;
-    const dy = e.clientY - panState.current.startY;
-    setPan({ x: panState.current.panX + dx, y: panState.current.panY + dy });
-  }, []);
-  const onPanEnd = useCallback((e) => {
-    if (panState.current.active) {
-      panState.current.active = false;
-      e.currentTarget?.releasePointerCapture?.(e.pointerId);
-    }
-  }, []);
+  // Nodes are rendered straight from the tidy-tree layout — there
+  // are no per-user position overrides because per-node drag is
+  // disabled (see header).
+  const positionedNodes = nodes;
 
   // ----- Zoom (wheel + buttons) -----
+  // The wheel handler only kicks in when the user holds ⌘/Ctrl so
+  // ordinary scrolling on the page (or inside a parent flex column)
+  // is never hijacked. The canvas itself does not pan or scroll;
+  // zooming past the container simply clips the tree at the edges.
   const onWheel = useCallback((e) => {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     setZoom((z) => Math.max(0.3, Math.min(2.5, z + (e.deltaY < 0 ? 0.08 : -0.08))));
   }, []);
 
-  const fitToCenter = useCallback(() => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    setPan({
-      x: (rect.width - treeWidth * zoom) / 2,
-      y: 32,
-    });
-  }, [treeWidth, zoom]);
-
-  // Refit whenever the tree changes (e.g. parent fetched a new
-  // sub-tree after a tap). Also fires after the initial mount.
-  useEffect(() => {
-    if (!loading && treeWidth > 0) {
-      fitToCenter();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, treeWidth, tree]);
-
-  // ----- Node drag (imperative — see header) -----
-  const nodeElementsRef = useRef(new Map());
-  const registerNodeEl = useCallback((id, el) => {
-    if (el) {
-      nodeElementsRef.current.set(id, el);
-    } else {
-      nodeElementsRef.current.delete(id);
-    }
-  }, []);
-
-  const zoomRef = useRef(zoom);
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
-
-  const dragStateRef = useRef(null);
-  const moveHandlerRef = useRef(null);
-  const endHandlerRef = useRef(null);
-  // Live refs for prop callbacks so the window-level pointer
-  // listeners installed by `startNodeDrag` always invoke the
-  // freshest handler without forcing the drag to teardown when
-  // the parent renders.
-  const onNodeTapRef = useRef(onNodeTap);
-  const onChangeLayoutRef = useRef(onChangeLayout);
-  const layoutOverridesRef = useRef(layoutOverrides);
-  useEffect(() => {
-    onNodeTapRef.current = onNodeTap;
-  }, [onNodeTap]);
-  useEffect(() => {
-    onChangeLayoutRef.current = onChangeLayout;
-  }, [onChangeLayout]);
-  useEffect(() => {
-    layoutOverridesRef.current = layoutOverrides;
-  }, [layoutOverrides]);
-
-  const teardownActiveDrag = useCallback(() => {
-    if (moveHandlerRef.current) {
-      window.removeEventListener("pointermove", moveHandlerRef.current);
-      moveHandlerRef.current = null;
-    }
-    if (endHandlerRef.current) {
-      window.removeEventListener("pointerup", endHandlerRef.current);
-      window.removeEventListener("pointercancel", endHandlerRef.current);
-      endHandlerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => teardownActiveDrag, [teardownActiveDrag]);
-
-  const startNodeDrag = useCallback(
-    (e, node) => {
-      if (e.button !== undefined && e.button !== 0) return;
-      e.stopPropagation();
-      e.preventDefault();
-
-      setHoveredNode(null);
-
-      const startEl = nodeElementsRef.current.get(node.id);
-      dragStateRef.current = {
-        id: node.id,
-        el: startEl || null,
-        startClientX: e.clientX,
-        startClientY: e.clientY,
-        originX: node.x,
-        originY: node.y,
-        currentX: node.x,
-        currentY: node.y,
-        moved: false,
-      };
-
-      const onMove = (ev) => {
-        const s = dragStateRef.current;
-        if (!s) return;
-        const z = zoomRef.current || 1;
-        const dx = (ev.clientX - s.startClientX) / z;
-        const dy = (ev.clientY - s.startClientY) / z;
-        const nx = s.originX + dx;
-        const ny = s.originY + dy;
-        s.currentX = nx;
-        s.currentY = ny;
-        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) s.moved = true;
-        const el = s.el || nodeElementsRef.current.get(s.id);
-        if (el) {
-          el.style.left = `${nx}px`;
-          el.style.top = `${ny}px`;
-          el.style.zIndex = "20";
-        }
-      };
-
-      const onEnd = () => {
-        const s = dragStateRef.current;
-        teardownActiveDrag();
-        dragStateRef.current = null;
-        if (!s) return;
-        const el = s.el || nodeElementsRef.current.get(s.id);
-        if (el) el.style.zIndex = "";
-        if (!s.moved) {
-          onNodeTapRef.current?.(node);
-          return;
-        }
-        const nextMap = {
-          ...(layoutOverridesRef.current || {}),
-          [s.id]: { x: s.currentX, y: s.currentY },
-        };
-        onChangeLayoutRef.current?.(nextMap);
-      };
-
-      moveHandlerRef.current = onMove;
-      endHandlerRef.current = onEnd;
-      window.addEventListener("pointermove", onMove, { passive: false });
-      window.addEventListener("pointerup", onEnd);
-      window.addEventListener("pointercancel", onEnd);
+  const handleNodeClick = useCallback(
+    (node) => {
+      onNodeTap?.(node);
     },
-    [teardownActiveDrag],
+    [onNodeTap],
   );
-
-  const handleResetLayout = useCallback(() => {
-    onChangeLayout?.({});
-  }, [onChangeLayout]);
 
   // ----- Hover plumbing -----
   const handleNodeHoverEnter = useCallback((node, rect) => {
@@ -473,42 +296,25 @@ const GenealogyTreeCanvas = ({
           >
             <Plus size={14} />
           </button>
-          <button
-            onClick={fitToCenter}
-            className="w-8 h-8 rounded-md border border-slate-200 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-600 ml-1"
-            aria-label="Center tree"
-            type="button"
-          >
-            <Move size={14} />
-          </button>
-          <button
-            onClick={handleResetLayout}
-            className="ml-1 px-2.5 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-100 text-[11px] font-bold text-slate-600 flex items-center gap-1"
-            type="button"
-          >
-            <RotateCcw size={12} /> Reset
-          </button>
         </div>
       </div>
 
-      {/* Canvas */}
+      {/* Canvas — pan is intentionally disabled. The stage is
+          absolute-positioned with `left: 50%` + `translateX(-50%)`
+          so it stays centered horizontally inside the container at
+          every zoom level, and `transform-origin: top center` keeps
+          the root locked to the top while zooming. */}
       <div
-        ref={containerRef}
-        className="relative w-full flex-1 min-h-0 bg-[radial-gradient(circle_at_1px_1px,_#e2e8f0_1px,_transparent_0)] [background-size:16px_16px] cursor-grab active:cursor-grabbing select-none overflow-hidden touch-pan-y"
-        onPointerDown={onPanStart}
-        onPointerMove={onPanMove}
-        onPointerUp={onPanEnd}
-        onPointerCancel={onPanEnd}
+        className="relative w-full flex-1 min-h-0 bg-[radial-gradient(circle_at_1px_1px,_#e2e8f0_1px,_transparent_0)] [background-size:16px_16px] select-none overflow-hidden"
         onWheel={onWheel}
       >
         <div
-          ref={stageRef}
           style={{
             position: "absolute",
-            left: 0,
-            top: 0,
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            transformOrigin: "0 0",
+            left: "50%",
+            top: 24,
+            transform: `translateX(-50%) scale(${zoom})`,
+            transformOrigin: "top center",
             width: treeWidth,
             height: treeHeight,
           }}
@@ -563,8 +369,7 @@ const GenealogyTreeCanvas = ({
             <NodeCard
               key={n.id}
               node={n}
-              registerEl={registerNodeEl}
-              onPointerDown={(e) => startNodeDrag(e, n)}
+              onTap={handleNodeClick}
               onHoverEnter={handleNodeHoverEnter}
               onHoverLeave={handleNodeHoverLeave}
               isHovered={hoveredNode?.node?.id === n.id}
@@ -582,13 +387,12 @@ const GenealogyTreeCanvas = ({
           {footerHint || (
             <>
               <span className="hidden sm:inline">
-                Hover a node for details • Tap to view their downline • Drag a
-                card to reposition it • Drag the background to pan • Hold
-                ⌘/Ctrl + scroll to zoom.
+                Hover a node for details • Tap to view their downline • Use
+                the zoom controls (or ⌘/Ctrl + scroll) to resize.
               </span>
               <span className="sm:hidden">
-                Tap a node to view their downline • Tap-drag to move • Drag
-                background to pan • Layout saves automatically.
+                Tap a node to view their downline • Use the zoom buttons to
+                resize.
               </span>
             </>
           )}
@@ -602,31 +406,21 @@ const GenealogyTreeCanvas = ({
  * NodeCard — pill + label.
  *
  * Renders a coloured pill containing the referral code on top and
- * the customer's name in plain text directly below. Status hints
- * survive as colour-only cues:
+ * the customer's name in plain text directly below. The slot is
+ * absolutely positioned at the tidy-tree coordinates and is no
+ * longer draggable — `onClick` is the sole interaction (browser
+ * decides tap-vs-pan natively based on pointer movement).
+ *
+ * Status hints survive as colour-only cues:
  *   - Root → indigo pill + "You" suffix appended to the name.
  *   - Unpaid downline → amber pill.
  *   - Active downline → slate-700 pill (neutral).
  */
-const NodeCard = ({
-  node,
-  onPointerDown,
-  registerEl,
-  onHoverEnter,
-  onHoverLeave,
-  isHovered,
-}) => {
+const NodeCard = ({ node, onTap, onHoverEnter, onHoverLeave, isHovered }) => {
   const data = node.data || {};
   const isRoot = data.position === null || data.position === undefined;
   const isUnpaid = data.status === "registered_unpaid";
   const pillRef = useRef(null);
-
-  const elRef = useCallback(
-    (el) => {
-      registerEl(node.id, el);
-    },
-    [node.id, registerEl],
-  );
 
   const pillClass = isRoot
     ? "bg-indigo-600 text-white"
@@ -644,10 +438,20 @@ const NodeCard = ({
     onHoverLeave?.();
   }, [onHoverLeave]);
 
+  const handleClick = useCallback(
+    (e) => {
+      // Suppress bubbling so the click doesn't restart a pan or
+      // trigger any background interaction the parent canvas may
+      // attach later.
+      e.stopPropagation();
+      onTap?.(node);
+    },
+    [node, onTap],
+  );
+
   return (
     <div
-      ref={elRef}
-      onPointerDown={onPointerDown}
+      onClick={handleClick}
       onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
       style={{
@@ -657,7 +461,7 @@ const NodeCard = ({
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
       }}
-      className="flex flex-col items-center justify-start cursor-pointer active:cursor-grabbing select-none"
+      className="flex flex-col items-center justify-start cursor-pointer select-none"
     >
       <span
         ref={pillRef}

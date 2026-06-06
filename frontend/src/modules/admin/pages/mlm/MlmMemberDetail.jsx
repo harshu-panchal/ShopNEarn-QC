@@ -36,10 +36,6 @@ const MlmMemberDetail = () => {
     // "Reset" returns to the URL-anchored member.
     const [downlineRootId, setDownlineRootId] = useState(id);
     const [downlineStack, setDownlineStack] = useState([]);
-    // Layout overrides are ephemeral on the admin canvas — we never
-    // persist them server-side because that would corrupt the
-    // member's own customer-side saved layout.
-    const [downlineOverrides, setDownlineOverrides] = useState({});
     const [loading, setLoading] = useState(true);
     const [adjustForm, setAdjustForm] = useState({ direction: 'CREDIT', amount: '', bucket: 'earnings', reason: '' });
     const [adjusting, setAdjusting] = useState(false);
@@ -77,7 +73,6 @@ const MlmMemberDetail = () => {
     useEffect(() => {
         setDownlineRootId(id);
         setDownlineStack([]);
-        setDownlineOverrides({});
     }, [id]);
     useEffect(() => {
         if (!downlineRootId) return;
@@ -161,7 +156,6 @@ const MlmMemberDetail = () => {
         if (String(targetId) === String(downlineRootId)) return;
         setDownlineStack((prev) => [...prev, downlineRootId]);
         setDownlineRootId(targetId);
-        setDownlineOverrides({});
     }, [downlineRootId]);
 
     const handleBackOneLevel = useCallback(() => {
@@ -169,7 +163,6 @@ const MlmMemberDetail = () => {
             if (!prev.length) return prev;
             const next = prev.slice(0, -1);
             setDownlineRootId(prev[prev.length - 1]);
-            setDownlineOverrides({});
             return next;
         });
     }, []);
@@ -177,7 +170,6 @@ const MlmMemberDetail = () => {
     const handleResetToAnchor = useCallback(() => {
         setDownlineStack([]);
         setDownlineRootId(id);
-        setDownlineOverrides({});
     }, [id]);
 
     const isViewingAnchor = String(downlineRootId) === String(id);
@@ -528,7 +520,7 @@ const MlmMemberDetail = () => {
                     </h3>
                     <p className="text-[11px] text-slate-500 mt-0.5">
                         Hover any node to see member details · tap a node to drill into their downline ·
-                        drag the background to pan · hold ⌘/Ctrl + scroll to zoom.
+                        use the zoom controls (or ⌘/Ctrl + scroll) to resize.
                     </p>
                 </div>
                 {/* Fixed-height canvas frame. The shared component
@@ -542,19 +534,17 @@ const MlmMemberDetail = () => {
                         isMember
                         depth={downlineDepth}
                         onDepthChange={setDownlineDepth}
-                        layoutOverrides={downlineOverrides}
-                        onChangeLayout={setDownlineOverrides}
                         onNodeTap={handleNodeTap}
                         breadcrumb={downlineBreadcrumb}
                         emptyTreeMessage="No downline data for this member yet."
                         footerHint={
                             <>
                                 <span className="hidden sm:inline">
-                                    Hover for details · tap to drill into a member · drag to reposition ·
-                                    pan/zoom the canvas · layout changes are not saved on the admin view.
+                                    Hover for details · tap a node to drill into their downline ·
+                                    use the zoom controls (or ⌘/Ctrl + scroll) to resize.
                                 </span>
                                 <span className="sm:hidden">
-                                    Tap a node to drill in · tap-drag to move · pan background · admin layout is not saved.
+                                    Tap a node to drill in · use the zoom buttons to resize.
                                 </span>
                             </>
                         }
