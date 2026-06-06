@@ -364,13 +364,19 @@ export const approveMlmMember = async (req, res) => {
 };
 
 /**
- * GET /api/admin/mlm/members/:id/downline?depth=4
+ * GET /api/admin/mlm/members/:id/downline?depth=<n>
  *
  * Build the BINARY PLACEMENT tree (Plan A's left/right genealogy)
- * rooted at the given member, up to `depth` levels (default 4,
- * max 6). Each node has at most two children, returned on the
- * shape `{ left, right }` so the UI can render proper left/right
- * legs instead of a flat list of sponsor referrals.
+ * rooted at the given member.
+ *
+ * Depth semantics:
+ *   - omitted / 0 / non-positive → returns the FULL downline tree
+ *     (capped at `MAX_TREE_DEPTH = 50` as a runaway safety bound)
+ *   - positive integer           → clamped to [1, MAX_TREE_DEPTH]
+ *
+ * Each node has at most two children, returned on the shape
+ * `{ left, right }` so the UI can render proper left/right legs
+ * instead of a flat list of sponsor referrals.
  *
  * Note: this intentionally walks `binaryLeftChildId` /
  * `binaryRightChildId`, NOT `sponsorId`. A sponsor's referrals can
@@ -382,7 +388,14 @@ export const approveMlmMember = async (req, res) => {
  */
 export const getMlmMemberDownlineTree = async (req, res) => {
   try {
-    const depth = Math.min(Math.max(parseInt(req.query.depth, 10) || 4, 1), 6);
+    // See the doc-comment above for depth semantics. `0` or any
+    // non-positive value means "fetch the whole downline up to the
+    // safety cap"; positive values are clamped to that cap.
+    const MAX_TREE_DEPTH = 50;
+    const rawDepth = parseInt(req.query.depth, 10);
+    const depth = Number.isFinite(rawDepth) && rawDepth > 0
+      ? Math.min(rawDepth, MAX_TREE_DEPTH)
+      : MAX_TREE_DEPTH;
     const membership = await MlmMembership.findById(req.params.id)
       .populate("userId", "name phone email userId")
       .lean();

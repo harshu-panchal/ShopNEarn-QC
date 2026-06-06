@@ -881,7 +881,7 @@ async function isCallerAuthorisedForTreeRoot(callerUserId, rootMembership) {
 }
 
 /**
- * GET /api/customer/mlm/genealogy/tree?depth=4&rootUserId=<User._id>
+ * GET /api/customer/mlm/genealogy/tree?depth=<n>&rootUserId=<User._id>
  *
  * Recursive binary downline tree rooted at the caller's membership
  * (default) OR at any descendant in the caller's binary tree when
@@ -890,12 +890,30 @@ async function isCallerAuthorisedForTreeRoot(callerUserId, rootMembership) {
  * leaking strangers' networks (see `isCallerAuthorisedForTreeRoot`
  * for the auth model).
  *
- * Depth capped at 6 to keep payload bounded.
+ * Depth semantics:
+ *   - omitted / 0 / non-positive → returns the FULL downline tree
+ *     (capped at `MAX_TREE_DEPTH = 50` as a runaway safety bound)
+ *   - positive integer           → clamped to [1, MAX_TREE_DEPTH]
  */
 export const getMyGenealogyTree = async (req, res) => {
   try {
     const callerUserId = req.user.id;
-    const depth = Math.min(Math.max(parseInt(req.query.depth, 10) || 4, 1), 6);
+    // Depth handling:
+    //   - default (no query param) → 0  (interpreted as "all levels")
+    //   - `depth=0`                 → full downline, capped at MAX_TREE_DEPTH
+    //     to guarantee the recursive build can never run away on a
+    //     pathologically deep tree.
+    //   - any positive number       → clamped to [1, MAX_TREE_DEPTH]
+    //
+    // The cap is a safety bound; in practice no binary placement
+    // tree gets anywhere close to 50 levels (that would be 2^50
+    // members). It exists to keep the recursive Mongo queries
+    // bounded if the schema ever develops a placement cycle bug.
+    const MAX_TREE_DEPTH = 50;
+    const rawDepth = parseInt(req.query.depth, 10);
+    const depth = Number.isFinite(rawDepth) && rawDepth > 0
+      ? Math.min(rawDepth, MAX_TREE_DEPTH)
+      : MAX_TREE_DEPTH;
     const rawRoot = typeof req.query.rootUserId === "string"
       ? req.query.rootUserId.trim()
       : "";

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ChevronLeft, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, ExternalLink } from 'lucide-react';
+import { ChevronLeft, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
 import GenealogyTreeCanvas from '@shared/components/mlm/GenealogyTreeCanvas';
 
@@ -23,17 +23,22 @@ const STATUS_LABEL = {
 
 const MlmMemberDetail = () => {
     const { id } = useParams();
-    const navigate = useNavigate();
     const [data, setData] = useState(null);
     const [downlineTree, setDownlineTree] = useState(null);
-    const [downlineDepth, setDownlineDepth] = useState(3);
+    // `downlineDepth = 0` is the sentinel for "All levels" — the
+    // backend treats `depth=0` as "fetch the entire downline up to
+    // MAX_TREE_DEPTH". Admins almost always want the full picture
+    // when auditing a member, so we open the canvas fully expanded
+    // and let the dropdown dial it back if a particular network is
+    // unusably large.
+    const [downlineDepth, setDownlineDepth] = useState(0);
     const [downlineLoading, setDownlineLoading] = useState(false);
-    // Sub-tree navigation: `downlineRootId` is the membership ID
-    // currently rendered on the canvas. Starts as the URL `id` (the
-    // member whose page we're on) and changes whenever the admin
-    // taps a downline node. The `downlineStack` is the breadcrumb
-    // history so the back button walks up one level at a time and
-    // "Reset" returns to the URL-anchored member.
+    // In-page sub-tree navigation. `downlineRootId` is the
+    // membership currently rendered on the canvas; it starts as
+    // the URL `id` and changes whenever the admin taps a node.
+    // `downlineStack` is the breadcrumb history so the Back
+    // button unwinds one level at a time and Reset returns to the
+    // URL-anchored member without touching the browser URL.
     const [downlineRootId, setDownlineRootId] = useState(id);
     const [downlineStack, setDownlineStack] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -69,11 +74,14 @@ const MlmMemberDetail = () => {
     };
 
     useEffect(() => { load(); }, [id]);
-    // Reset sub-tree navigation whenever the URL member changes.
+    // When the URL member changes (e.g. admin uses the back
+    // button to return to a different member), reset the in-page
+    // sub-tree navigation so the canvas re-anchors on that member.
     useEffect(() => {
         setDownlineRootId(id);
         setDownlineStack([]);
     }, [id]);
+    // Fetch whatever sub-tree the canvas is currently rooted at.
     useEffect(() => {
         if (!downlineRootId) return;
         loadDownline(downlineDepth, downlineRootId);
@@ -144,12 +152,13 @@ const MlmMemberDetail = () => {
         }
     };
 
-    // ----- Sub-tree navigation handlers -----
-    // Tap a node → push current root onto the stack and recenter
-    // the canvas on the tapped member. The admin tree builder
-    // returns each node's membership `_id`, which is the URL key
-    // for both the downline endpoint and the per-member detail
-    // page.
+    // ----- In-page sub-tree navigation -----
+    // Tap a node → push the current root onto the stack and
+    // re-render the canvas rooted at the tapped member. The admin
+    // tree builder sets `_id` to the membership document id, which
+    // is exactly the key the downline endpoint takes — so we can
+    // re-fetch a brand-new sub-tree without leaving this page or
+    // changing the URL.
     const handleNodeTap = useCallback((node) => {
         const targetId = node?.data?._id ? String(node.data._id) : null;
         if (!targetId) return;
@@ -185,6 +194,11 @@ const MlmMemberDetail = () => {
         return { name, publicId };
     }, [downlineTree]);
 
+    // Toolbar breadcrumb shown only when the admin has drilled in.
+    // No "Open profile" link here on purpose — the whole point of
+    // drill-in is to inspect a sub-tree without leaving this page,
+    // so we don't offer a one-tap URL change. (The admin can still
+    // copy the membership id from the URL if they need it.)
     const downlineBreadcrumb = !isViewingAnchor && currentRootInfo ? (
         <div className="flex items-center gap-1.5 ml-1 flex-wrap">
             <button
@@ -213,16 +227,8 @@ const MlmMemberDetail = () => {
                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-100 text-[11px] font-bold text-slate-600"
                 title="Return to the member you started from"
             >
+                <RotateCcw size={11} />
                 Reset
-            </button>
-            <button
-                type="button"
-                onClick={() => navigate(`/admin/mlm/members/${downlineRootId}`)}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-200 bg-indigo-600 hover:bg-indigo-700 text-[11px] font-bold text-white"
-                title="Open this member's full profile"
-            >
-                <ExternalLink size={11} />
-                Open profile
             </button>
         </div>
     ) : null;
@@ -519,8 +525,9 @@ const MlmMemberDetail = () => {
                         <GitBranch size={16} /> Binary Downline Tree
                     </h3>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                        Hover any node to see member details · tap a node to drill into their downline ·
-                        drag the background to pan · hold ⌘/Ctrl + scroll to zoom.
+                        Hover any node to see member details · tap a node to re-render the tree
+                        rooted at that member (no page change) · use Back / Reset in the toolbar
+                        to walk up · drag the background to pan · hold ⌘/Ctrl + scroll to zoom.
                     </p>
                 </div>
                 {/* Fixed-height canvas frame. The shared component
@@ -540,11 +547,13 @@ const MlmMemberDetail = () => {
                         footerHint={
                             <>
                                 <span className="hidden sm:inline">
-                                    Hover for details · tap a node to drill into their downline ·
-                                    drag the background to pan · hold ⌘/Ctrl + scroll to zoom.
+                                    Hover for details · tap a node to render that member's
+                                    downline here · use Back / Reset to walk up · drag the
+                                    background to pan · hold ⌘/Ctrl + scroll to zoom.
                                 </span>
                                 <span className="sm:hidden">
-                                    Tap a node to drill in · drag background to pan · pinch to zoom.
+                                    Tap a node to render their downline here · Back to walk up ·
+                                    drag background to pan · pinch to zoom.
                                 </span>
                             </>
                         }

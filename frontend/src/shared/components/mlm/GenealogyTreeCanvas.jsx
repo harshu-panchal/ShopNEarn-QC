@@ -191,30 +191,75 @@ const GenealogyTreeCanvas = ({
   const positionedNodes = nodes;
 
   // ----- Pan (drag on background) -----
-  const panState = useRef({ active: false, startX: 0, startY: 0, panX: 0, panY: 0 });
+  //
+  // Tap vs pan disambiguation:
+  //   The canvas owns `pointerdown` / `pointermove` / `pointerup`
+  //   so it can drag the whole tree around. But the per-node tap
+  //   relies on the browser's synthetic `click` event firing on
+  //   the inner NodeCard, which can be SUPPRESSED if we call
+  //   `setPointerCapture` immediately on `pointerdown` — some
+  //   browsers then treat the inner node as no longer the click
+  //   target (because pointerup now fires on the captured element)
+  //   and the click is silently dropped.
+  //
+  //   To keep both behaviours working we DEFER capture: pointerdown
+  //   only puts us in a "pending" state. We promote to a real pan
+  //   (and capture the pointer) only after the pointer has moved
+  //   more than `PAN_THRESHOLD_PX` from the press origin. A press +
+  //   release with no movement therefore never captures the pointer
+  //   and the browser's natural click dispatch fires `onClick` on
+  //   the NodeCard exactly as expected.
+  const PAN_THRESHOLD_PX = 5;
+  const panState = useRef({
+    pending: false,
+    active: false,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    panX: 0,
+    panY: 0,
+  });
   const onPanStart = useCallback((e) => {
     if (e.button !== undefined && e.button !== 0) return;
     panState.current = {
-      active: true,
+      pending: true,
+      active: false,
+      pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
       panX: pan.x,
       panY: pan.y,
     };
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    setHoveredNode(null);
+    // Intentionally do NOT capture the pointer here — see header.
   }, [pan]);
   const onPanMove = useCallback((e) => {
-    if (!panState.current.active) return;
-    const dx = e.clientX - panState.current.startX;
-    const dy = e.clientY - panState.current.startY;
-    setPan({ x: panState.current.panX + dx, y: panState.current.panY + dy });
+    const s = panState.current;
+    if (!s.pending && !s.active) return;
+    const dx = e.clientX - s.startX;
+    const dy = e.clientY - s.startY;
+    if (!s.active) {
+      if (Math.hypot(dx, dy) < PAN_THRESHOLD_PX) return;
+      s.active = true;
+      s.pending = false;
+      e.currentTarget.setPointerCapture?.(s.pointerId);
+      setHoveredNode(null);
+    }
+    setPan({ x: s.panX + dx, y: s.panY + dy });
   }, []);
   const onPanEnd = useCallback((e) => {
-    if (panState.current.active) {
-      panState.current.active = false;
-      e.currentTarget?.releasePointerCapture?.(e.pointerId);
+    const s = panState.current;
+    if (s.active) {
+      e.currentTarget?.releasePointerCapture?.(s.pointerId);
     }
+    panState.current = {
+      pending: false,
+      active: false,
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      panX: 0,
+      panY: 0,
+    };
   }, []);
 
   // ----- Zoom (wheel + buttons) -----
@@ -310,14 +355,24 @@ const GenealogyTreeCanvas = ({
               <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
                 Depth
               </label>
+              {/*
+                Depth options:
+                  - Fixed-depth choices (3 / 5 / 7 / 10 / 15) for
+                    callers who want to limit payload size on a
+                    very large downline.
+                  - `0` is the sentinel for "All levels" — the
+                    backend treats `depth=0` (or any non-positive
+                    value) as "fetch the entire downline" capped
+                    at the server-side safety bound (50 levels).
+              */}
               <select
                 value={depth}
                 onChange={(e) => onDepthChange(Number(e.target.value))}
                 className="text-xs font-bold border border-slate-200 rounded-md px-2 py-1 bg-white"
               >
-                {[2, 3, 4, 5, 6].map((d) => (
+                {[3, 5, 7, 10, 15, 0].map((d) => (
                   <option key={d} value={d}>
-                    {d} levels
+                    {d === 0 ? "All levels" : `${d} levels`}
                   </option>
                 ))}
               </select>

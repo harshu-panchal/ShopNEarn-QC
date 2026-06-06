@@ -29,7 +29,12 @@ import GenealogyTreeCanvas from "@shared/components/mlm/GenealogyTreeCanvas";
 const TreeViewPage = () => {
   const [loading, setLoading] = useState(true);
   const [treePayload, setTreePayload] = useState(null);
-  const [depth, setDepth] = useState(4);
+  // `depth = 0` is the sentinel for "All levels" — see the
+  // `getMyGenealogyTree` controller. The customer's own tree should
+  // show the entire downline on first load instead of an arbitrary
+  // 4-level slice; the dropdown still lets them dial it back if they
+  // want a smaller view.
+  const [depth, setDepth] = useState(0);
 
   // Sub-tree navigation: `rootUserId` is null when the user is
   // viewing their own root. Clicking a downline node pushes its
