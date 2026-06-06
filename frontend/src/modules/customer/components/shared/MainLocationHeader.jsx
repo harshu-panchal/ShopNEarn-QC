@@ -319,7 +319,13 @@ const MainLocationHeader = ({
           {/* Subtle Glow Overlay */}
           <div className="absolute inset-0 bg-white/8 pointer-events-none" />
 
-          {/* Corner Lottie */}
+          {/* Corner Lottie — MOBILE ONLY.
+              On md+ the desktop header renders the full action-icon
+              row (Wishlist / Cart / Profile) in the same top-right
+              corner, so the decorative Lottie cart was visually
+              colliding with the Profile button. Mobile has no such
+              action-icon row, so the Lottie keeps its corner slot
+              there as the lone cart entry point. */}
           <motion.button
             initial={{ opacity: 0, scale: 0.9, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -332,7 +338,7 @@ const MainLocationHeader = ({
             type="button"
             aria-label="Open cart"
             onClick={() => navigate("/checkout")}
-            className="absolute top-3 right-5 sm:top-4 sm:right-6 md:top-5 md:right-8 z-20 w-12 h-12 sm:w-14 sm:h-14 md:w-20 md:h-20 cursor-pointer">
+            className="md:hidden absolute top-3 right-5 sm:top-4 sm:right-6 z-20 w-12 h-12 sm:w-14 sm:h-14 cursor-pointer">
             {cartAnimData ? (
               <Lottie
                 animationData={cartAnimData}
@@ -345,7 +351,7 @@ const MainLocationHeader = ({
           </motion.button>
 
           {/* Desktop/Tablet Header Layout (md and above) */}
-          <div className="hidden md:flex items-center justify-between relative z-20 px-2 lg:px-6 mb-4 mt-1">
+          <div className="hidden md:flex items-center justify-between relative z-20 px-3 md:pr-4 lg:px-6 lg:pr-8 mb-4 mt-1">
             {/* Left Section: Logo + Location row */}
             <div className="flex items-center gap-4 lg:gap-8">
               <div
@@ -417,13 +423,18 @@ const MainLocationHeader = ({
               </motion.div>
             </div>
 
-            {/* Right Section: Action Icons */}
-            <div className="flex items-center gap-5 lg:gap-8 shrink-0">
+            {/* Right Section: Action Icons
+                Shifted left (md:mr-16 lg:mr-20) so the rightmost
+                Profile button does not visually collide with the
+                decorative Lottie cart anchored in the top-right
+                corner. The Lottie sits at right-5/right-6 and is
+                ~48–56px wide, so we reserve ~64–80px of clearance. */}
+            <div className="flex items-center gap-6 md:gap-7 lg:gap-9 shrink-0 pl-2 md:mr-16 lg:mr-20">
               <motion.button
                 whileHover={{ scale: 1.15, rotate: 5 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => navigate("/wishlist")}
-                className="transition-all hover:text-red-500"
+                className="transition-all hover:text-red-500 shrink-0"
                 style={{ color: headerFontColor }}
               >
                 <FavoriteBorderOutlinedIcon sx={{ fontSize: 24 }} />
@@ -433,11 +444,11 @@ const MainLocationHeader = ({
                 whileHover={{ scale: 1.15, rotate: -5 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => navigate("/checkout")}
-                className="transition-all hover:text-slate-700 relative group"
+                className="transition-all hover:text-slate-700 relative group shrink-0"
                 style={{ color: headerFontColor }}
               >
                 <ShoppingCartOutlinedIcon sx={{ fontSize: 24 }} />
-                <span className="absolute -top-1.5 -right-1.5 bg-yellow-400 text-brand-900 text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border-2 border-brand-800 shadow-sm transition-transform group-hover:-translate-y-0.5">
+                <span className="absolute -top-1 -right-1 bg-yellow-400 text-brand-900 text-[9px] font-black min-w-[16px] h-[16px] px-1 rounded-full flex items-center justify-center border-2 border-brand-800 shadow-sm transition-transform group-hover:-translate-y-0.5">
                   0
                 </span>
               </motion.button>
@@ -446,7 +457,7 @@ const MainLocationHeader = ({
                 whileHover={{ scale: 1.15 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => navigate("/profile")}
-                className="lg:bg-white/30 p-1.5 lg:rounded-full hover:bg-white transition-all"
+                className="lg:bg-white/30 p-1.5 lg:rounded-full hover:bg-white transition-all shrink-0"
                 style={{ color: headerFontColor }}
               >
                 <AccountCircleOutlinedIcon sx={{ fontSize: 28 }} />
