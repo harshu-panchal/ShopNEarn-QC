@@ -304,24 +304,24 @@ const GenealogyTreeCanvas = ({
 
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(0.85);
-  const [hoveredNode, setHoveredNode] = useState(null);
-  const hideHoverTimerRef = useRef(null);
+
+  // Member-details modal state. `selectedFilledNode` is the node
+  // the user most recently CLICKED on (filled members only —
+  // empty/addable slots get their own AddMemberModal flow).
+  // Cleared on close.
+  //
+  // Hover-to-show-tooltip was retired here: clicks open a richer
+  // centered modal so the interaction is identical on desktop and
+  // touch surfaces and so the user can dwell on the details
+  // without the popover disappearing the instant their cursor
+  // drifts.
+  const [selectedFilledNode, setSelectedFilledNode] = useState(null);
 
   // Add-member modal state. `target` carries the parent context
   // selected when the user taps a blue empty slot. Cleared on
   // close.
   const [addTarget, setAddTarget] = useState(null);
   const [addBusy, setAddBusy] = useState(false);
-
-  useEffect(
-    () => () => {
-      if (hideHoverTimerRef.current) {
-        clearTimeout(hideHoverTimerRef.current);
-        hideHoverTimerRef.current = null;
-      }
-    },
-    [],
-  );
 
   // ----- Augment the tree with empty placeholder nodes -----
   const augmentedTree = useMemo(
@@ -480,7 +480,6 @@ const GenealogyTreeCanvas = ({
       s.active = true;
       s.pending = false;
       e.currentTarget.setPointerCapture?.(s.pointerId);
-      setHoveredNode(null);
     }
     setPan({ x: s.panX + dx, y: s.panY + dy });
   }, []);
@@ -523,13 +522,26 @@ const GenealogyTreeCanvas = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, treeWidth, tree]);
 
-  // Filled-node tap — delegated to parent.
-  const handleNodeClick = useCallback(
-    (node) => {
-      onNodeTap?.(node);
-    },
-    [onNodeTap],
-  );
+  // Filled-node tap — opens the member detail modal. The actual
+  // "drill into this member's downline" action lives behind the
+  // "Show Genealogy" button INSIDE the modal so the user can
+  // inspect details before navigating away from the current root.
+  // The parent's `onNodeTap` is therefore no longer called on raw
+  // click; it fires only from `handleShowGenealogy` below.
+  const handleNodeClick = useCallback((node) => {
+    if (!node?.data || node.data.__empty) return;
+    setSelectedFilledNode(node);
+  }, []);
+
+  const handleCloseDetailModal = useCallback(() => {
+    setSelectedFilledNode(null);
+  }, []);
+
+  const handleShowGenealogy = useCallback(() => {
+    if (!selectedFilledNode) return;
+    setSelectedFilledNode(null);
+    onNodeTap?.(selectedFilledNode);
+  }, [selectedFilledNode, onNodeTap]);
 
   // Empty-slot tap (only fires for ADDABLE empties).
   const handleEmptyClick = useCallback(
@@ -563,25 +575,6 @@ const GenealogyTreeCanvas = ({
     },
     [onAddMember, filledById],
   );
-
-  // ----- Hover plumbing (only filled nodes show the tooltip) -----
-  const handleNodeHoverEnter = useCallback((node, rect) => {
-    if (hideHoverTimerRef.current) {
-      clearTimeout(hideHoverTimerRef.current);
-      hideHoverTimerRef.current = null;
-    }
-    if (!rect) return;
-    if (node?.data?.__empty) return;
-    setHoveredNode({ node, rect });
-  }, []);
-
-  const handleNodeHoverLeave = useCallback(() => {
-    if (hideHoverTimerRef.current) clearTimeout(hideHoverTimerRef.current);
-    hideHoverTimerRef.current = setTimeout(() => {
-      setHoveredNode(null);
-      hideHoverTimerRef.current = null;
-    }, 120);
-  }, []);
 
   const handleAddSubmit = useCallback(
     async (formValues) => {
@@ -801,18 +794,12 @@ const GenealogyTreeCanvas = ({
                 key={n.id}
                 node={n}
                 onTap={handleNodeClick}
-                onHoverEnter={handleNodeHoverEnter}
-                onHoverLeave={handleNodeHoverLeave}
-                isHovered={hoveredNode?.node?.id === n.id}
+                isSelected={selectedFilledNode?.id === n.id}
                 highlightViewerSelf={highlightViewerSelf}
               />
             ),
           )}
         </div>
-
-        {hoveredNode && (
-          <NodeHoverTooltip anchorRect={hoveredNode.rect} node={hoveredNode.node} />
-        )}
       </div>
 
       {footerHint !== null && (
@@ -820,14 +807,16 @@ const GenealogyTreeCanvas = ({
           {footerHint || (
             <>
               <span className="hidden sm:inline">
-                Hover a node for details • Tap a member to view their downline •
-                Tap a <span className="text-sky-600 font-bold">blue</span> open
-                slot to add a member • Drag the background to pan • Hold ⌘/Ctrl +
+                Click a member to open their details — use the “Show Genealogy”
+                button inside to view their downline • Tap a{" "}
+                <span className="text-sky-600 font-bold">blue</span> open slot to
+                add a new member • Drag the background to pan • Hold ⌘/Ctrl +
                 scroll to zoom.
               </span>
               <span className="sm:hidden">
-                Tap a member to view their downline • Tap a blue open slot to add
-                a member • Drag to pan • Pinch to zoom.
+                Tap a member to see details · Show Genealogy in the popup to
+                drill in · Tap blue slots to add a member · Drag to pan · Pinch
+                to zoom.
               </span>
             </>
           )}
@@ -842,6 +831,14 @@ const GenealogyTreeCanvas = ({
           onSubmit={handleAddSubmit}
         />
       )}
+
+      {selectedFilledNode && (
+        <MemberDetailModal
+          node={selectedFilledNode}
+          onClose={handleCloseDetailModal}
+          onShowGenealogy={handleShowGenealogy}
+        />
+      )}
     </div>
   );
 };
@@ -849,38 +846,25 @@ const GenealogyTreeCanvas = ({
 /**
  * NodeCard — pill + label for a FILLED member.
  *
- * Visually matches the reference design: solid coloured pill (rose
- * 500) holding the referral code, member name underneath. Root and
- * unpaid members get distinct accent colours.
+ * Visually matches the reference design: status/plan-tinted pill
+ * (see `nodeAccent`) holding the referral code with the member's
+ * name beneath. The pill grows a subtle ring while the
+ * member-detail modal for that node is open (`isSelected`).
+ *
+ * Hover-driven tooltips were retired; clicks now open
+ * `MemberDetailModal` which is the single source of details +
+ * "Show Genealogy" navigation.
  */
-const NodeCard = ({
-  node,
-  onTap,
-  onHoverEnter,
-  onHoverLeave,
-  isHovered,
-  highlightViewerSelf,
-}) => {
+const NodeCard = ({ node, onTap, isSelected, highlightViewerSelf }) => {
   const data = node.data || {};
   const isRoot = data.position === null || data.position === undefined;
-  const pillRef = useRef(null);
 
   // Colour is driven entirely by the member's status + plan (see
   // `nodeAccent` for the canonical mapping). The root gets the same
-  // accent as any other member; the Crown icon in the tooltip header
-  // is the secondary cue that distinguishes it.
+  // accent as any other member; the Crown icon in the detail modal
+  // header is the secondary cue that distinguishes it.
   const accent = nodeAccent(data);
   const pillClass = accent.pill;
-
-  const handleEnter = useCallback(() => {
-    if (!onHoverEnter) return;
-    const rect = pillRef.current?.getBoundingClientRect();
-    onHoverEnter(node, rect);
-  }, [node, onHoverEnter]);
-
-  const handleLeave = useCallback(() => {
-    onHoverLeave?.();
-  }, [onHoverLeave]);
 
   const handleClick = useCallback(
     (e) => {
@@ -893,8 +877,6 @@ const NodeCard = ({
   return (
     <div
       onClick={handleClick}
-      onPointerEnter={handleEnter}
-      onPointerLeave={handleLeave}
       style={{
         position: "absolute",
         left: node.x,
@@ -905,9 +887,8 @@ const NodeCard = ({
       className="flex flex-col items-center justify-start cursor-pointer select-none"
     >
       <span
-        ref={pillRef}
         className={`px-3 py-1.5 rounded-md text-[12px] font-mono font-bold tracking-wider shadow-md whitespace-nowrap transition-transform ${pillClass} ${
-          isHovered ? `ring-2 ring-offset-1 ${accent.ring} scale-[1.05]` : ""
+          isSelected ? `ring-2 ring-offset-1 ${accent.ring} scale-[1.05]` : ""
         }`}
       >
         {data.referralCode || "—"}
@@ -1277,16 +1258,36 @@ const LegToggle = ({ active, disabled, onClick, icon, label }) => (
 );
 
 /**
- * Floating details tooltip for a hovered FILLED node. Empty slots
- * never trigger this — the hover handler filters them out.
+ * MemberDetailModal — centered modal that opens when the user
+ * clicks a FILLED member node on the canvas.
+ *
+ * Replaces the previous hover-driven floating tooltip:
+ *   - Identical detail surface (status pill, plan, joined date,
+ *     downline/earning stats, leg counters, pair count).
+ *   - Adds a primary "Show Genealogy" CTA so the user can pivot
+ *     the canvas to render the selected member as the new root.
+ *   - For the CURRENT root, the CTA is suppressed (you can't
+ *     "show genealogy of who you're already viewing") and we
+ *     surface a small "Current root" pill instead so the user
+ *     knows why no action button is present.
+ *
+ * Layout / interaction parity with `AddMemberModal`:
+ *   - `z-50` backdrop, click-outside to close, X button.
+ *   - Modal sits in the global fixed-position layer so canvas
+ *     pan/zoom never moves it around.
+ *
+ * Pure presentational — receives a `node` (the canvas tree node
+ * struct: `{ id, x, y, data: <membership-with-populated-user> }`)
+ * plus close + show-genealogy callbacks from the canvas.
  */
-const NodeHoverTooltip = ({ anchorRect, node }) => {
+const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
   const data = node?.data || {};
   const u = data.userId;
   const publicUserId =
     (typeof u === "object" && u?.userId) || data.publicUserId || null;
   const name = (typeof u === "object" && u?.name) || data.name || "Member";
   const phone = data.phone || (typeof u === "object" ? u?.phone : null) || null;
+  const email = (typeof u === "object" && u?.email) || data.email || null;
   const referralCode = data.referralCode || null;
   const status = data.status || "unknown";
   const planType = data.planType || "—";
@@ -1300,22 +1301,6 @@ const NodeHoverTooltip = ({ anchorRect, node }) => {
     Number(data.lifetimePlanBEarnings || 0);
   const isRoot = data.position === null || data.position === undefined;
   const accent = nodeAccent(data);
-
-  const TOOLTIP_W = 280;
-  const GAP = 10;
-  const vw = typeof window !== "undefined" ? window.innerWidth : 1024;
-  const vh = typeof window !== "undefined" ? window.innerHeight : 768;
-  const anchorCenterX = anchorRect ? anchorRect.left + anchorRect.width / 2 : vw / 2;
-  const left_ = Math.max(
-    8,
-    Math.min(anchorCenterX - TOOLTIP_W / 2, vw - TOOLTIP_W - 8),
-  );
-  const placeAbove = anchorRect && anchorRect.bottom > vh - 260;
-  const top_ = anchorRect
-    ? placeAbove
-      ? Math.max(8, anchorRect.top - GAP - 240)
-      : anchorRect.bottom + GAP
-    : 60;
 
   const statusLabel =
     status === "registered_unpaid"
@@ -1346,120 +1331,184 @@ const NodeHoverTooltip = ({ anchorRect, node }) => {
 
   return (
     <div
-      style={{
-        position: "fixed",
-        left: left_,
-        top: top_,
-        width: TOOLTIP_W,
-        zIndex: 60,
-        pointerEvents: "none",
-      }}
-      className="rounded-xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+      onClick={onClose}
     >
       <div
-        className={`px-3 py-2.5 ${accent.tooltipHeader} border-b border-slate-100`}
+        className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p
-              className={`text-[10px] font-bold uppercase tracking-wider ${accent.tooltipAccent}`}
-            >
-              Member
-            </p>
-            <p className="mt-0.5 text-sm font-bold text-slate-900 truncate">
-              {name}
-              {isRoot && (
-                <Crown size={12} className={`inline ml-1 ${accent.tooltipAccent}`} />
-              )}
-            </p>
-          </div>
-          <span
-            className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${statusClass}`}
-          >
-            {statusLabel}
-          </span>
-        </div>
-      </div>
-
-      <div className="px-3 py-2 space-y-1.5 text-[12px]">
-        {publicUserId && (
-          <TooltipRow
-            icon={<BadgeCheck size={13} className={accent.tooltipAccent} />}
-            label="User ID"
-            value={publicUserId}
-            mono
-          />
-        )}
-        {referralCode && (
-          <TooltipRow
-            icon={<Hash size={13} className="text-slate-400" />}
-            label="Referral"
-            value={referralCode}
-            mono
-          />
-        )}
-        <TooltipRow
-          icon={<Sparkles size={13} className={accent.tooltipAccent} />}
-          label="Plan"
-          value={planType && planType !== "—" ? `Plan ${planType}` : "—"}
-        />
-        <TooltipRow
-          icon={<Calendar size={13} className="text-slate-400" />}
-          label="Joined"
-          value={fmtDate(joinedAt)}
-        />
-        {phone && (
-          <TooltipRow
-            icon={<Users size={13} className="text-slate-400" />}
-            label="Phone"
-            value={phone}
-          />
-        )}
-      </div>
-
-      <div className="px-3 py-2 border-t border-slate-100 grid grid-cols-3 gap-1.5">
-        <Stat
-          icon={<ChevronLeft size={11} />}
-          label="Left"
-          value={left}
-          tone="emerald"
-        />
-        <Stat
-          icon={<ChevronRight size={11} />}
-          label="Right"
-          value={right}
-          tone="indigo"
-        />
-        <Stat
-          icon={<Users size={11} />}
-          label="Pairs"
-          value={pairs}
-          tone="amber"
-        />
-      </div>
-
-      <div className="px-3 py-2 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50">
-        <div className="flex items-center gap-1 text-[11px] text-slate-500">
-          <Users size={11} />
-          <span className="font-semibold">{totalDownline}</span>
-          <span>downline</span>
-        </div>
-        <div className="flex items-center gap-1 text-[11px] text-slate-700 font-bold">
-          <TrendingUp size={11} className="text-emerald-500" />
-          {fmtMoney(lifetime)}
-        </div>
-      </div>
-
-      {!isRoot && (
+        {/* Header — name, root indicator, status pill, close X. */}
         <div
-          className={`px-3 py-1.5 ${accent.ctaBar} text-[10px] text-white font-bold uppercase tracking-wider text-center`}
+          className={`px-4 py-3 ${accent.tooltipHeader} border-b border-slate-100`}
         >
-          Tap to view this member&apos;s downline
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <p
+                className={`text-[10px] font-bold uppercase tracking-wider ${accent.tooltipAccent}`}
+              >
+                Member
+              </p>
+              <p className="mt-0.5 text-base font-bold text-slate-900 truncate">
+                {name}
+                {isRoot && (
+                  <Crown
+                    size={14}
+                    className={`inline ml-1.5 ${accent.tooltipAccent}`}
+                  />
+                )}
+              </p>
+              <span
+                className={`mt-1 inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${statusClass}`}
+              >
+                {statusLabel}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-full hover:bg-white/60 flex items-center justify-center text-slate-500"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
-      )}
+
+        {/* Identity block. */}
+        <div className="px-4 py-3 space-y-1.5 text-[12px]">
+          {publicUserId && (
+            <TooltipRow
+              icon={<BadgeCheck size={13} className={accent.tooltipAccent} />}
+              label="User ID"
+              value={publicUserId}
+              mono
+            />
+          )}
+          {referralCode && (
+            <TooltipRow
+              icon={<Hash size={13} className="text-slate-400" />}
+              label="Referral"
+              value={referralCode}
+              mono
+            />
+          )}
+          <TooltipRow
+            icon={<Sparkles size={13} className={accent.tooltipAccent} />}
+            label="Plan"
+            value={planType && planType !== "—" ? `Plan ${planType}` : "—"}
+          />
+          <TooltipRow
+            icon={<Calendar size={13} className="text-slate-400" />}
+            label="Joined"
+            value={fmtDate(joinedAt)}
+          />
+          {phone && (
+            <TooltipRow
+              icon={<PhoneIcon size={13} className="text-slate-400" />}
+              label="Phone"
+              value={phone}
+            />
+          )}
+          {email && (
+            <TooltipRow
+              icon={<Mail size={13} className="text-slate-400" />}
+              label="Email"
+              value={email}
+            />
+          )}
+        </div>
+
+        {/* Leg stats. */}
+        <div className="px-4 py-3 border-t border-slate-100 grid grid-cols-3 gap-1.5">
+          <Stat
+            icon={<ChevronLeft size={11} />}
+            label="Left"
+            value={left}
+            tone="emerald"
+          />
+          <Stat
+            icon={<ChevronRight size={11} />}
+            label="Right"
+            value={right}
+            tone="indigo"
+          />
+          <Stat
+            icon={<Users size={11} />}
+            label="Pairs"
+            value={pairs}
+            tone="amber"
+          />
+        </div>
+
+        {/* Network summary. */}
+        <div className="px-4 py-2.5 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50">
+          <div className="flex items-center gap-1 text-[11px] text-slate-600">
+            <Users size={11} />
+            <span className="font-bold">{totalDownline}</span>
+            <span>downline</span>
+          </div>
+          <div className="flex items-center gap-1 text-[11px] text-slate-700 font-bold">
+            <TrendingUp size={11} className="text-emerald-500" />
+            {fmtMoney(lifetime)}
+          </div>
+        </div>
+
+        {/* Actions — primary "Show Genealogy" CTA opens this
+            member's downline on the same canvas. Hidden when the
+            user is already viewing this member (root) because
+            re-rooting onto yourself is a no-op. */}
+        <div className="px-4 py-3 border-t border-slate-100 flex items-center gap-2 bg-white">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 px-3 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider border border-slate-200 text-slate-600 hover:bg-slate-50"
+          >
+            Close
+          </button>
+          {!isRoot ? (
+            <button
+              type="button"
+              onClick={onShowGenealogy}
+              className={`flex-[1.5] px-3 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider text-white hover:opacity-90 inline-flex items-center justify-center gap-1.5 ${accent.ctaBar}`}
+            >
+              <GitBranchIcon />
+              Show Genealogy
+            </button>
+          ) : (
+            <span className="flex-[1.5] px-3 py-2.5 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100 text-center">
+              Current root
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
+
+/**
+ * Tiny inline icon — mirrors lucide's `GitBranch` shape but
+ * avoids the extra named import (the file already pulls in
+ * plenty of lucide icons). Kept private to the modal.
+ */
+const GitBranchIcon = () => (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.4"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <line x1="6" y1="3" x2="6" y2="15" />
+    <circle cx="18" cy="6" r="3" />
+    <circle cx="6" cy="18" r="3" />
+    <path d="M18 9a9 9 0 0 1-9 9" />
+  </svg>
+);
 
 const TooltipRow = ({ icon, label, value, mono = false }) => (
   <div className="flex items-center justify-between gap-2 min-w-0">

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ChevronLeft, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
 import GenealogyTreeCanvas from '@shared/components/mlm/GenealogyTreeCanvas';
 
@@ -25,13 +25,14 @@ const MlmMemberDetail = () => {
     const { id } = useParams();
     const [data, setData] = useState(null);
     const [downlineTree, setDownlineTree] = useState(null);
-    // `downlineDepth = 0` is the sentinel for "All levels" — the
-    // backend treats `depth=0` as "fetch the entire downline up to
-    // MAX_TREE_DEPTH". Admins almost always want the full picture
-    // when auditing a member, so we open the canvas fully expanded
-    // and let the dropdown dial it back if a particular network is
-    // unusably large.
-    const [downlineDepth, setDownlineDepth] = useState(0);
+    // Default depth = 3 levels. Opening the entire downline by
+    // default flooded the canvas with placeholder slots and pushed
+    // the meaningful nodes off-screen for any reasonably populated
+    // member. Three levels keeps the initial view scannable and
+    // lines up with the customer-side default; admins doing a full
+    // audit can still pick "All levels" from the dropdown.
+    // (`0` is the backend sentinel for unlimited.)
+    const [downlineDepth, setDownlineDepth] = useState(3);
     const [downlineLoading, setDownlineLoading] = useState(false);
     // In-page sub-tree navigation. `downlineRootId` is the
     // membership currently rendered on the canvas; it starts as
@@ -364,21 +365,21 @@ const MlmMemberDetail = () => {
                                 <p className="text-[11px] text-slate-500">Owed to this member's sponsor, pending downline activation</p>
                             </div>
                         </div>
-                        {(data.heldBonusEvents?.length || 0) > 0 ? (
-                            <ul className="divide-y divide-slate-100 text-xs">
-                                {data.heldBonusEvents.map((row) => (
-                                    <li key={row._id} className="py-2 flex items-center justify-between">
-                                        <div>
-                                            <p className="font-semibold text-slate-800">Pair #{row.meta?.pairIndex ?? '?'}</p>
-                                            <p className="text-[10px] text-slate-500">{formatDate(row.createdAt)}</p>
-                                        </div>
-                                        <span className="font-bold text-amber-700">{formatINR(row.bonusAmount || 0)}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : (
-                            <p className="text-xs text-slate-500">No held bonus events currently rely on this member.</p>
-                        )}
+                        <PaginatedList
+                            items={data.heldBonusEvents || []}
+                            pageSize={5}
+                            emptyMessage="No held bonus events currently rely on this member."
+                            ulClassName="divide-y divide-slate-100 text-xs"
+                            renderItem={(row) => (
+                                <li key={row._id} className="py-2 flex items-center justify-between">
+                                    <div>
+                                        <p className="font-semibold text-slate-800">Pair #{row.meta?.pairIndex ?? '?'}</p>
+                                        <p className="text-[10px] text-slate-500">{formatDate(row.createdAt)}</p>
+                                    </div>
+                                    <span className="font-bold text-amber-700">{formatINR(row.bonusAmount || 0)}</span>
+                                </li>
+                            )}
+                        />
                     </Card>
                 </div>
             )}
@@ -502,57 +503,57 @@ const MlmMemberDetail = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <Card title={`Commission History (last 50)`}>
-                    {data.commissionHistory.length === 0 ? (
-                        <p className="text-sm text-slate-500">No commissions yet.</p>
-                    ) : (
-                        <ul className="divide-y divide-slate-100 text-sm">
-                            {data.commissionHistory.map((row) => (
-                                <li key={row._id} className="py-2 flex items-center justify-between">
-                                    <div>
-                                        <p className="font-semibold text-slate-800">{row.bonusType}{row.level ? ` L${row.level}` : ''}</p>
-                                        <p className="text-[11px] text-slate-500">{formatDate(row.createdAt)} · {row.status}</p>
-                                    </div>
-                                    <span className="font-bold text-emerald-700">+{formatINR(row.cappedAmount)}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
+                    <PaginatedList
+                        items={data.commissionHistory || []}
+                        pageSize={5}
+                        emptyMessage="No commissions yet."
+                        ulClassName="divide-y divide-slate-100 text-sm"
+                        renderItem={(row) => (
+                            <li key={row._id} className="py-2 flex items-center justify-between">
+                                <div>
+                                    <p className="font-semibold text-slate-800">{row.bonusType}{row.level ? ` L${row.level}` : ''}</p>
+                                    <p className="text-[11px] text-slate-500">{formatDate(row.createdAt)} · {row.status}</p>
+                                </div>
+                                <span className="font-bold text-emerald-700">+{formatINR(row.cappedAmount)}</span>
+                            </li>
+                        )}
+                    />
                 </Card>
 
                 <Card title="Withdrawals">
-                    {data.withdrawals.length === 0 ? (
-                        <p className="text-sm text-slate-500">No withdrawals yet.</p>
-                    ) : (
-                        <ul className="divide-y divide-slate-100 text-sm">
-                            {data.withdrawals.map((row) => (
-                                <li key={row._id} className="py-2 flex items-center justify-between">
-                                    <div>
-                                        <p className="font-semibold text-slate-800">{formatINR(row.amount)} <span className="text-xs text-slate-500">(net {formatINR(row.netPayoutAmount)})</span></p>
-                                        <p className="text-[11px] text-slate-500">{formatDate(row.createdAt)} · {row.status}</p>
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
+                    <PaginatedList
+                        items={data.withdrawals || []}
+                        pageSize={5}
+                        emptyMessage="No withdrawals yet."
+                        ulClassName="divide-y divide-slate-100 text-sm"
+                        renderItem={(row) => (
+                            <li key={row._id} className="py-2 flex items-center justify-between">
+                                <div>
+                                    <p className="font-semibold text-slate-800">{formatINR(row.amount)} <span className="text-xs text-slate-500">(net {formatINR(row.netPayoutAmount)})</span></p>
+                                    <p className="text-[11px] text-slate-500">{formatDate(row.createdAt)} · {row.status}</p>
+                                </div>
+                            </li>
+                        )}
+                    />
                 </Card>
             </div>
 
             <Card title="Direct Referrals">
-                {data.directReferrals.length === 0 ? (
-                    <p className="text-sm text-slate-500">No direct referrals.</p>
-                ) : (
-                    <ul className="divide-y divide-slate-100 text-sm">
-                        {data.directReferrals.map((row) => (
-                            <li key={row._id} className="py-2 flex items-center justify-between">
-                                <div>
-                                    <p className="font-semibold text-slate-800">{row.userId?.name || 'Unknown'} <span className="text-xs text-slate-500">· {row.userId?.phone || ''}</span></p>
-                                    <p className="text-[11px] text-slate-500">{row.referralCode} · Plan {row.planType}</p>
-                                </div>
-                                <Link to={`/admin/mlm/members/${row._id}`} className="text-xs font-bold text-indigo-600">View</Link>
-                            </li>
-                        ))}
-                    </ul>
-                )}
+                <PaginatedList
+                    items={data.directReferrals || []}
+                    pageSize={5}
+                    emptyMessage="No direct referrals."
+                    ulClassName="divide-y divide-slate-100 text-sm"
+                    renderItem={(row) => (
+                        <li key={row._id} className="py-2 flex items-center justify-between">
+                            <div>
+                                <p className="font-semibold text-slate-800">{row.userId?.name || 'Unknown'} <span className="text-xs text-slate-500">· {row.userId?.phone || ''}</span></p>
+                                <p className="text-[11px] text-slate-500">{row.referralCode} · Plan {row.planType}</p>
+                            </div>
+                            <Link to={`/admin/mlm/members/${row._id}`} className="text-xs font-bold text-indigo-600">View</Link>
+                        </li>
+                    )}
+                />
             </Card>
 
             <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
@@ -561,9 +562,10 @@ const MlmMemberDetail = () => {
                         <GitBranch size={16} /> Binary Downline Tree
                     </h3>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                        Hover any node to see member details · tap a node to re-render the tree
-                        rooted at that member (no page change) · use Back / Reset in the toolbar
-                        to walk up · drag the background to pan · hold ⌘/Ctrl + scroll to zoom.
+                        Click any node to open its detail card — use the “Show Genealogy”
+                        button inside to re-render the tree rooted at that member (no page
+                        change) · use Back / Reset in the toolbar to walk up · drag the
+                        background to pan · hold ⌘/Ctrl + scroll to zoom.
                     </p>
                 </div>
                 {/* Fixed-height canvas frame. The shared component
@@ -586,15 +588,17 @@ const MlmMemberDetail = () => {
                         footerHint={
                             <>
                                 <span className="hidden sm:inline">
-                                    Hover for details · tap a member to render their downline
-                                    here · tap a <span className="text-sky-600 font-bold">blue</span> open
+                                    Click a member to open their detail card — use “Show
+                                    Genealogy” inside to re-render the tree rooted on that
+                                    member · tap a <span className="text-sky-600 font-bold">blue</span> open
                                     slot to add a new member directly under that parent · use
                                     Back / Reset to walk up · drag the background to pan · hold
                                     ⌘/Ctrl + scroll to zoom.
                                 </span>
                                 <span className="sm:hidden">
-                                    Tap a member to render their downline · tap blue slots to add
-                                    members · Back to walk up · drag to pan · pinch to zoom.
+                                    Tap a member to open details · Show Genealogy to drill in ·
+                                    tap blue slots to add members · Back to walk up · drag to
+                                    pan · pinch to zoom.
                                 </span>
                             </>
                         }
@@ -618,5 +622,92 @@ const Row = ({ label, value }) => (
         <span className="font-semibold text-slate-900 text-right">{value}</span>
     </div>
 );
+
+/**
+ * PaginatedList — lightweight client-side pagination for the
+ * Commission / Withdrawals / Direct Referrals / Held Bonus card
+ * lists on the admin member detail page.
+ *
+ * - Renders the empty-state message when `items` is empty so each
+ *   call-site doesn't have to repeat the conditional.
+ * - Skips the pagination bar entirely when `items.length <= pageSize`
+ *   so short lists stay quiet.
+ * - Resets to page 1 whenever the items array reference changes
+ *   (e.g. after a wallet adjustment refetches `data`) — using length
+ *   as the trigger keeps the effect cheap and stable.
+ *
+ * No backend changes — the data already arrives as a single bounded
+ * payload (commissionHistory is capped at 50 on the server, the
+ * others are per-member and tiny). If any list grows unbounded
+ * later, swap this for a server-side cursor/page endpoint.
+ */
+const PaginatedList = ({
+    items,
+    pageSize = 5,
+    emptyMessage,
+    renderItem,
+    ulClassName = 'divide-y divide-slate-100 text-sm',
+}) => {
+    const [page, setPage] = useState(1);
+    const totalPages = Math.max(1, Math.ceil((items?.length || 0) / pageSize));
+
+    // If the data shrinks (e.g. a refetch returns fewer rows) make
+    // sure the current page never points past the end of the list.
+    useEffect(() => {
+        if (page > totalPages) setPage(totalPages);
+    }, [page, totalPages]);
+
+    // Reset to page 1 whenever the input array changes identity so
+    // the user lands on the freshest rows after a refetch.
+    useEffect(() => {
+        setPage(1);
+    }, [items]);
+
+    if (!items || items.length === 0) {
+        return <p className="text-sm text-slate-500">{emptyMessage}</p>;
+    }
+
+    const start = (page - 1) * pageSize;
+    const visible = items.slice(start, start + pageSize);
+    const showBar = items.length > pageSize;
+
+    return (
+        <div className="space-y-2">
+            <ul className={ulClassName}>{visible.map(renderItem)}</ul>
+            {showBar && (
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                    <span className="text-[10px] text-slate-500">
+                        Showing <span className="font-bold text-slate-700">{start + 1}</span>–
+                        <span className="font-bold text-slate-700">{Math.min(start + pageSize, items.length)}</span>{' '}
+                        of <span className="font-bold text-slate-700">{items.length}</span>
+                    </span>
+                    <div className="flex items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                            disabled={page === 1}
+                            className="w-7 h-7 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-slate-600"
+                            aria-label="Previous page"
+                        >
+                            <ChevronLeft size={14} />
+                        </button>
+                        <span className="text-[11px] font-bold text-slate-600 px-2">
+                            {page} / {totalPages}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={page === totalPages}
+                            className="w-7 h-7 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-slate-600"
+                            aria-label="Next page"
+                        >
+                            <ChevronRight size={14} />
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 export default MlmMemberDetail;
