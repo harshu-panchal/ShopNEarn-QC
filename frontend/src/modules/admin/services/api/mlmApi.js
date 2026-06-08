@@ -21,6 +21,20 @@ export const adminMlmApi = {
     approveMember: (id, data) =>
         axiosInstance.post(`/admin/mlm/members/${id}/approve`, data || {}),
 
+    /**
+     * Genealogy redesign — admin places a brand-new member into a
+     * specific empty L/R slot directly under the parent identified
+     * by `parentMembershipId`. Mirrors the customer endpoint but
+     * bypasses the downline-ownership check.
+     *
+     * Payload: { leg: "L"|"R", name, email, phone, password }
+     */
+    addChildMember: (parentMembershipId, data) =>
+        axiosInstance.post(
+            `/admin/mlm/members/${parentMembershipId}/add-child`,
+            data,
+        ),
+
     listWithdrawals: (params) =>
         axiosInstance.get('/admin/mlm/withdrawals', { params }),
     approveWithdrawal: (id, data) =>

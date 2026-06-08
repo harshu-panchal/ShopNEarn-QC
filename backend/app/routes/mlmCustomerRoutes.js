@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  addMemberAtSlot,
   cancelMyWithdrawal,
   claimHomeShopping,
   getDashboardOverview,
@@ -51,6 +52,12 @@ router.get("/genealogy/matching-report", verifyToken, getMyMatchingReport);
 router.get("/genealogy/direct-sponsor", verifyToken, getMyDirectSponsor);
 router.get("/genealogy/tree-layout", verifyToken, getMyTreeLayout);
 router.put("/genealogy/tree-layout", verifyToken, updateMyTreeLayout);
+
+// Redesigned Genealogy page — actor places a brand-new member into
+// a specific empty L/R slot under a filled parent that sits in
+// their downline (or is themselves). OTP is skipped; the new row
+// lands `isVerified=true, status=REGISTERED_UNPAID`.
+router.post("/genealogy/add-member", verifyToken, addMemberAtSlot);
 
 // Customer-MLM-rebuild Phase 5 — Payouts section: My Earnings
 // reuses /earnings-summary + /earnings-history; My Payout reuses

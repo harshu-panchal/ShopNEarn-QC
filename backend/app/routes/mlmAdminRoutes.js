@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  addChildMember,
   adjustMemberWallet,
   approveJoiningReview,
   approveMlmMember,
@@ -35,6 +36,13 @@ router.get("/members/:id/wallet-verification", ...adminGuard, verifyMemberWallet
 // Phase 7 (PO-request): admin-initiated "approve without payment".
 // Flips a REGISTERED_UNPAID member to ACTIVE / Plan A. Idempotent.
 router.post("/members/:id/approve", ...adminGuard, approveMlmMember);
+
+// Genealogy redesign — admin places a brand-new member into a
+// specific empty L/R slot directly under the parent identified by
+// `:id`. Mirrors the customer endpoint at
+// `POST /api/customer/mlm/genealogy/add-member` but bypasses the
+// downline-ownership check (admins can place anywhere).
+router.post("/members/:id/add-child", ...adminGuard, addChildMember);
 
 router.get("/withdrawals", ...adminGuard, listAdminWithdrawals);
 router.post("/withdrawals/:id/approve", ...adminGuard, approveWithdrawal);

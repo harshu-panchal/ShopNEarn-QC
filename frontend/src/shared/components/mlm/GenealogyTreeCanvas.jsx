@@ -19,6 +19,17 @@ import {
   ChevronLeft,
   ChevronRight,
   Crown,
+  UserPlus2,
+  X,
+  Lock,
+  ArrowLeft,
+  ArrowRight,
+  Mail,
+  Phone as PhoneIcon,
+  User as UserIcon,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 /**
@@ -33,14 +44,33 @@ import {
  * Responsibilities:
  *   - Tidy-tree layout math (nodes locked in deterministic positions)
  *   - Pan + zoom of the whole canvas
- *   - Hover tooltip with the full member detail card
+ *   - Hover tooltip with the full member detail card for filled nodes
  *   - Tap-to-recenter callback (parent decides what to fetch)
+ *   - Tap-to-add callback for empty slots whose parent is filled
  *   - Depth selector + zoom controls
  *   - Empty / loading / "not a member" states
+ *
+ * EMPTY-SLOT MODEL (Genealogy redesign):
+ *   The canvas synthesises EMPTY placeholder nodes below every
+ *   filled leaf so the user can visualise the next two levels of
+ *   capacity at all times. Each empty node is one of:
+ *     - "addable" (blue, UserPlus icon, hover ring) — its immediate
+ *       parent in the tree is a filled member. Clicking it opens
+ *       the in-canvas Add Member modal which collects the same
+ *       signup payload the public flow uses, locks the referral
+ *       code to the parent's code, and pre-selects the leg based
+ *       on the slot.
+ *     - "placeholder" (grey, UserPlus icon, no interaction) — its
+ *       parent is also empty, so adding here is not yet possible.
+ *       Visible purely to telegraph "this position exists".
+ *   `emptySlotMaxDepth` (default 2) bounds the recursion so the
+ *   canvas never explodes into 2^N placeholders for a deep tree;
+ *   2 levels matches the visual density of the reference design.
  *
  * Out of scope (left to the parent):
  *   - Data fetching (different APIs for customer vs admin)
  *   - Navigation history / breadcrumb (different UX for each surface)
+ *   - The actual add-member POST call (caller owns the API client)
  *
  * Interaction model:
  *   - Per-node drag is intentionally disabled — every node sits at
@@ -49,23 +79,199 @@ import {
  *     drift). To move the chart, drag the background to pan or use
  *     the zoom controls.
  *   - Tap detection on a node piggybacks on the browser's synthetic
- *     `click` event so the canvas's `pointerdown → pan` flow on the
+ *     `click` event so the canvas's `pointerdown -> pan` flow on the
  *     background is unaffected: a true tap (no movement) fires
- *     `onNodeTap`, a press-and-drag pans the canvas as usual.
+ *     `onNodeTap` (filled) or opens the add modal (empty addable),
+ *     a press-and-drag pans the canvas as usual.
  */
 
 // Node "slot" dimensions. The visual node is a coloured pill holding
 // the referral code with the name as plain text below. These numbers
-// drive the tidy-tree layout math (column spacing, edge endpoints)
-// and the inline width/height of each slot's hit area.
+// drive the layout math (sibling spacing, edge endpoints) and the
+// inline width/height of each slot's hit area.
 //
-// Tightened from 130×50 with 32/70 gaps to compress the tree on the
-// page — a depth-4 network now reads as a coherent group instead of
-// sprawling across ~2.6k px of horizontal real estate.
-const NODE_WIDTH = 96;
-const NODE_HEIGHT = 46;
-const HORIZONTAL_GAP = 12;
-const VERTICAL_GAP = 56;
+// Tuned for the leaves-first layout (see the `place()` walker below):
+// every leaf is one `SLOT_WIDTH` apart, so a tighter HORIZONTAL_GAP
+// directly compresses the whole canvas without changing the visual
+// hierarchy.
+const NODE_WIDTH = 104;
+const NODE_HEIGHT = 56;
+const HORIZONTAL_GAP = 8;
+const VERTICAL_GAP = 58;
+const SLOT_WIDTH = NODE_WIDTH + HORIZONTAL_GAP;
+
+/**
+ * Resolve the canonical colour theme for a FILLED member node based
+ * on the member's MLM status + plan. Single source of truth shared
+ * by the in-tree pill (`NodeCard`), the toolbar legend, and the
+ * hover tooltip's status badge — so changing a colour in one place
+ * automatically updates every surface.
+ *
+ * Mapping (per PO request):
+ *   - REGISTERED_UNPAID            -> red   (joining fee not yet paid)
+ *   - ACTIVE + Plan A              -> green (paid, base plan)
+ *   - ACTIVE + Plan B              -> blue  (paid, premium plan)
+ *   - SUSPENDED / TERMINATED       -> slate (visually de-emphasised)
+ *
+ * The root node (the viewer or the admin-selected member) follows the
+ * same rule — colour reflects the member's actual lifecycle state,
+ * not their position in the tree. A `Crown` icon in the tooltip
+ * header is the secondary "this is the root" cue.
+ */
+function nodeAccent(data) {
+  const status = data?.status || "";
+  const planType = data?.planType || "A";
+  if (status === "registered_unpaid") {
+    return {
+      key: "unpaid",
+      label: "Unpaid",
+      pill: "bg-red-500 text-white shadow-red-200",
+      ring: "ring-red-300",
+      tooltipHeader: "bg-linear-to-br from-red-50 to-white",
+      tooltipBadge: "bg-red-100 text-red-700",
+      tooltipAccent: "text-red-500",
+      swatch: "bg-red-500",
+      ctaBar: "bg-red-600",
+    };
+  }
+  if (status === "suspended" || status === "terminated") {
+    return {
+      key: status,
+      label: status === "suspended" ? "Suspended" : "Terminated",
+      pill: "bg-slate-500 text-white shadow-slate-200",
+      ring: "ring-slate-300",
+      tooltipHeader: "bg-linear-to-br from-slate-50 to-white",
+      tooltipBadge: "bg-slate-200 text-slate-700",
+      tooltipAccent: "text-slate-500",
+      swatch: "bg-slate-500",
+      ctaBar: "bg-slate-600",
+    };
+  }
+  if (planType === "B") {
+    return {
+      key: "planB",
+      label: "Plan B",
+      pill: "bg-blue-500 text-white shadow-blue-200",
+      ring: "ring-blue-300",
+      tooltipHeader: "bg-linear-to-br from-blue-50 to-white",
+      tooltipBadge: "bg-blue-100 text-blue-700",
+      tooltipAccent: "text-blue-500",
+      swatch: "bg-blue-500",
+      ctaBar: "bg-blue-600",
+    };
+  }
+  return {
+    key: "active",
+    label: "Active",
+    pill: "bg-emerald-500 text-white shadow-emerald-200",
+    ring: "ring-emerald-300",
+    tooltipHeader: "bg-linear-to-br from-emerald-50 to-white",
+    tooltipBadge: "bg-emerald-100 text-emerald-700",
+    tooltipAccent: "text-emerald-500",
+    swatch: "bg-emerald-500",
+    ctaBar: "bg-emerald-600",
+  };
+}
+
+/**
+ * Resolve a stable, unique string id for ANY node (filled or
+ * synthesised empty). Hoisted from the layout closure because both
+ * the synthesis step AND the layout step need it.
+ *
+ * - Filled nodes: prefer `data.userId._id` (populated User object)
+ *   so the id is the same identifier the parent surface uses to
+ *   navigate sub-trees.
+ * - Empty nodes: deterministic synthetic id derived from the parent
+ *   id and the leg ("L"/"R") — guarantees React key stability
+ *   across re-renders and protects against the [object Object]
+ *   collision the legacy code had.
+ */
+function nodeIdFor(node) {
+  if (!node) return "";
+  if (node.__empty) return node.__id;
+  const u = node.userId;
+  if (u && typeof u === "object" && u._id) return String(u._id);
+  if (typeof u === "string") return u;
+  if (node._id) return String(node._id);
+  return "";
+}
+
+/**
+ * Recursively walk the live tree and fill in EMPTY placeholder
+ * children where the backend returned `null`. Stops at
+ * `emptySlotMaxDepth` levels below every filled leaf so the canvas
+ * never explodes for a deep tree.
+ *
+ * Mutates a CLONE — never the original payload — because callers
+ * may share the tree object across renders / consumers.
+ */
+function augmentWithEmptySlots(tree, emptySlotMaxDepth) {
+  if (!tree) return null;
+
+  function build(node, depthFromLeaf, parentFilledId, side) {
+    // Filled node — recurse, then synthesize any missing children.
+    if (!node) return null;
+    if (node.__empty) return node; // already an empty placeholder
+
+    const cloned = { ...node };
+    const ownId = nodeIdFor(node);
+
+    if (cloned.left) {
+      cloned.left = build(cloned.left, emptySlotMaxDepth, ownId, "L");
+    } else if (emptySlotMaxDepth > 0) {
+      cloned.left = synthesiseEmpty({
+        parentId: ownId,
+        side: "L",
+        // The parent is a filled node, so this immediate child is
+        // ADDABLE (blue). Children of an addable empty are
+        // non-addable placeholders (grey).
+        addable: true,
+        remainingDepth: emptySlotMaxDepth - 1,
+      });
+    }
+    if (cloned.right) {
+      cloned.right = build(cloned.right, emptySlotMaxDepth, ownId, "R");
+    } else if (emptySlotMaxDepth > 0) {
+      cloned.right = synthesiseEmpty({
+        parentId: ownId,
+        side: "R",
+        addable: true,
+        remainingDepth: emptySlotMaxDepth - 1,
+      });
+    }
+    return cloned;
+  }
+
+  function synthesiseEmpty({ parentId, side, addable, remainingDepth }) {
+    const id = `__empty:${parentId}:${side}`;
+    const node = {
+      __empty: true,
+      __id: id,
+      __addable: addable,
+      __parentFilledId: addable ? parentId : null,
+      __leg: side,
+      left: null,
+      right: null,
+    };
+    if (remainingDepth > 0) {
+      node.left = synthesiseEmpty({
+        parentId: id,
+        side: "L",
+        addable: false,
+        remainingDepth: remainingDepth - 1,
+      });
+      node.right = synthesiseEmpty({
+        parentId: id,
+        side: "R",
+        addable: false,
+        remainingDepth: remainingDepth - 1,
+      });
+    }
+    return node;
+  }
+
+  return build(tree, emptySlotMaxDepth, null, null);
+}
 
 const GenealogyTreeCanvas = ({
   tree,
@@ -78,18 +284,34 @@ const GenealogyTreeCanvas = ({
   emptyMemberMessage = "Your tree appears once you become a member. Activate your account to see your network.",
   emptyTreeMessage = "No downline yet — referrals will populate this canvas as they join.",
   footerHint = null,
+  // Genealogy redesign — when provided, ADDABLE empty slots become
+  // clickable and open the Add Member modal. The handler receives
+  // `{ parentMembershipId, parentReferralCode, parentName, leg,
+  //   form: { name, email, phone, password } }` and must return a
+  // promise that resolves when the member has been persisted (the
+  // canvas waits for that promise before closing the modal).
+  onAddMember = null,
+  // How many EMPTY levels to render below every filled leaf. Default
+  // 2 matches the reference design (one blue level + one grey
+  // placeholder level beneath).
+  emptySlotMaxDepth = 2,
+  // Per-node accent toggle — set false on admin tree to skip the
+  // "(You)" suffix that the customer-side surface uses.
+  highlightViewerSelf = true,
 }) => {
   const containerRef = useRef(null);
   const stageRef = useRef(null);
 
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(0.85);
-  // Hovered node — when set, renders a fixed-position tooltip with
-  // the full member details. We capture the node's screen rect at
-  // hover-enter time so the tooltip can be positioned relative to
-  // the pill regardless of pan/zoom or scroll inside the canvas.
   const [hoveredNode, setHoveredNode] = useState(null);
   const hideHoverTimerRef = useRef(null);
+
+  // Add-member modal state. `target` carries the parent context
+  // selected when the user taps a blue empty slot. Cleared on
+  // close.
+  const [addTarget, setAddTarget] = useState(null);
+  const [addBusy, setAddBusy] = useState(false);
 
   useEffect(
     () => () => {
@@ -101,79 +323,113 @@ const GenealogyTreeCanvas = ({
     [],
   );
 
-  // ----- Compute default tidy layout (recursive divide-and-conquer) -----
-  const { nodes, edges, treeWidth, treeHeight } = useMemo(() => {
-    if (!tree) {
-      return { nodes: [], edges: [], treeWidth: 0, treeHeight: 0 };
+  // ----- Augment the tree with empty placeholder nodes -----
+  const augmentedTree = useMemo(
+    () => augmentWithEmptySlots(tree, Math.max(0, Number(emptySlotMaxDepth) || 0)),
+    [tree, emptySlotMaxDepth],
+  );
+
+  // ----- Compute layout: leaves-first / post-order -----
+  //
+  // The old algorithm allocated horizontal space proportional to each
+  // subtree's leaf count, so a heavy right chain (common in this
+  // product's binary trees) would balloon and push every ancestor
+  // off-center — the visible effect was a diagonal cascade with huge
+  // empty bands on the light side.
+  //
+  // The leaves-first walker fixes that by giving every leaf an equal
+  // `SLOT_WIDTH` slot and positioning every parent EXACTLY at the
+  // midpoint of its two children. Consequences:
+  //   - All siblings at the same level are equispaced (matches the
+  //     "align the space equally" requirement from the redesign).
+  //   - Every parent sits perfectly centered above its children, so
+  //     L and R subtree distances are mirror images regardless of how
+  //     much deeper the heavy side runs.
+  //   - The deeper a chain extends, the smaller each step's offset
+  //     becomes (because the subtree's leaf range shrinks), so the
+  //     residual diagonal flattens out rather than compounding.
+  //
+  // Complexity stays O(n); the only state shared across the
+  // recursion is a single leaf-index counter.
+  const { nodes, edges, treeWidth, treeHeight, filledById } = useMemo(() => {
+    if (!augmentedTree) {
+      return {
+        nodes: [],
+        edges: [],
+        treeWidth: 0,
+        treeHeight: 0,
+        filledById: new Map(),
+      };
     }
     const nodeList = [];
     const edgeList = [];
+    const filledMap = new Map();
 
-    // Resolve a stable, unique string id for a tree node. The
-    // backend populates `userId` as a User object on the customer
-    // side (`{ _id, name, phone, userId, ... }`) and increasingly
-    // does the same on the admin side. Naively stringifying that
-    // object yields "[object Object]" which would collide for
-    // EVERY node, breaking React's `key` reconciliation (other
-    // cards vanish on the next render) and breaking edge lookups
-    // (every edge resolves to the same node, so the curve
-    // degenerates to zero length and never paints). Prefer the
-    // user's `_id` hex string, then the membership `_id`.
-    function nodeIdFor(node) {
-      if (!node) return "";
-      const u = node.userId;
-      if (u && typeof u === "object" && u._id) return String(u._id);
-      if (typeof u === "string") return u;
-      if (node._id) return String(node._id);
-      return "";
-    }
+    let leafIndex = 0;
 
-    // First pass: compute subtree widths (in "node columns").
-    function measure(node) {
-      if (!node) return 0;
-      const leftW = measure(node.left);
-      const rightW = measure(node.right);
-      node.__subtreeColumns = Math.max(1, leftW + rightW);
-      return node.__subtreeColumns;
-    }
-    measure(tree);
-
-    // Second pass: assign x/y based on subtree widths.
-    function place(node, leftEdgeX, depthLevel) {
-      if (!node) return;
-      const columns = node.__subtreeColumns || 1;
-      const totalWidth = columns * (NODE_WIDTH + HORIZONTAL_GAP);
-      const centerX = leftEdgeX + totalWidth / 2 - NODE_WIDTH / 2;
+    /**
+     * Post-order walker. Returns the `centerX` of the placed node so
+     * the caller (the parent in the recursion) can compute its own
+     * midpoint. Pushes the placed node into `nodeList` and any
+     * outgoing edges into `edgeList` as a side-effect.
+     */
+    function place(node, depthLevel) {
+      if (!node) return null;
       const y = depthLevel * (NODE_HEIGHT + VERTICAL_GAP);
       const id = nodeIdFor(node);
+
+      const leftCenter = node.left ? place(node.left, depthLevel + 1) : null;
+      const rightCenter = node.right ? place(node.right, depthLevel + 1) : null;
+
+      let centerX;
+      if (leftCenter === null && rightCenter === null) {
+        // Leaf — take the next equispaced slot.
+        centerX = leafIndex * SLOT_WIDTH + NODE_WIDTH / 2;
+        leafIndex += 1;
+      } else if (leftCenter !== null && rightCenter !== null) {
+        centerX = (leftCenter + rightCenter) / 2;
+      } else if (leftCenter !== null) {
+        // Only-left-child fallback. Real trees never hit this because
+        // `augmentWithEmptySlots` always synthesises both children
+        // for any filled leaf when `emptySlotMaxDepth > 0`, but the
+        // branch keeps the algorithm robust to a depth-0 caller.
+        centerX = leftCenter;
+      } else {
+        centerX = rightCenter;
+      }
+
       nodeList.push({
         id,
-        x: centerX,
+        x: centerX - NODE_WIDTH / 2,
         y,
         data: node,
       });
+      if (!node.__empty) {
+        filledMap.set(id, node);
+      }
 
       if (node.left) {
-        const leftColumns = node.left.__subtreeColumns || 1;
-        const leftWidth = leftColumns * (NODE_WIDTH + HORIZONTAL_GAP);
-        place(node.left, leftEdgeX, depthLevel + 1);
         edgeList.push({
           fromId: id,
           toId: nodeIdFor(node.left),
           side: "L",
+          targetEmpty: !!node.left.__empty,
+          targetAddable: !!node.left.__addable,
         });
-        leftEdgeX += leftWidth;
       }
       if (node.right) {
-        place(node.right, leftEdgeX, depthLevel + 1);
         edgeList.push({
           fromId: id,
           toId: nodeIdFor(node.right),
           side: "R",
+          targetEmpty: !!node.right.__empty,
+          targetAddable: !!node.right.__addable,
         });
       }
+
+      return centerX;
     }
-    place(tree, 0, 0);
+    place(augmentedTree, 0);
 
     const maxX = nodeList.reduce((m, n) => Math.max(m, n.x + NODE_WIDTH), 0);
     const maxY = nodeList.reduce((m, n) => Math.max(m, n.y + NODE_HEIGHT), 0);
@@ -182,33 +438,13 @@ const GenealogyTreeCanvas = ({
       edges: edgeList,
       treeWidth: maxX + 40,
       treeHeight: maxY + 40,
+      filledById: filledMap,
     };
-  }, [tree]);
+  }, [augmentedTree]);
 
-  // Nodes are rendered straight from the tidy-tree layout — there
-  // are no per-user position overrides because per-node drag is
-  // disabled (see header).
   const positionedNodes = nodes;
 
   // ----- Pan (drag on background) -----
-  //
-  // Tap vs pan disambiguation:
-  //   The canvas owns `pointerdown` / `pointermove` / `pointerup`
-  //   so it can drag the whole tree around. But the per-node tap
-  //   relies on the browser's synthetic `click` event firing on
-  //   the inner NodeCard, which can be SUPPRESSED if we call
-  //   `setPointerCapture` immediately on `pointerdown` — some
-  //   browsers then treat the inner node as no longer the click
-  //   target (because pointerup now fires on the captured element)
-  //   and the click is silently dropped.
-  //
-  //   To keep both behaviours working we DEFER capture: pointerdown
-  //   only puts us in a "pending" state. We promote to a real pan
-  //   (and capture the pointer) only after the pointer has moved
-  //   more than `PAN_THRESHOLD_PX` from the press origin. A press +
-  //   release with no movement therefore never captures the pointer
-  //   and the browser's natural click dispatch fires `onClick` on
-  //   the NodeCard exactly as expected.
   const PAN_THRESHOLD_PX = 5;
   const panState = useRef({
     pending: false,
@@ -219,19 +455,21 @@ const GenealogyTreeCanvas = ({
     panX: 0,
     panY: 0,
   });
-  const onPanStart = useCallback((e) => {
-    if (e.button !== undefined && e.button !== 0) return;
-    panState.current = {
-      pending: true,
-      active: false,
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startY: e.clientY,
-      panX: pan.x,
-      panY: pan.y,
-    };
-    // Intentionally do NOT capture the pointer here — see header.
-  }, [pan]);
+  const onPanStart = useCallback(
+    (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      panState.current = {
+        pending: true,
+        active: false,
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        panX: pan.x,
+        panY: pan.y,
+      };
+    },
+    [pan],
+  );
   const onPanMove = useCallback((e) => {
     const s = panState.current;
     if (!s.pending && !s.active) return;
@@ -278,8 +516,6 @@ const GenealogyTreeCanvas = ({
     });
   }, [treeWidth, zoom]);
 
-  // Refit whenever the tree changes (e.g. parent fetched a new
-  // sub-tree after a tap). Also fires after the initial mount.
   useEffect(() => {
     if (!loading && treeWidth > 0) {
       fitToCenter();
@@ -287,12 +523,7 @@ const GenealogyTreeCanvas = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, treeWidth, tree]);
 
-  // Node tap — the browser's synthetic `click` event handles the
-  // drag-vs-tap distinction natively, so we don't have to track
-  // pointermove distance ourselves. `onClick` only fires when
-  // pointerdown and pointerup land on the same element with
-  // negligible movement; anything beyond that is treated as a pan
-  // and the canvas listeners get the event instead.
+  // Filled-node tap — delegated to parent.
   const handleNodeClick = useCallback(
     (node) => {
       onNodeTap?.(node);
@@ -300,13 +531,47 @@ const GenealogyTreeCanvas = ({
     [onNodeTap],
   );
 
-  // ----- Hover plumbing -----
+  // Empty-slot tap (only fires for ADDABLE empties).
+  const handleEmptyClick = useCallback(
+    (emptyNode) => {
+      if (!onAddMember) return;
+      if (!emptyNode?.data?.__addable) return;
+      const parentId = emptyNode.data.__parentFilledId;
+      const parent = filledById.get(parentId);
+      if (!parent) return;
+      // Inspect the sibling slot under the parent so the modal's
+      // leg toggle can disable the leg that's already occupied.
+      const sibling = emptyNode.data.__leg === "L" ? parent.right : parent.left;
+      const siblingIsFilled = sibling && !sibling.__empty;
+      const parentUser = parent.userId;
+      setAddTarget({
+        parentMembershipId: String(parent._id),
+        parentReferralCode: parent.referralCode,
+        parentName:
+          (typeof parentUser === "object" && parentUser?.name) ||
+          parent.name ||
+          "Member",
+        parentPublicUserId:
+          (typeof parentUser === "object" && parentUser?.userId) ||
+          parent.publicUserId ||
+          null,
+        leg: emptyNode.data.__leg,
+        // Cheap predicate the modal uses to lock the leg picker
+        // when the OTHER leg is already taken by a real member.
+        siblingFilled: !!siblingIsFilled,
+      });
+    },
+    [onAddMember, filledById],
+  );
+
+  // ----- Hover plumbing (only filled nodes show the tooltip) -----
   const handleNodeHoverEnter = useCallback((node, rect) => {
     if (hideHoverTimerRef.current) {
       clearTimeout(hideHoverTimerRef.current);
       hideHoverTimerRef.current = null;
     }
     if (!rect) return;
+    if (node?.data?.__empty) return;
     setHoveredNode({ node, rect });
   }, []);
 
@@ -317,6 +582,31 @@ const GenealogyTreeCanvas = ({
       hideHoverTimerRef.current = null;
     }, 120);
   }, []);
+
+  const handleAddSubmit = useCallback(
+    async (formValues) => {
+      if (!addTarget || !onAddMember) return;
+      setAddBusy(true);
+      try {
+        await onAddMember({
+          parentMembershipId: addTarget.parentMembershipId,
+          parentReferralCode: addTarget.parentReferralCode,
+          parentName: addTarget.parentName,
+          leg: formValues.leg,
+          form: {
+            name: formValues.name,
+            email: formValues.email,
+            phone: formValues.phone,
+            password: formValues.password,
+          },
+        });
+        setAddTarget(null);
+      } finally {
+        setAddBusy(false);
+      }
+    },
+    [addTarget, onAddMember],
+  );
 
   // ----- Render branches -----
   if (loading) {
@@ -355,16 +645,6 @@ const GenealogyTreeCanvas = ({
               <label className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
                 Depth
               </label>
-              {/*
-                Depth options:
-                  - Fixed-depth choices (3 / 5 / 7 / 10 / 15) for
-                    callers who want to limit payload size on a
-                    very large downline.
-                  - `0` is the sentinel for "All levels" — the
-                    backend treats `depth=0` (or any non-positive
-                    value) as "fetch the entire downline" capped
-                    at the server-side safety bound (50 levels).
-              */}
               <select
                 value={depth}
                 onChange={(e) => onDepthChange(Number(e.target.value))}
@@ -379,6 +659,29 @@ const GenealogyTreeCanvas = ({
             </>
           )}
           {breadcrumb}
+          {/* Legend — colour key for the in-tree pills and the
+              add/future placeholders. Compressed onto one line on
+              md+; hidden on small screens to keep the toolbar from
+              wrapping. Order mirrors the lifecycle of a member:
+              active -> plan B upgrade -> unpaid (regressed) -> open
+              slot -> future slot. */}
+          <div className="hidden lg:flex items-center gap-2 text-[10px] text-slate-500 ml-2 flex-wrap">
+            <LegendSwatch tone="bg-emerald-500" label="Paid (Plan A)" />
+            <LegendSwatch tone="bg-blue-500" label="Plan B" />
+            <LegendSwatch tone="bg-red-500" label="Unpaid" />
+            {onAddMember && (
+              <>
+                <span className="inline-flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-full border-2 border-sky-500 inline-block"></span>
+                  Open slot
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-full border-2 border-slate-300 inline-block"></span>
+                  Future
+                </span>
+              </>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1 flex-wrap">
           <button
@@ -447,6 +750,12 @@ const GenealogyTreeCanvas = ({
               const x2 = to.x + NODE_WIDTH / 2;
               const y2 = to.y;
               const midY = (y1 + y2) / 2;
+              const isEmptyEdge = edge.targetEmpty;
+              const strokeColor = isEmptyEdge
+                ? edge.targetAddable
+                  ? "#cbd5e1"
+                  : "#e2e8f0"
+                : "#94a3b8";
               return (
                 <g key={`${edge.fromId}-${edge.toId}`}>
                   <line
@@ -454,7 +763,7 @@ const GenealogyTreeCanvas = ({
                     y1={y1}
                     x2={x1}
                     y2={midY}
-                    stroke="#94a3b8"
+                    stroke={strokeColor}
                     strokeWidth={1}
                   />
                   <line
@@ -462,7 +771,7 @@ const GenealogyTreeCanvas = ({
                     y1={midY}
                     x2={x2}
                     y2={midY}
-                    stroke="#94a3b8"
+                    stroke={strokeColor}
                     strokeWidth={1}
                     strokeDasharray="4 3"
                   />
@@ -471,7 +780,7 @@ const GenealogyTreeCanvas = ({
                     y1={midY}
                     x2={x2}
                     y2={y2}
-                    stroke="#94a3b8"
+                    stroke={strokeColor}
                     strokeWidth={1}
                   />
                 </g>
@@ -479,16 +788,26 @@ const GenealogyTreeCanvas = ({
             })}
           </svg>
 
-          {positionedNodes.map((n) => (
-            <NodeCard
-              key={n.id}
-              node={n}
-              onTap={handleNodeClick}
-              onHoverEnter={handleNodeHoverEnter}
-              onHoverLeave={handleNodeHoverLeave}
-              isHovered={hoveredNode?.node?.id === n.id}
-            />
-          ))}
+          {positionedNodes.map((n) =>
+            n.data.__empty ? (
+              <EmptyNodeCard
+                key={n.id}
+                node={n}
+                canAdd={!!onAddMember && n.data.__addable}
+                onClick={handleEmptyClick}
+              />
+            ) : (
+              <NodeCard
+                key={n.id}
+                node={n}
+                onTap={handleNodeClick}
+                onHoverEnter={handleNodeHoverEnter}
+                onHoverLeave={handleNodeHoverLeave}
+                isHovered={hoveredNode?.node?.id === n.id}
+                highlightViewerSelf={highlightViewerSelf}
+              />
+            ),
+          )}
         </div>
 
         {hoveredNode && (
@@ -501,46 +820,57 @@ const GenealogyTreeCanvas = ({
           {footerHint || (
             <>
               <span className="hidden sm:inline">
-                Hover a node for details • Tap to view their downline • Drag
-                the background to pan • Hold ⌘/Ctrl + scroll to zoom.
+                Hover a node for details • Tap a member to view their downline •
+                Tap a <span className="text-sky-600 font-bold">blue</span> open
+                slot to add a member • Drag the background to pan • Hold ⌘/Ctrl +
+                scroll to zoom.
               </span>
               <span className="sm:hidden">
-                Tap a node to view their downline • Drag the background to
-                pan • Pinch to zoom.
+                Tap a member to view their downline • Tap a blue open slot to add
+                a member • Drag to pan • Pinch to zoom.
               </span>
             </>
           )}
         </div>
+      )}
+
+      {addTarget && (
+        <AddMemberModal
+          target={addTarget}
+          busy={addBusy}
+          onClose={() => (addBusy ? null : setAddTarget(null))}
+          onSubmit={handleAddSubmit}
+        />
       )}
     </div>
   );
 };
 
 /**
- * NodeCard — pill + label.
+ * NodeCard — pill + label for a FILLED member.
  *
- * Renders a coloured pill containing the referral code on top and
- * the customer's name in plain text directly below. The slot is
- * absolutely positioned at the tidy-tree coordinates and is no
- * longer draggable — `onClick` is the sole interaction (browser
- * decides tap-vs-pan natively based on pointer movement).
- *
- * Status hints survive as colour-only cues:
- *   - Root → indigo pill + "You" suffix appended to the name.
- *   - Unpaid downline → amber pill.
- *   - Active downline → slate-700 pill (neutral).
+ * Visually matches the reference design: solid coloured pill (rose
+ * 500) holding the referral code, member name underneath. Root and
+ * unpaid members get distinct accent colours.
  */
-const NodeCard = ({ node, onTap, onHoverEnter, onHoverLeave, isHovered }) => {
+const NodeCard = ({
+  node,
+  onTap,
+  onHoverEnter,
+  onHoverLeave,
+  isHovered,
+  highlightViewerSelf,
+}) => {
   const data = node.data || {};
   const isRoot = data.position === null || data.position === undefined;
-  const isUnpaid = data.status === "registered_unpaid";
   const pillRef = useRef(null);
 
-  const pillClass = isRoot
-    ? "bg-indigo-600 text-white"
-    : isUnpaid
-      ? "bg-amber-500 text-white"
-      : "bg-slate-700 text-white";
+  // Colour is driven entirely by the member's status + plan (see
+  // `nodeAccent` for the canonical mapping). The root gets the same
+  // accent as any other member; the Crown icon in the tooltip header
+  // is the secondary cue that distinguishes it.
+  const accent = nodeAccent(data);
+  const pillClass = accent.pill;
 
   const handleEnter = useCallback(() => {
     if (!onHoverEnter) return;
@@ -554,9 +884,6 @@ const NodeCard = ({ node, onTap, onHoverEnter, onHoverLeave, isHovered }) => {
 
   const handleClick = useCallback(
     (e) => {
-      // Suppress bubbling so the click doesn't restart a pan or
-      // trigger any background interaction the parent canvas may
-      // attach later.
       e.stopPropagation();
       onTap?.(node);
     },
@@ -579,16 +906,16 @@ const NodeCard = ({ node, onTap, onHoverEnter, onHoverLeave, isHovered }) => {
     >
       <span
         ref={pillRef}
-        className={`px-3 py-1 rounded-md text-[11px] font-mono font-bold tracking-wider shadow-sm whitespace-nowrap transition-transform ${pillClass} ${
-          isHovered ? "ring-2 ring-offset-1 ring-indigo-400 scale-[1.04]" : ""
+        className={`px-3 py-1.5 rounded-md text-[12px] font-mono font-bold tracking-wider shadow-md whitespace-nowrap transition-transform ${pillClass} ${
+          isHovered ? `ring-2 ring-offset-1 ${accent.ring} scale-[1.05]` : ""
         }`}
       >
         {data.referralCode || "—"}
       </span>
-      <span className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 truncate max-w-full">
+      <span className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 truncate max-w-full text-center">
         {data.name || "Member"}
-        {isRoot && data.__isViewerSelf && (
-          <span className="ml-1 text-indigo-600 normal-case font-bold">
+        {isRoot && highlightViewerSelf && data.__isViewerSelf && (
+          <span className={`ml-1 normal-case font-bold ${accent.tooltipAccent}`}>
             (You)
           </span>
         )}
@@ -598,13 +925,360 @@ const NodeCard = ({ node, onTap, onHoverEnter, onHoverLeave, isHovered }) => {
 };
 
 /**
- * Floating details tooltip for a hovered node.
+ * EmptyNodeCard — placeholder for an unfilled binary slot.
  *
- * Positioned in fixed viewport coordinates so it never inherits the
- * canvas's pan / zoom transform. Pointer-events disabled so the
- * tooltip never steals hover from the underlying pill (which would
- * cause an enter/leave flicker loop). Auto-flips above when the
- * anchor sits in the bottom half of the viewport.
+ * Two visual variants:
+ *   - `canAdd === true`  →  sky-blue UserPlus icon with hover ring,
+ *     clickable, opens the Add Member modal via the parent canvas.
+ *   - `canAdd === false` →  light grey UserPlus icon, no interaction,
+ *     visible purely to signal "this position exists below an empty
+ *     parent — fill the parent first" (user-clarified "unassigned
+ *     places in grey, which can be assigned in future").
+ *
+ * The empty card centers itself horizontally within the `NODE_WIDTH`
+ * slot so the icon sits exactly under the connecting edge from the
+ * parent, regardless of how much horizontal padding the slot has.
+ */
+const EmptyNodeCard = ({ node, canAdd, onClick }) => {
+  const handleClick = useCallback(
+    (e) => {
+      e.stopPropagation();
+      if (!canAdd) return;
+      onClick?.(node);
+    },
+    [node, canAdd, onClick],
+  );
+
+  const wrapperClass = canAdd
+    ? "cursor-pointer group"
+    : "cursor-default";
+
+  const iconColor = canAdd ? "text-sky-500" : "text-slate-300";
+  const ringClass = canAdd
+    ? "border-2 border-dashed border-sky-300 group-hover:border-sky-500 group-hover:bg-sky-50/60"
+    : "border-2 border-dashed border-slate-200 bg-slate-50/40";
+
+  return (
+    <div
+      onClick={handleClick}
+      style={{
+        position: "absolute",
+        left: node.x,
+        top: node.y,
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+      }}
+      className={`flex flex-col items-center justify-start select-none ${wrapperClass}`}
+      title={canAdd ? "Add a new member to this slot" : "Future slot — fill the parent first"}
+    >
+      <div
+        className={`w-9 h-9 rounded-full bg-white flex items-center justify-center transition-colors ${ringClass}`}
+      >
+        <UserPlus2 size={16} className={iconColor} />
+      </div>
+      <span
+        className={`mt-1 text-[9px] font-bold uppercase tracking-wider text-center ${
+          canAdd ? "text-sky-600" : "text-slate-300"
+        }`}
+      >
+        {canAdd ? "Open Slot" : "Future"}
+      </span>
+    </div>
+  );
+};
+
+/**
+ * AddMemberModal — collects the same signup payload the public flow
+ * uses, locks the referral code to the parent's code, and pre-
+ * selects the leg based on the empty slot the user tapped. The leg
+ * toggle stays editable when the OTHER leg under the same parent
+ * is also empty; otherwise the alternate leg is disabled.
+ */
+const AddMemberModal = ({ target, busy, onClose, onSubmit }) => {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [leg, setLeg] = useState(target.leg || "L");
+  const [error, setError] = useState("");
+
+  // The OTHER leg under the parent (the one the user did NOT tap)
+  // is locked out only when it's already occupied by a real
+  // member. In that case `target.leg` (the slot the user tapped)
+  // is the only valid choice and the alternate button stays
+  // disabled. When both legs are empty, both buttons are live and
+  // the user can switch freely.
+  const leftDisabled = busy || (target.siblingFilled && target.leg === "R");
+  const rightDisabled = busy || (target.siblingFilled && target.leg === "L");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedPhone = phone.trim();
+    if (trimmedName.length < 2) {
+      setError("Please enter a full name (2+ characters).");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    if (trimmedPhone.length !== 10 || !/^\d{10}$/.test(trimmedPhone)) {
+      setError("Please enter a 10-digit mobile number.");
+      return;
+    }
+    if (!password) {
+      setError("Please choose a password.");
+      return;
+    }
+    if (!["L", "R"].includes(leg)) {
+      setError("Please choose a leg.");
+      return;
+    }
+
+    try {
+      await onSubmit({ name: trimmedName, email: trimmedEmail, phone: trimmedPhone, password, leg });
+    } catch (submissionError) {
+      setError(submissionError?.message || "Failed to add member");
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">Add Member to Slot</h3>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Placing under{" "}
+              <span className="font-bold text-slate-800">{target.parentName}</span>
+              {target.parentPublicUserId ? (
+                <>
+                  {" · "}
+                  <span className="font-mono font-bold text-slate-700">{target.parentPublicUserId}</span>
+                </>
+              ) : null}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="w-8 h-8 rounded-full hover:bg-slate-100 disabled:opacity-50 flex items-center justify-center text-slate-400"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3.5">
+          <Field
+            icon={<UserIcon size={16} />}
+            placeholder="Full Name"
+            value={name}
+            onChange={setName}
+            autoComplete="name"
+            disabled={busy}
+          />
+          <Field
+            icon={<Mail size={16} />}
+            placeholder="Email Address"
+            type="email"
+            value={email}
+            onChange={(v) => setEmail(v.toLowerCase())}
+            autoComplete="email"
+            disabled={busy}
+          />
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+              <PhoneIcon size={16} />
+            </span>
+            <span className="absolute left-10 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500 border-r border-slate-200 pr-2">
+              +91
+            </span>
+            <input
+              type="tel"
+              maxLength={10}
+              placeholder="10-digit Mobile Number"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
+              disabled={busy}
+              className="w-full pl-20 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium outline-none focus:border-rose-400 focus:bg-white transition-colors disabled:opacity-60"
+              autoComplete="tel"
+            />
+          </div>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+              <KeyRound size={16} />
+            </span>
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Set a password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={busy}
+              className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium outline-none focus:border-rose-400 focus:bg-white transition-colors disabled:opacity-60"
+              autoComplete="new-password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              tabIndex={-1}
+            >
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+              <Lock size={16} />
+            </span>
+            <input
+              type="text"
+              value={target.parentReferralCode || ""}
+              readOnly
+              className="w-full pl-10 pr-3 py-2.5 bg-slate-100 border border-slate-200 rounded-lg text-sm font-mono font-bold tracking-wide text-slate-600 outline-none cursor-not-allowed"
+              title="Referral code is locked to the parent member's code"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+              Locked
+            </span>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+              Leg Position
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <LegToggle
+                active={leg === "L"}
+                disabled={leftDisabled}
+                onClick={() => setLeg("L")}
+                icon={<ArrowLeft size={16} />}
+                label="Left"
+              />
+              <LegToggle
+                active={leg === "R"}
+                disabled={rightDisabled}
+                onClick={() => setLeg("R")}
+                icon={<ArrowRight size={16} />}
+                label="Right"
+              />
+            </div>
+            {target.siblingFilled && (
+              <p className="mt-1.5 text-[10px] text-amber-700">
+                The {target.leg === "L" ? "right" : "left"} slot is already taken
+                by another member.
+              </p>
+            )}
+          </div>
+
+          {error && (
+            <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 px-3 py-2 rounded-lg">
+              {error}
+            </div>
+          )}
+
+          <div className="pt-1 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={busy}
+              className="flex-1 px-3 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              className="flex-[1.5] px-3 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white disabled:bg-rose-300 inline-flex items-center justify-center gap-1.5"
+            >
+              {busy ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Adding…
+                </>
+              ) : (
+                <>
+                  <UserPlus2 size={14} />
+                  Create Member
+                </>
+              )}
+            </button>
+          </div>
+
+          <p className="text-[10px] text-slate-400 leading-relaxed">
+            Login credentials and the referral code will be emailed to the new
+            member automatically. They can sign in immediately — no OTP
+            verification is required.
+          </p>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const Field = ({
+  icon,
+  placeholder,
+  value,
+  onChange,
+  type = "text",
+  autoComplete,
+  disabled,
+}) => (
+  <div className="relative">
+    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+      {icon}
+    </span>
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      autoComplete={autoComplete}
+      disabled={disabled}
+      className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium outline-none focus:border-rose-400 focus:bg-white transition-colors disabled:opacity-60"
+    />
+  </div>
+);
+
+const LegendSwatch = ({ tone, label }) => (
+  <span className="inline-flex items-center gap-1">
+    <span className={`w-2.5 h-2.5 rounded-sm inline-block ${tone}`}></span>
+    {label}
+  </span>
+);
+
+const LegToggle = ({ active, disabled, onClick, icon, label }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-lg border-2 text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+      active
+        ? "bg-rose-50 border-rose-400 text-rose-700"
+        : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"
+    }`}
+  >
+    {icon}
+    {label}
+  </button>
+);
+
+/**
+ * Floating details tooltip for a hovered FILLED node. Empty slots
+ * never trigger this — the hover handler filters them out.
  */
 const NodeHoverTooltip = ({ anchorRect, node }) => {
   const data = node?.data || {};
@@ -625,7 +1299,7 @@ const NodeHoverTooltip = ({ anchorRect, node }) => {
     Number(data.lifetimePlanAEarnings || 0) +
     Number(data.lifetimePlanBEarnings || 0);
   const isRoot = data.position === null || data.position === undefined;
-  const isUnpaid = status === "registered_unpaid";
+  const accent = nodeAccent(data);
 
   const TOOLTIP_W = 280;
   const GAP = 10;
@@ -643,18 +1317,17 @@ const NodeHoverTooltip = ({ anchorRect, node }) => {
       : anchorRect.bottom + GAP
     : 60;
 
-  const statusLabel = isRoot
-    ? "Root"
-    : isUnpaid
+  const statusLabel =
+    status === "registered_unpaid"
       ? "Registered (unpaid)"
       : status === "active"
-        ? "Active"
-        : status.replace(/_/g, " ");
-  const statusClass = isRoot
-    ? "bg-indigo-100 text-indigo-700"
-    : isUnpaid
-      ? "bg-amber-100 text-amber-800"
-      : "bg-emerald-100 text-emerald-700";
+        ? data.planType === "B"
+          ? "Active · Plan B"
+          : "Active · Plan A"
+        : status
+          ? status.replace(/_/g, " ")
+          : "Unknown";
+  const statusClass = accent.tooltipBadge;
 
   const fmtMoney = (n) =>
     `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -683,16 +1356,20 @@ const NodeHoverTooltip = ({ anchorRect, node }) => {
       }}
       className="rounded-xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
     >
-      <div className="px-3 py-2.5 bg-linear-to-br from-indigo-50 to-white border-b border-slate-100">
+      <div
+        className={`px-3 py-2.5 ${accent.tooltipHeader} border-b border-slate-100`}
+      >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+            <p
+              className={`text-[10px] font-bold uppercase tracking-wider ${accent.tooltipAccent}`}
+            >
               Member
             </p>
             <p className="mt-0.5 text-sm font-bold text-slate-900 truncate">
               {name}
               {isRoot && (
-                <Crown size={12} className="inline ml-1 text-indigo-500" />
+                <Crown size={12} className={`inline ml-1 ${accent.tooltipAccent}`} />
               )}
             </p>
           </div>
@@ -707,7 +1384,7 @@ const NodeHoverTooltip = ({ anchorRect, node }) => {
       <div className="px-3 py-2 space-y-1.5 text-[12px]">
         {publicUserId && (
           <TooltipRow
-            icon={<BadgeCheck size={13} className="text-indigo-500" />}
+            icon={<BadgeCheck size={13} className={accent.tooltipAccent} />}
             label="User ID"
             value={publicUserId}
             mono
@@ -722,7 +1399,7 @@ const NodeHoverTooltip = ({ anchorRect, node }) => {
           />
         )}
         <TooltipRow
-          icon={<Sparkles size={13} className="text-amber-500" />}
+          icon={<Sparkles size={13} className={accent.tooltipAccent} />}
           label="Plan"
           value={planType && planType !== "—" ? `Plan ${planType}` : "—"}
         />
@@ -774,7 +1451,9 @@ const NodeHoverTooltip = ({ anchorRect, node }) => {
       </div>
 
       {!isRoot && (
-        <div className="px-3 py-1.5 bg-indigo-600 text-[10px] text-white font-bold uppercase tracking-wider text-center">
+        <div
+          className={`px-3 py-1.5 ${accent.ctaBar} text-[10px] text-white font-bold uppercase tracking-wider text-center`}
+        >
           Tap to view this member&apos;s downline
         </div>
       )}

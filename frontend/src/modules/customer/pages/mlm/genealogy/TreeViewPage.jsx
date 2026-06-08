@@ -5,6 +5,13 @@ import { mlmApi } from "../../../services/mlmApi";
 import GenealogyTreeCanvas from "@shared/components/mlm/GenealogyTreeCanvas";
 
 /**
+ * Reload counter — bumping it forces the fetch effect to re-run
+ * (deps array contains it). Used after a successful add-member so
+ * the freshly placed node appears in the canvas without a manual
+ * page refresh.
+ */
+
+/**
  * Customer-MLM-rebuild Phase 8 — Tree View page (thin wrapper).
  *
  * Owns the API plumbing for the customer's binary downline tree:
@@ -44,6 +51,7 @@ const TreeViewPage = () => {
   // the way back to self.
   const [rootUserId, setRootUserId] = useState(null);
   const [rootStack, setRootStack] = useState([]);
+  const [reloadKey, setReloadKey] = useState(0);
 
   // ----- Fetch tree -----
   useEffect(() => {
@@ -82,7 +90,11 @@ const TreeViewPage = () => {
     return () => {
       mounted = false;
     };
-  }, [depth, rootUserId]);
+    // `reloadKey` is intentionally in the deps array so a successful
+    // add-member POST can trigger a fresh fetch with no other state
+    // change. See `handleAddMember` below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [depth, rootUserId, reloadKey]);
 
   // Tap a node → push current root onto the back-stack and recenter
   // the canvas on the tapped node. No-op if the user taps the
@@ -128,6 +140,41 @@ const TreeViewPage = () => {
   const handleResetToOwnTree = useCallback(() => {
     setRootStack([]);
     setRootUserId(null);
+  }, []);
+
+  // Genealogy redesign — empty-slot tap handler. The canvas opens
+  // its own modal and gives us the resolved `{parentMembershipId,
+  // leg, form}` payload here. We POST, show a toast, and bump
+  // `reloadKey` so the fetch effect re-runs and the canvas paints
+  // the freshly placed node. Throwing back to the canvas keeps the
+  // modal open with the user's input so they can correct an
+  // invalid field without retyping everything.
+  const handleAddMember = useCallback(async ({ parentMembershipId, leg, form }) => {
+    try {
+      const res = await mlmApi.addMemberAtSlot({
+        parentMembershipId,
+        leg,
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        password: form.password,
+      });
+      const newMember =
+        res.data?.result?.newMember ?? res.data?.data?.newMember ?? null;
+      const credentialEcho = newMember?.publicUserId
+        ? ` (User ID ${newMember.publicUserId})`
+        : "";
+      toast.success(
+        `Member added to your network${credentialEcho}. Login details have been emailed.`,
+      );
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      const msg = err?.response?.data?.message || "Failed to add member.";
+      toast.error(msg);
+      // Re-throw so the modal surfaces the error inline and keeps
+      // the form values intact.
+      throw new Error(msg);
+    }
   }, []);
 
   // Inject `__isViewerSelf` so the NodeCard can append "(You)" to
@@ -193,6 +240,8 @@ const TreeViewPage = () => {
       depth={depth}
       onDepthChange={setDepth}
       onNodeTap={handleNodeTap}
+      onAddMember={handleAddMember}
+      emptySlotMaxDepth={2}
       breadcrumb={breadcrumb}
       emptyMemberMessage="Your tree appears once you become a member. Activate your account to see your network."
       emptyTreeMessage="Your network is empty — share your referral code to start building your team."

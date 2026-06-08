@@ -181,6 +181,42 @@ const MlmMemberDetail = () => {
         setDownlineRootId(id);
     }, [id]);
 
+    // Genealogy redesign — admin-side empty-slot tap handler. The
+    // canvas opens its own modal and gives us the resolved
+    // `{parentMembershipId, leg, form}` payload here. Admins can
+    // place anywhere in the displayed tree (no downline-ownership
+    // check on the backend route); after success we re-fetch the
+    // current sub-tree so the new node renders immediately.
+    const handleAddMember = useCallback(async ({ parentMembershipId, leg, form }) => {
+        try {
+            const res = await adminMlmApi.addChildMember(parentMembershipId, {
+                leg,
+                name: form.name,
+                email: form.email,
+                phone: form.phone,
+                password: form.password,
+            });
+            const newMember =
+                res.data?.result?.newMember ?? res.data?.data?.newMember ?? null;
+            const credentialEcho = newMember?.publicUserId
+                ? ` (User ID ${newMember.publicUserId})`
+                : '';
+            toast.success(
+                `Member created and placed in the tree${credentialEcho}. Login details have been emailed.`,
+            );
+            await loadDownline(downlineDepth, downlineRootId);
+            await load();
+        } catch (err) {
+            const msg = err?.response?.data?.message || 'Failed to add member.';
+            toast.error(msg);
+            throw new Error(msg);
+        }
+    // `loadDownline` and `load` are inline closures defined above;
+    // their identities don't change in a way that affects behaviour
+    // here, so omitting them from the deps array is intentional.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [downlineDepth, downlineRootId]);
+
     const isViewingAnchor = String(downlineRootId) === String(id);
 
     // Current root's display info — pulled from the loaded sub-tree
@@ -542,18 +578,23 @@ const MlmMemberDetail = () => {
                         depth={downlineDepth}
                         onDepthChange={setDownlineDepth}
                         onNodeTap={handleNodeTap}
+                        onAddMember={handleAddMember}
+                        emptySlotMaxDepth={2}
                         breadcrumb={downlineBreadcrumb}
+                        highlightViewerSelf={false}
                         emptyTreeMessage="No downline data for this member yet."
                         footerHint={
                             <>
                                 <span className="hidden sm:inline">
-                                    Hover for details · tap a node to render that member's
-                                    downline here · use Back / Reset to walk up · drag the
-                                    background to pan · hold ⌘/Ctrl + scroll to zoom.
+                                    Hover for details · tap a member to render their downline
+                                    here · tap a <span className="text-sky-600 font-bold">blue</span> open
+                                    slot to add a new member directly under that parent · use
+                                    Back / Reset to walk up · drag the background to pan · hold
+                                    ⌘/Ctrl + scroll to zoom.
                                 </span>
                                 <span className="sm:hidden">
-                                    Tap a node to render their downline here · Back to walk up ·
-                                    drag background to pan · pinch to zoom.
+                                    Tap a member to render their downline · tap blue slots to add
+                                    members · Back to walk up · drag to pan · pinch to zoom.
                                 </span>
                             </>
                         }

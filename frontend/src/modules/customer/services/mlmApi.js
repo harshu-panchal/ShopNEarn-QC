@@ -101,6 +101,32 @@ export const mlmApi = {
   // Customer-MLM-rebuild Phase 5 — Payouts > Wallet History (new feed).
   getWalletHistory: (params) =>
     getWithDedupe("/customer/mlm/payouts/wallet-history", params, { ttl: 2000 }),
+
+  /**
+   * Genealogy redesign — places a brand-new member into a specific
+   * empty L/R slot under a filled parent that sits in the caller's
+   * downline (or is the caller themselves). Used by the
+   * `GenealogyTreeCanvas` Add Member modal that opens when the
+   * user taps a blue empty slot.
+   *
+   * Payload:
+   *   { parentMembershipId, leg: "L"|"R", name, email, phone, password }
+   *
+   * The backend creates an `isVerified=true` Customer (OTP is
+   * skipped — the actor vouches for the account) plus a
+   * `MlmMembership` row with `status=REGISTERED_UNPAID`, and emails
+   * the new member's login credentials + referral code.
+   *
+   * Invalidates tree-related caches so subsequent reads pick up
+   * the new node without a hard refresh.
+   */
+  addMemberAtSlot: (payload) => {
+    invalidateCache("/customer/mlm/genealogy/tree");
+    invalidateCache("/customer/mlm/genealogy/binary");
+    invalidateCache("/customer/mlm/dashboard-overview");
+    invalidateCache("/customer/mlm/membership");
+    return axiosInstance.post("/customer/mlm/genealogy/add-member", payload);
+  },
 };
 
 export default mlmApi;

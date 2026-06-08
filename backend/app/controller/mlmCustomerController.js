@@ -18,6 +18,7 @@ import {
   getMembershipByUserId,
   getUplineChain,
 } from "../services/mlm/mlmMembershipService.js";
+import { createMemberInBinarySlot } from "../services/mlm/mlmManualSlotPlacementService.js";
 import {
   getManualQrConfig,
   getMlmConfig,
@@ -1261,6 +1262,71 @@ export const updateMyTreeLayout = async (req, res) => {
     });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * POST /api/customer/mlm/genealogy/add-member
+ *
+ * Body: { parentMembershipId, leg, name, email, phone, password }
+ *
+ * Creates a brand-new Customer + MlmMembership row positioned at the
+ * supplied empty binary slot under the supplied parent. The actor
+ * must own the parent (be the parent themselves) OR have the parent
+ * in their own downline (`sponsorChain` membership check inside the
+ * service). The new member lands `isVerified=true` (OTP skipped —
+ * the actor vouches for the account) and `status=REGISTERED_UNPAID`
+ * so the standard joining-payment flow still gates payouts.
+ *
+ * Powers the redesigned Genealogy "Tree View" tap-to-add interaction
+ * on the customer panel; the admin panel has a parallel endpoint at
+ * `POST /api/admin/mlm/members/:parentMembershipId/add-child`.
+ */
+export const addMemberAtSlot = async (req, res) => {
+  try {
+    const actorUserId = req.user.id;
+    const {
+      parentMembershipId,
+      leg,
+      name,
+      email,
+      phone,
+      password,
+    } = req.body || {};
+
+    const result = await createMemberInBinarySlot({
+      parentMembershipId,
+      leg,
+      name,
+      email,
+      phone,
+      password,
+      actorType: "customer",
+      actorUserId,
+      skipAuthorization: false,
+    });
+
+    return handleResponse(res, 201, "Member added to your network", {
+      newMember: {
+        userId: result.customer._id,
+        publicUserId: result.customer.userId,
+        name: result.customer.name,
+        phone: result.customer.phone,
+        email: result.customer.email,
+        referralCode: result.membership.referralCode,
+        membershipId: result.membership._id,
+        binaryPosition: result.membership.binaryPosition,
+        binaryParentMembershipId: result.membership.binaryParentMembershipId,
+        status: result.membership.status,
+      },
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to add member",
+      error.code ? { code: error.code } : undefined,
+    );
   }
 };
 

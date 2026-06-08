@@ -38,6 +38,7 @@ import {
   getMembershipByUserId,
   syncCustomerMlmProjection,
 } from "../../services/mlm/mlmMembershipService.js";
+import { createMemberInBinarySlot } from "../../services/mlm/mlmManualSlotPlacementService.js";
 import { getMlmConfig } from "../../services/mlm/mlmConfigService.js";
 import { verifyMlmMemberWallet } from "../../jobs/mlmWalletLedgerVerifierJob.js";
 
@@ -409,6 +410,63 @@ export const getMlmMemberDownlineTree = async (req, res) => {
     });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * POST /api/admin/mlm/members/:id/add-child
+ *
+ * Body: { leg: "L"|"R", name, email, phone, password }
+ *
+ * Admin-side counterpart to the customer's
+ * `POST /api/customer/mlm/genealogy/add-member`. Creates a new
+ * Customer + MlmMembership row positioned at the supplied empty
+ * slot directly under the member identified by `:id` (an
+ * MlmMembership document id).
+ *
+ * Authorisation is bypassed (admins can place anywhere); other
+ * invariants (slot must be empty, phone unique, leg in {L,R},
+ * sponsor = parent membership) are enforced by the shared
+ * `createMemberInBinarySlot` service.
+ */
+export const addChildMember = async (req, res) => {
+  try {
+    const adminId = req.user?.id || null;
+    const { leg, name, email, phone, password } = req.body || {};
+
+    const result = await createMemberInBinarySlot({
+      parentMembershipId: req.params.id,
+      leg,
+      name,
+      email,
+      phone,
+      password,
+      actorType: "admin",
+      actorUserId: adminId,
+      skipAuthorization: true,
+    });
+
+    return handleResponse(res, 201, "Member created and placed in the tree", {
+      newMember: {
+        userId: result.customer._id,
+        publicUserId: result.customer.userId,
+        name: result.customer.name,
+        phone: result.customer.phone,
+        email: result.customer.email,
+        referralCode: result.membership.referralCode,
+        membershipId: result.membership._id,
+        binaryPosition: result.membership.binaryPosition,
+        binaryParentMembershipId: result.membership.binaryParentMembershipId,
+        status: result.membership.status,
+      },
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to add member",
+      error.code ? { code: error.code } : undefined,
+    );
   }
 };
 
