@@ -8,6 +8,7 @@ import {
   createOrGetMembership,
   getMembershipByUserId,
 } from "./mlmMembershipService.js";
+import { applyRegistrationBonusInSession } from "./mlmSignupBonusService.js";
 import { sendCustomerWelcomeEmail } from "../emailService.js";
 import { generateUniqueUserId } from "../../utils/userIdGenerator.js";
 import {
@@ -260,6 +261,20 @@ export async function createMemberInBinarySlot(args) {
         // admin's binary placement strategy is BALANCED_AUTO. Same
         // flag the public signup flow uses.
         forceManualPlacement: true,
+      });
+
+      // Signup bonus (added Jun 2026). Slot-placed members get the
+      // same flat shopping-wallet credit as public signups, and the
+      // FILLED parent of the slot (who is the new member's sponsor
+      // per `assignSponsor` above) gets the referral acquisition
+      // credit. Runs inside the same transaction as the membership
+      // creation so a credit failure rolls the whole placement back.
+      await applyRegistrationBonusInSession({
+        newCustomerId: newCustomer._id,
+        newMembership,
+        sponsorUserId: parent.userId,
+        session,
+        correlationId: `slot-placement-${String(newCustomer._id)}`,
       });
     });
   } finally {

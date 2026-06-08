@@ -11,6 +11,7 @@ import {
   createOrGetMembership,
   getMembershipByUserId,
 } from "./mlm/mlmMembershipService.js";
+import { applyRegistrationBonusInSession } from "./mlm/mlmSignupBonusService.js";
 import { sendCustomerWelcomeEmail } from "./emailService.js";
 import { generateUniqueUserId } from "../utils/userIdGenerator.js";
 
@@ -427,6 +428,22 @@ async function completeCustomerSignupSideEffects(customer, { ipAddress } = {}) {
           forceManualPlacement: true,
         });
       }
+
+      // Signup bonus (added Jun 2026). Credits the new member's
+      // shopping wallet AND the sponsor's, both inside this same
+      // session so a failure here rolls back the entire signup
+      // (membership + sponsor wiring + bonus). Idempotency-keyed at
+      // the ledger layer so re-running this side-effect path (e.g.
+      // due to a retry after a transient network blip) never
+      // double-credits. Safe to call regardless of whether a sponsor
+      // exists — service skips the sponsor-credit when not set.
+      await applyRegistrationBonusInSession({
+        newCustomerId: customer._id,
+        newMembership: membership,
+        sponsorUserId: membership.sponsorId || null,
+        session,
+        correlationId: `customer-signup-${String(customer._id)}`,
+      });
     });
   } catch (err) {
     otpAuditLog("customer_signup_completion_failed", {

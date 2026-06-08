@@ -201,3 +201,27 @@ export async function getManualQrConfig(opts) {
     instructions: src.instructions || "",
   };
 }
+
+/**
+ * Signup bonus rates — single getter so callers (`mlmSignupBonusService`,
+ * the backfill script, admin UI) never re-derive the {enabled, self,
+ * sponsor} triple from the raw config. Negative or non-finite values
+ * are clamped to 0 because a negative bonus is meaningless and would
+ * trip `creditWallet`'s `assertPositiveAmount` guard at the wallet
+ * layer.
+ *
+ * Always returns the full shape — the caller short-circuits on
+ * `enabled === false` or `selfAmount + sponsorAmount === 0`.
+ */
+export async function getSignupBonusConfig(opts) {
+  const cfg = await getMlmConfig(opts);
+  const clampNonNegative = (n) => {
+    const v = Number(n);
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  };
+  return {
+    enabled: Boolean(cfg.signupBonusEnabled),
+    selfAmount: clampNonNegative(cfg.signupBonusSelfAmount),
+    sponsorAmount: clampNonNegative(cfg.signupBonusSponsorAmount),
+  };
+}

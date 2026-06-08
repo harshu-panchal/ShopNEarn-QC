@@ -181,6 +181,22 @@ const mlmMembershipSchema = new mongoose.Schema(
     // for upline" panel and the support / release-now override.
     heldPairBonusForSponsor: { type: Number, default: 0, min: 0 },
 
+    // Signup bonus (added Jun 2026). Timestamp stamped by
+    // `mlmSignupBonusService.applyRegistrationBonusInSession` the
+    // first time the signup-bonus dual-credit completes for THIS
+    // member. Three roles:
+    //   1. Idempotency-fast-path inside the live signup flow — when
+    //      this field is non-null the service short-circuits without
+    //      touching wallets (the partial-unique idempotency index on
+    //      LedgerEntry is the real backstop).
+    //   2. Resumability for the backfill script — the backfill skips
+    //      every row where this field is already set so a
+    //      crash-restart never double-credits.
+    //   3. Admin audit — a single boolean question ("did this member
+    //      ever receive the signup bonus?") is now a `.exists()`
+    //      query instead of trawling LedgerEntry by idempotency key.
+    signupBonusCreditedAt: { type: Date, default: null },
+
     // Customer-MLM-rebuild Phase 1: per-user cosmetic node coordinates
     // for the customer-facing Tree View. Keys are stringified MongoDB
     // ObjectIds of downline membership rows; values are `{x, y}` pixel

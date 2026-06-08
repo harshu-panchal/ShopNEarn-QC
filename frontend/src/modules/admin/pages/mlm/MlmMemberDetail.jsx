@@ -21,6 +21,29 @@ const STATUS_LABEL = {
     terminated: 'Terminated',
 };
 
+// Friendly labels for the `MlmCommissionEvent.bonusType` enum. Falls
+// back to the raw value when a new bonus type ships without a UI
+// update — keeps the cell readable in the worst case and avoids
+// crashes on enum drift.
+const BONUS_TYPE_LABEL = {
+    BINARY_PAIR_MATCH: 'Binary pair match',
+    DIRECT_REFERRAL_MILESTONE: 'Direct referral milestone',
+    REPURCHASE_BONUS: 'Repurchase',
+    MENTOR_ROYALTY: 'Mentor royalty',
+    HOME_SHOPPING_SALES: 'Home shopping sales',
+    HOME_SHOPPING_REFERRAL: 'Home shopping referral',
+    HOME_SHOPPING_ROYALTY: 'Home shopping royalty',
+    GIFT_VOUCHER_MILESTONE: 'Gift voucher milestone',
+    MANUAL_ADJUSTMENT: 'Manual adjustment',
+    SIGNUP_BONUS_SELF: 'Signup bonus',
+    SIGNUP_BONUS_SPONSOR: 'Referral bonus (signup)',
+};
+
+function formatBonusType(raw) {
+    if (!raw) return '—';
+    return BONUS_TYPE_LABEL[raw] || raw.replace(/_/g, ' ').toLowerCase();
+}
+
 const MlmMemberDetail = () => {
     const { id } = useParams();
     const [data, setData] = useState(null);
@@ -511,7 +534,9 @@ const MlmMemberDetail = () => {
                         renderItem={(row) => (
                             <li key={row._id} className="py-2 flex items-center justify-between">
                                 <div>
-                                    <p className="font-semibold text-slate-800">{row.bonusType}{row.level ? ` L${row.level}` : ''}</p>
+                                    <p className="font-semibold text-slate-800 capitalize">
+                                        {formatBonusType(row.bonusType)}{row.level ? ` L${row.level}` : ''}
+                                    </p>
                                     <p className="text-[11px] text-slate-500">{formatDate(row.createdAt)} · {row.status}</p>
                                 </div>
                                 <span className="font-bold text-emerald-700">+{formatINR(row.cappedAmount)}</span>

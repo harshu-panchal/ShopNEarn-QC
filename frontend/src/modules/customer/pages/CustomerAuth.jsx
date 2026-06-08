@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@core/context/AuthContext';
 import { useSettings } from '@core/context/SettingsContext';
 import {
@@ -95,7 +95,23 @@ const CustomerAuth = () => {
     const appName = settings?.appName || 'App';
     const logoUrl = settings?.logoUrl || '';
     const navigate = useNavigate();
+    const location = useLocation();
     const [searchParams] = useSearchParams();
+
+    // Post-login redirect target.
+    //
+    // Customers land on the MLM dashboard (`/mlm`) by default — it's
+    // the home of every revenue surface (genealogy, payouts,
+    // referrals), so dropping new sessions there beats sending them
+    // to the public storefront and forcing a second click.
+    //
+    // We still honour `ProtectedRoute`'s `location.state.from` round-
+    // trip so a user who clicked a deep link (e.g. `/mlm/payouts/123`)
+    // and got bounced to /login lands back at the page they wanted
+    // instead of being kicked over to /mlm.
+    const POST_LOGIN_DEFAULT = '/mlm';
+    const resolvePostLoginTarget = () =>
+        location.state?.from?.pathname || POST_LOGIN_DEFAULT;
 
     const [formData, setFormData] = useState({
         // Signup fields (Customer-MLM-rebuild Phase 7 — all required)
@@ -272,7 +288,7 @@ const CustomerAuth = () => {
             const { token, customer } = response.data.result;
             login({ ...customer, token, role: 'customer' });
             toast.success('Welcome back!');
-            navigate('/');
+            navigate(resolvePostLoginTarget(), { replace: true });
         } catch (error) {
             const apiMessage = error?.response?.data?.message;
             toast.error(apiMessage || 'Invalid credentials');
@@ -354,7 +370,7 @@ const CustomerAuth = () => {
             }
 
             toast.success('Successfully Logged In!');
-            navigate('/');
+            navigate(resolvePostLoginTarget(), { replace: true });
         } catch (error) {
             const apiMessage = error?.response?.data?.message;
             toast.error(apiMessage || 'Invalid OTP');

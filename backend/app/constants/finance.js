@@ -125,6 +125,14 @@ export const LEDGER_TRANSACTION_TYPE = {
   // `CREDITED`.
   MLM_BINARY_PAIR_MATCH_RELEASED_ON_DOWNLINE_ACTIVATION:
     "MLM_BINARY_PAIR_MATCH_RELEASED_ON_DOWNLINE_ACTIVATION",
+  // Signup bonus (added Jun 2026): every newly-registered customer
+  // gets a flat shopping-wallet credit, and their sponsor gets a
+  // smaller flat credit, the moment the membership is minted —
+  // before joining-fee activation. Two separate ledger types so the
+  // admin audit ledger filters cleanly between the self-credit and
+  // the sponsor-credit.
+  MLM_SIGNUP_BONUS_SELF: "MLM_SIGNUP_BONUS_SELF",
+  MLM_SIGNUP_BONUS_SPONSOR: "MLM_SIGNUP_BONUS_SPONSOR",
 };
 
 export const PAYOUT_TYPE = {

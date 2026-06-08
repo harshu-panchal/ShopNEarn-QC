@@ -68,6 +68,13 @@ export const MLM_BONUS_TYPE = {
   HOME_SHOPPING_ROYALTY: "HOME_SHOPPING_ROYALTY",
   GIFT_VOUCHER_MILESTONE: "GIFT_VOUCHER_MILESTONE",
   MANUAL_ADJUSTMENT: "MANUAL_ADJUSTMENT",
+  // Signup bonus (added Jun 2026): flat-amount shopping-wallet
+  // credit fired the moment a Customer's MlmMembership is minted
+  // (state = REGISTERED_UNPAID). Two distinct bonus types so the
+  // commission-history surface can distinguish self-credit from
+  // sponsor-credit at a glance.
+  SIGNUP_BONUS_SELF: "SIGNUP_BONUS_SELF",
+  SIGNUP_BONUS_SPONSOR: "SIGNUP_BONUS_SPONSOR",
 };
 export const ALL_MLM_BONUS_TYPES = Object.values(MLM_BONUS_TYPE);
 
@@ -161,6 +168,27 @@ export const MLM_DEFAULTS = Object.freeze({
   // the referral code stays optional and the legacy capture-on-signup
   // behaviour is preserved.
   signupRequiresReferralCode: true,
+
+  // Signup bonus (added Jun 2026). When `signupBonusEnabled` is
+  // true, every newly minted MlmMembership atomically credits two
+  // shopping-wallet movements inside the membership-creation
+  // transaction:
+  //   - signupBonusSelfAmount       -> credited to the new customer
+  //   - signupBonusSponsorAmount    -> credited to the sponsor
+  //
+  // Both amounts go into the `shopping` wallet bucket — usable at
+  // checkout but NOT withdrawable as cash (per PO decision). The
+  // sponsor credit fires regardless of the sponsor's lifecycle
+  // status (ACTIVE / REGISTERED_UNPAID) because the bonus is
+  // marketing acquisition, not commission. The new-customer credit
+  // fires while their own membership is still REGISTERED_UNPAID so
+  // first-time shoppers see a non-zero shopping wallet before paying
+  // the joining fee. Idempotency is enforced by the partial unique
+  // index on LedgerEntry.idempotencyKey (one key per logical
+  // movement; safe to re-run).
+  signupBonusEnabled: true,
+  signupBonusSelfAmount: 100,
+  signupBonusSponsorAmount: 50,
 
   // Joining package — direct payment + activation (no Product/Order).
   // Lifecycle lives in `MlmJoiningPayment`; price + credit are
@@ -312,4 +340,14 @@ export const MLM_IDEMPOTENCY_PREFIX = {
   WITHDRAWAL_GST: "MLM-WGST",
   WITHDRAWAL_PAYOUT: "MLM-WPO",
   MANUAL_ADJUSTMENT: "MLM-ADJ",
+  // Signup bonus (added Jun 2026). Key shapes:
+  //   self    -> `MLM-SBS-<newCustomerUserId>`
+  //              (one row per Customer ever — the new-customer
+  //              userId is globally unique so a single component
+  //              suffices)
+  //   sponsor -> `MLM-SBR-<sponsorUserId>-<newCustomerUserId>`
+  //              (one row per (sponsor, downline) pair so the same
+  //              sponsor accumulating many referrals never collides)
+  SIGNUP_BONUS_SELF: "MLM-SBS",
+  SIGNUP_BONUS_SPONSOR: "MLM-SBR",
 };
