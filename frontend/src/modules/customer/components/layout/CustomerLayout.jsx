@@ -83,6 +83,17 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
     const hideBottomNavRoutes = ['/checkout', '/search', '/chat'];
     const hideCartRoutes = ['/checkout', '/search', '/chat'];
 
+    // The entire `/mlm/*` tree owns its own navigation chrome
+    // (`MlmLayout` renders a fixed sidebar on desktop and a slide-
+    // in drawer on mobile that's opened via the hamburger in each
+    // page's sticky title bar). Showing the storefront BottomNav
+    // underneath duplicates the nav surface and wastes the bottom
+    // ~70 px of every MLM screen, so we suppress it across the
+    // section. The `pb-16` gutter on `<main>` (which existed only
+    // to clear the BottomNav) is dropped for the same reason —
+    // each MLM page already manages its own bottom padding.
+    const isMlmRoute = path.startsWith('/mlm');
+
     // Pages that manage their own full-viewport height (genealogy tree
     // canvas, etc.) must NOT receive the default `pb-16` mobile-nav
     // gutter from <main> — they pad themselves internally. They also
@@ -93,7 +104,7 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
 
     // If props are passed, use them. Otherwise, use route-based logic.
     const showHeader = showHeaderProp !== undefined ? showHeaderProp : (!hideHeaderRoutes.includes(path) && !path.startsWith('/category') && !path.startsWith('/orders') && !path.startsWith('/mlm'));
-    const showBottomNav = showBottomNavProp !== undefined ? showBottomNavProp : !hideBottomNavRoutes.includes(path);
+    const showBottomNav = showBottomNavProp !== undefined ? showBottomNavProp : (!hideBottomNavRoutes.includes(path) && !isMlmRoute);
     const showCart = showCartProp !== undefined ? showCartProp : (!hideCartRoutes.includes(path) && !path.startsWith('/orders'));
     const effectiveFullHeight = fullHeight || fullViewportRoutes;
 
@@ -123,14 +134,23 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
                 </>
             )}
 
-            <main className={cn("flex-1 md:pb-0", !showHeader && "pt-0", !effectiveFullHeight && "pb-16", fullViewportRoutes && "flex flex-col")}>
+            <main className={cn("flex-1 md:pb-0", !showHeader && "pt-0", !effectiveFullHeight && !isMlmRoute && "pb-16", fullViewportRoutes && "flex flex-col")}>
                 {children}
             </main>
 
             {showCart && <MiniCart />}
             <ProductDetailSheet />
 
-            {!fullViewportRoutes && (
+            {/* Desktop footer is suppressed across the entire `/mlm/*`
+                tree because MlmLayout renders a fixed-position left
+                sidebar (md:+). The customer Footer is not aware of the
+                `md:pl-64` reservation and would render UNDERNEATH the
+                sidebar, producing a torn visual at the bottom of the
+                page. `/mlm/genealogy` was already excluded via the
+                `fullViewportRoutes` flag; the additional `startsWith`
+                check generalises that to every MLM URL. Mobile is
+                untouched because the footer is `hidden md:block`. */}
+            {!fullViewportRoutes && !path.startsWith('/mlm') && (
                 <div className="hidden md:block">
                     <Footer />
                 </div>

@@ -198,25 +198,30 @@ const MyPayoutPage = () => {
   const canWithdraw = earnings >= minAmt;
 
   return (
-    <div className="space-y-4">
-      <div className="bg-gradient-to-br from-violet-600 to-indigo-700 text-white rounded-2xl p-5">
-        <p className="text-xs font-bold uppercase tracking-widest opacity-80">
-          Withdrawable Earnings
-        </p>
-        <h2 className="text-2xl sm:text-3xl font-black mt-1 break-all">
-          {formatINR(earnings)}
-        </h2>
-        <p className="text-xs opacity-80 mt-2">
-          Min withdrawal {formatINR(minAmt)} · Fees:{" "}
-          {membership.config?.withdrawalAdminChargePercent}% admin +{" "}
-          {membership.config?.withdrawalGstOnAdminChargePercent}% GST
-        </p>
-      </div>
+    // Desktop layout (lg:+) — 2-col grid where the withdraw form
+    // lives on the left and the Recent Requests list on the right,
+    // matching the standard "action panel + history" layout used
+    // across the admin console. Mobile keeps everything stacked.
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 items-start">
+      <div className="space-y-4">
+        <div className="bg-gradient-to-br from-violet-600 to-indigo-700 text-white rounded-2xl p-5">
+          <p className="text-xs font-bold uppercase tracking-widest opacity-80">
+            Withdrawable Earnings
+          </p>
+          <h2 className="text-2xl sm:text-3xl font-black mt-1 break-all">
+            {formatINR(earnings)}
+          </h2>
+          <p className="text-xs opacity-80 mt-2">
+            Min withdrawal {formatINR(minAmt)} · Fees:{" "}
+            {membership.config?.withdrawalAdminChargePercent}% admin +{" "}
+            {membership.config?.withdrawalGstOnAdminChargePercent}% GST
+          </p>
+        </div>
 
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4"
-      >
+        <form
+          onSubmit={handleSubmit}
+          className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4"
+        >
         <h3 className="text-base font-bold text-slate-900">New Withdrawal</h3>
 
         <Field label="Amount (₹)">
@@ -355,9 +360,10 @@ const MyPayoutPage = () => {
         >
           {submitting ? "Submitting..." : "Submit Request"}
         </button>
-      </form>
+        </form>
+      </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200">
+      <div className="bg-white rounded-2xl border border-slate-200 lg:sticky lg:top-36 self-start">
         <div className="px-5 py-4 border-b border-slate-100">
           <h3 className="text-base font-bold text-slate-900">
             Recent Requests

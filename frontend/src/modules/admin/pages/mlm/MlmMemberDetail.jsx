@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw, Eye, EyeOff, Copy, LogIn } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
 import GenealogyTreeCanvas from '@shared/components/mlm/GenealogyTreeCanvas';
 
@@ -71,6 +71,7 @@ const MlmMemberDetail = () => {
     const [verification, setVerification] = useState(null);
     const [verifying, setVerifying] = useState(false);
     const [approving, setApproving] = useState(false);
+    const [impersonating, setImpersonating] = useState(false);
 
     const load = async () => {
         setLoading(true);
@@ -173,6 +174,66 @@ const MlmMemberDetail = () => {
             toast.error(err?.response?.data?.message || 'Failed to approve member');
         } finally {
             setApproving(false);
+        }
+    };
+
+    /**
+     * Admin "Log in as Member" — opens a new tab pre-authenticated
+     * as this member. Pop-up window is opened SYNCHRONOUSLY on the
+     * click so it doesn't trip Chrome/Safari/Firefox pop-up blockers
+     * (which only allow `window.open` from a user-gesture stack).
+     * The token is then injected into the new tab via
+     * `window.location.replace` once the backend responds.
+     *
+     * Token is shipped in the URL hash (never a query string) so it
+     * cannot leak to server logs / analytics / Referer headers. The
+     * handoff page scrubs the hash from history before forwarding
+     * to the destination.
+     */
+    const handleLoginAsMember = async () => {
+        const memberName = data?.membership?.userId?.name || 'this member';
+        if (impersonating) return;
+        if (!window.confirm(
+            `Open a new tab and sign in as ${memberName}? They will not be notified. ` +
+            `If you already have another customer session open in this browser, it will be replaced.`,
+        )) {
+            return;
+        }
+
+        // Open the tab IMMEDIATELY with a placeholder so the
+        // pop-up blocker accepts it. We swap the URL after the
+        // backend returns.
+        const newTab = window.open('about:blank', '_blank');
+        if (!newTab) {
+            toast.error('Pop-up blocked. Please allow pop-ups for this site and try again.');
+            return;
+        }
+
+        setImpersonating(true);
+        try {
+            const res = await adminMlmApi.issueImpersonationToken(id);
+            const payload = res.data?.result ?? res.data?.data ?? {};
+            if (!payload.token) {
+                throw new Error('Backend returned no impersonation token.');
+            }
+            const redirect = payload.redirect || '/mlm';
+            const handoffUrl =
+                `${window.location.origin}/auth/handoff` +
+                `#token=${encodeURIComponent(payload.token)}` +
+                `&redirect=${encodeURIComponent(redirect)}`;
+            newTab.location.replace(handoffUrl);
+            toast.success(`Opening session for ${memberName}…`);
+        } catch (err) {
+            // Close the placeholder tab so the admin isn't left
+            // with an empty about:blank window after a failure.
+            try { newTab.close(); } catch { /* ignore */ }
+            toast.error(
+                err?.response?.data?.message ||
+                err?.message ||
+                'Failed to start impersonation session.',
+            );
+        } finally {
+            setImpersonating(false);
         }
     };
 
@@ -321,22 +382,49 @@ const MlmMemberDetail = () => {
                         Leg {m.position === 'L' ? 'Left' : 'Right'}
                     </span>
                 )}
-                {m.status === 'registered_unpaid' && (
-                    <button
-                        type="button"
-                        onClick={handleApprove}
-                        disabled={approving}
-                        className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white transition-colors shadow-sm"
-                        title="Activate Plan A without payment"
-                    >
-                        {approving ? (
-                            <Loader2 size={14} className="animate-spin" />
-                        ) : (
-                            <Check size={14} />
-                        )}
-                        {approving ? 'Approving…' : 'Approve Plan A'}
-                    </button>
-                )}
+                {/* Action cluster — pinned to the right edge of the
+                    title row. `ml-auto` on the first child pushes
+                    the whole group right; subsequent buttons stack
+                    next to it without needing another `ml-auto`. */}
+                <div className="ml-auto flex items-center gap-2 flex-wrap">
+                    {m.status === 'registered_unpaid' && (
+                        <button
+                            type="button"
+                            onClick={handleApprove}
+                            disabled={approving}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white transition-colors shadow-sm"
+                            title="Activate Plan A without payment"
+                        >
+                            {approving ? (
+                                <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                                <Check size={14} />
+                            )}
+                            {approving ? 'Approving…' : 'Approve Plan A'}
+                        </button>
+                    )}
+                    {/* Admin support tool — opens the member's MLM
+                        dashboard in a new tab, pre-authenticated as
+                        them. Blocked for suspended / terminated rows
+                        on the backend; we still render the button
+                        but it will surface the backend's 403 toast. */}
+                    {m.status !== 'suspended' && m.status !== 'terminated' && (
+                        <button
+                            type="button"
+                            onClick={handleLoginAsMember}
+                            disabled={impersonating}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white transition-colors shadow-sm"
+                            title="Open a new tab signed in as this member"
+                        >
+                            {impersonating ? (
+                                <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                                <LogIn size={14} />
+                            )}
+                            {impersonating ? 'Signing in…' : 'Log in as Member'}
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Customer-MLM-rebuild Phase 10 — call-out banner when the
@@ -418,6 +506,14 @@ const MlmMemberDetail = () => {
                     <Row label="Leg position" value={m.position === 'L' ? 'Left' : m.position === 'R' ? 'Right' : '—'} />
                     <Row label="Phone" value={u.phone} />
                     <Row label="Email" value={u.email || '-'} />
+                    {/* Password reveal — PO-request Jun 2026. Reads
+                        `_signupPasswordPlaintext` populated by the
+                        admin member detail endpoint. See the
+                        SECURITY NOTE on the schema field; the
+                        clipboard copy lets admin staff hand the
+                        credentials to customers without
+                        re-typing. */}
+                    <Row label="Password" value={<PasswordCell value={u._signupPasswordPlaintext} />} />
                     <Row label="Joined" value={formatDate(m.joinedAt)} />
                     {m.planBJoinedAt && <Row label="Plan B Since" value={formatDate(m.planBJoinedAt)} />}
                 </Card>
@@ -609,6 +705,11 @@ const MlmMemberDetail = () => {
                         emptySlotMaxDepth={2}
                         breadcrumb={downlineBreadcrumb}
                         highlightViewerSelf={false}
+                        // Admin view tightens horizontal + vertical
+                        // gaps so more of the downline is visible
+                        // without extra panning. Customer side stays
+                        // on the default (looser) spacing.
+                        compactSpacing
                         emptyTreeMessage="No downline data for this member yet."
                         footerHint={
                             <>
@@ -647,6 +748,63 @@ const Row = ({ label, value }) => (
         <span className="font-semibold text-slate-900 text-right">{value}</span>
     </div>
 );
+
+/**
+ * PasswordCell — masked-by-default reveal for the customer's
+ * plaintext password (Customer-MLM-rebuild Phase 7 stores it in
+ * `_signupPasswordPlaintext`; the admin member detail endpoint
+ * surfaces it on `userId._signupPasswordPlaintext`).
+ *
+ * Defaults to masked (`••••••••`) so a screen-share / casual
+ * shoulder-surf doesn't leak the value. The Eye button toggles
+ * visibility; the Copy button writes the raw value to the
+ * clipboard so admins can paste it into chat/email without ever
+ * making it visible on screen.
+ *
+ * Legacy rows (members who signed up before plaintext became
+ * permanent) carry `undefined` here; we render an inline
+ * "— (legacy)" hint so admin staff know it's not a bug and that
+ * the customer needs to set a new password to populate the field.
+ */
+const PasswordCell = ({ value }) => {
+    const [visible, setVisible] = useState(false);
+    if (!value) {
+        return (
+            <span className="text-slate-400 font-normal italic">
+                — <span className="text-[10px]">(legacy)</span>
+            </span>
+        );
+    }
+    const handleCopy = () => {
+        navigator.clipboard?.writeText(value);
+        toast.success('Password copied');
+    };
+    return (
+        <span className="inline-flex items-center gap-2">
+            <code className="font-mono font-bold text-slate-900 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs">
+                {visible ? value : '•'.repeat(Math.min(value.length, 10))}
+            </code>
+            <button
+                type="button"
+                onClick={() => setVisible((v) => !v)}
+                className="text-slate-400 hover:text-slate-700 transition-colors"
+                aria-label={visible ? 'Hide password' : 'Show password'}
+                title={visible ? 'Hide password' : 'Show password'}
+            >
+                {visible ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+            <button
+                type="button"
+                onClick={handleCopy}
+                className="text-slate-400 hover:text-indigo-600 transition-colors"
+                aria-label="Copy password"
+                title="Copy password"
+            >
+                <Copy size={14} />
+            </button>
+        </span>
+    );
+};
 
 /**
  * PaginatedList — lightweight client-side pagination for the

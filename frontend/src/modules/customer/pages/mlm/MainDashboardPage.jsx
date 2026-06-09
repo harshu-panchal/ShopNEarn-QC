@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
-  ChevronLeft,
   ChevronRight,
   Users,
   Wallet,
@@ -26,9 +25,23 @@ import {
   Crown,
   ShieldCheck,
   Rocket,
+  Mail,
+  Phone,
+  BadgeCheck,
+  CalendarDays,
+  UserCircle2,
+  KeyRound,
+  Eye,
+  EyeOff,
+  ShieldAlert,
+  X,
+  Menu,
 } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../services/mlmApi";
+import { customerApi } from "../../services/customerApi";
+import { useAuth } from "@core/context/AuthContext";
+import { useMlmDrawer } from "./MlmLayout";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -45,6 +58,11 @@ const formatINR = (n) =>
  */
 const MainDashboardPage = () => {
   const navigate = useNavigate();
+  // Pull the customer profile from the auth context so the
+  // Profile Card can render contact info (name, phone, email,
+  // user id, member-since) without an extra round-trip — the
+  // /customer/profile call already ran during AuthProvider mount.
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState(null);
   const [pendingJoining, setPendingJoining] = useState(null);
@@ -108,26 +126,55 @@ const MainDashboardPage = () => {
     );
   }
 
-  return <MemberDashboard overview={overview} navigate={navigate} />;
+  return <MemberDashboard overview={overview} navigate={navigate} user={user} />;
 };
 
-const Header = ({ title, navigate, right = null }) => (
-  <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm px-4 pt-4 pb-3 border-b border-slate-200/60 mb-4 flex items-center gap-2">
-    {/* Always land on the Profile screen — the "My Rewards" page
-        is reached from the profile menu, so a plain `navigate(-1)`
-        would loop back through the Plan Activation / payment redirects
-        for users mid-flow. */}
-    <button
-      onClick={() => navigate("/profile")}
-      className="w-10 h-10 flex items-center justify-center hover:bg-slate-200/70 rounded-full transition-colors -ml-1"
-      aria-label="Back to profile"
-    >
-      <ChevronLeft size={22} className="text-slate-800" />
-    </button>
-    <h1 className="text-xl font-semibold text-slate-900 tracking-tight flex-1">
-      {title}
-    </h1>
-    {right}
+// Page-level mobile header. Hidden on desktop (`md:hidden`) because
+// the `MlmLayout` sidebar already provides section navigation;
+// rendering this on top of the sidebar's "My Rewards" brand would
+// duplicate the label. On mobile (no fixed sidebar) this is the
+// only navigation chrome, so the hamburger button is the user's
+// only way into the new mobile drawer.
+//
+// `navigate` is intentionally still threaded in as a prop even
+// though we no longer call it — keeps the call-sites stable and
+// makes any future "right-side action that navigates" trivial to
+// add back.
+// eslint-disable-next-line no-unused-vars
+const Header = ({ title, navigate, right = null }) => {
+  const { openDrawer } = useMlmDrawer();
+  return (
+    <div className="md:hidden sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm px-4 pt-4 pb-3 border-b border-slate-200/60 mb-4 flex items-center gap-2">
+      <button
+        onClick={openDrawer}
+        className="w-10 h-10 flex items-center justify-center hover:bg-slate-200/70 rounded-full transition-colors -ml-1"
+        aria-label="Open navigation"
+      >
+        <Menu size={22} className="text-slate-800" />
+      </button>
+      <h1 className="text-xl font-semibold text-slate-900 tracking-tight flex-1">
+        {title}
+      </h1>
+      {right}
+    </div>
+  );
+};
+
+// Desktop-only page header. Renders inside the main content column
+// (so it scrolls with the page, unlike the mobile sticky bar) and
+// gives the dashboard a clear section title without duplicating the
+// sidebar's brand strip. Hidden on mobile (`hidden md:flex`) — the
+// `Header` component above owns mobile chrome.
+const DesktopPageHeader = ({ title, subtitle }) => (
+  <div className="hidden md:flex items-end justify-between gap-4 pt-6 pb-4 border-b border-slate-200/80 mb-6">
+    <div>
+      <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+        {title}
+      </h1>
+      {subtitle && (
+        <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
+      )}
+    </div>
   </div>
 );
 
@@ -182,7 +229,11 @@ const NotMemberView = ({ overview, pendingJoining, navigate }) => {
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
       <Header title="Rewards Program" navigate={navigate} />
-      <div className="max-w-2xl mx-auto px-4 space-y-4">
+      <div className="max-w-2xl md:max-w-3xl mx-auto px-4 md:px-8 space-y-4">
+        <DesktopPageHeader
+          title="Rewards Program"
+          subtitle="Activate your account to start earning."
+        />
         {pending && (
           <PendingPaymentBanner
             pending={pending}
@@ -317,7 +368,7 @@ const PendingPaymentBanner = ({ pending, onResume, onRetry, retrying }) => {
      wallet balance, left/right leg counts, pending payout, today's
      earnings, next-pair preview.
    ================================================================ */
-const MemberDashboard = ({ overview, navigate }) => {
+const MemberDashboard = ({ overview, navigate, user }) => {
   const { membership, wallet, earnings, referrals, binary, payout, dailyCap, config } = overview;
   const isUnpaid = !!membership.isRegisteredUnpaid;
 
@@ -371,10 +422,16 @@ const MemberDashboard = ({ overview, navigate }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24">
+    <div className="min-h-screen bg-slate-50 pb-24 md:pb-12">
       <Header title="My Rewards" navigate={navigate} />
-      <div className="max-w-3xl mx-auto px-4 space-y-4">
-        {/* Status / activation banner */}
+      <div className="max-w-3xl md:max-w-7xl mx-auto px-4 md:px-8 space-y-4 md:space-y-6">
+        <DesktopPageHeader
+          title="My Rewards"
+          subtitle="Track your earnings, network, and referrals at a glance."
+        />
+
+        {/* Status / activation banner — full width on every breakpoint
+            because it's a single high-priority message. */}
         {isUnpaid && (
           <ActivationCta
             membership={membership}
@@ -383,28 +440,47 @@ const MemberDashboard = ({ overview, navigate }) => {
           />
         )}
 
-        {/* Current Plan card — shows the customer's active plan
-            (Plan A / Plan B Premium / Activation Pending) with the
-            plan's benefits and, for Plan A, a progress bar towards
-            the Plan B auto-upgrade threshold. */}
-        <MyPlanCard
-          membership={membership}
-          earnings={earnings}
-          config={config}
-        />
+        {/* Hero row (md:+) — current plan card on the left (8 cols)
+            and referral-code card on the right (4 cols). On mobile
+            this collapses to a single stacked column so the existing
+            UX is preserved.
 
-        {/* Referral code card — dedicated to the referral code so
-            the customer can copy / share it with a single tap. */}
-        <ReferralCodeCard
-          code={membership.referralCode}
-          shareUrl={shareUrl}
-          onCopyCode={copyReferralCode}
-          onCopyLink={copyShareLink}
-          onShare={shareReferral}
-        />
+            The plan card is the visual anchor of the page so it gets
+            the wider slot; the referral code is a "constantly needed"
+            utility so it lives on the right rail where it stays in
+            the viewport even when the main column scrolls past it. */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
+          <div className="md:col-span-7 lg:col-span-8">
+            <MyPlanCard
+              membership={membership}
+              earnings={earnings}
+              config={config}
+            />
+          </div>
+          <div className="md:col-span-5 lg:col-span-4">
+            <ReferralCodeCard
+              code={membership.referralCode}
+              shareUrl={shareUrl}
+              onCopyCode={copyReferralCode}
+              onCopyLink={copyShareLink}
+              onShare={shareReferral}
+            />
+          </div>
+        </div>
 
-        {/* Wallet snapshot */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Profile snapshot — identity card placed between the hero
+            row (plan + referral code) and the wallet row so the
+            customer's name + contact info anchors the "who you are"
+            context before the "what you've earned" data. Full-width
+            on every breakpoint; the internal layout is the one that
+            adapts (single column on mobile, avatar+name on the left
+            with a 4-cell info grid on desktop). */}
+        <ProfileCard user={user} membership={membership} />
+
+        {/* Wallet snapshot — 2-up on every breakpoint. Pinned above
+            the KPI strip so the customer always sees their available
+            balances first. */}
+        <div className="grid grid-cols-2 md:grid-cols-2 gap-3 md:gap-4">
           <WalletCard
             label="Earnings Wallet"
             amount={wallet.earningsBalance}
@@ -436,8 +512,13 @@ const MemberDashboard = ({ overview, navigate }) => {
           </div>
         )}
 
-        {/* Earnings overview */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* KPI strip — 8 stat tiles arranged as a 2-row × 4-column
+            grid on every breakpoint above mobile (`sm:grid-cols-4`).
+            Two rows of large, glanceable cards reads cleaner than a
+            single thin row of 8 on wide desktops — the extra
+            vertical space lets each tile breathe and use a larger
+            value type. Mobile stays at the existing 2-col layout. */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
           <StatTile
             label="Total Earnings"
             value={formatINR(earnings.lifetime)}
@@ -463,10 +544,6 @@ const MemberDashboard = ({ overview, navigate }) => {
             tone="rose"
             subtle={`${payout.pendingCount} request${payout.pendingCount === 1 ? "" : "s"}`}
           />
-        </div>
-
-        {/* Referral counts */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatTile
             label="Total Referrals"
             value={referrals.directReferralsCount}
@@ -479,7 +556,7 @@ const MemberDashboard = ({ overview, navigate }) => {
             value={referrals.activeCustomersInNetwork}
             icon={<CheckCircle2 size={18} />}
             tone="emerald"
-            subtle="in your network"
+            subtle="in network"
           />
           <StatTile
             label="Network Size"
@@ -493,77 +570,85 @@ const MemberDashboard = ({ overview, navigate }) => {
             value={binary.pairsCompleted}
             icon={<GitBranch size={18} />}
             tone="amber"
-            subtle={`Next pair: ${binary.nextPairBonusAmount > 0 ? formatINR(binary.nextPairBonusAmount) : "—"}`}
+            subtle={`Next: ${binary.nextPairBonusAmount > 0 ? formatINR(binary.nextPairBonusAmount) : "—"}`}
           />
         </div>
 
-        {/* Binary leg counts */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5">
-          <h3 className="text-base font-bold text-slate-900 mb-3">
-            Binary Network
-          </h3>
-          <div className="grid grid-cols-3 gap-3 mb-3">
-            <LegBox
-              label="Left Leg"
-              count={binary.leftLegDirectCount}
-              icon={<ArrowLeft size={18} />}
-              weaker={binary.leftLegDirectCount <= binary.rightLegDirectCount}
-            />
-            <LegBox
-              label="Pairs"
-              count={binary.pairsCompleted}
-              accent
-            />
-            <LegBox
-              label="Right Leg"
-              count={binary.rightLegDirectCount}
-              icon={<ArrowRight size={18} />}
-              weaker={binary.rightLegDirectCount <= binary.leftLegDirectCount}
-            />
+        {/* Bottom row (md:+) — Binary Network panel on the left
+            (8 cols, the data-heavy summary) and Quick Links on the
+            right (4 cols, three navigation tiles). The right column
+            stacks the quick-link grid + the daily-cap meter so the
+            two side rails stay balanced visually. */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
+          <div className="md:col-span-7 lg:col-span-8">
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 h-full">
+              <h3 className="text-base font-bold text-slate-900 mb-3">
+                Binary Network
+              </h3>
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                <LegBox
+                  label="Left Leg"
+                  count={binary.leftLegDirectCount}
+                  icon={<ArrowLeft size={18} />}
+                  weaker={
+                    binary.leftLegDirectCount <= binary.rightLegDirectCount
+                  }
+                />
+                <LegBox label="Pairs" count={binary.pairsCompleted} accent />
+                <LegBox
+                  label="Right Leg"
+                  count={binary.rightLegDirectCount}
+                  icon={<ArrowRight size={18} />}
+                  weaker={
+                    binary.rightLegDirectCount <= binary.leftLegDirectCount
+                  }
+                />
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Refer one more friend on your{" "}
+                <strong>
+                  {binary.leftLegDirectCount <= binary.rightLegDirectCount
+                    ? "left"
+                    : "right"}{" "}
+                  leg
+                </strong>{" "}
+                to complete pair #{binary.nextPairIndex} and earn{" "}
+                <strong>
+                  {binary.nextPairBonusAmount > 0
+                    ? formatINR(binary.nextPairBonusAmount)
+                    : "—"}
+                </strong>
+                .
+              </p>
+            </div>
           </div>
-          <p className="text-[11px] text-slate-500 leading-relaxed">
-            Refer one more friend on your{" "}
-            <strong>
-              {binary.leftLegDirectCount <= binary.rightLegDirectCount
-                ? "left"
-                : "right"}{" "}
-              leg
-            </strong>{" "}
-            to complete pair #{binary.nextPairIndex} and earn{" "}
-            <strong>
-              {binary.nextPairBonusAmount > 0
-                ? formatINR(binary.nextPairBonusAmount)
-                : "—"}
-            </strong>
-            .
-          </p>
+
+          <div className="md:col-span-5 lg:col-span-4 space-y-3 md:space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <QuickLink
+                label="Genealogy"
+                icon={<Network size={20} />}
+                to="/mlm/genealogy/tree"
+              />
+              <QuickLink
+                label="Earnings"
+                icon={<TrendingUp size={20} />}
+                to="/mlm/payouts/earnings"
+              />
+              <QuickLink
+                label="Withdraw"
+                icon={<Send size={20} />}
+                to="/mlm/payouts/withdrawals"
+              />
+            </div>
+            {dailyCap.cap > 0 && (
+              <DailyCapMeter cap={dailyCap.cap} used={dailyCap.usedToday} />
+            )}
+          </div>
         </div>
 
-        {/* Quick links */}
-        <div className="grid grid-cols-3 gap-3">
-          <QuickLink
-            label="Genealogy"
-            icon={<Network size={20} />}
-            to="/mlm/genealogy/tree"
-          />
-          <QuickLink
-            label="Earnings"
-            icon={<TrendingUp size={20} />}
-            to="/mlm/payouts/earnings"
-          />
-          <QuickLink
-            label="Withdraw"
-            icon={<Send size={20} />}
-            to="/mlm/payouts/withdrawals"
-          />
-        </div>
-
-        {/* Daily cap meter */}
-        {dailyCap.cap > 0 && (
-          <DailyCapMeter cap={dailyCap.cap} used={dailyCap.usedToday} />
-        )}
-
-        {/* Plan B Home Shopping CTA */}
+        {/* Plan B Home Shopping CTA — full width on every breakpoint
+            because it's a tier-exclusive callout, not a stat. */}
         {membership.planType === "B" && membership.homeShoppingUnlocked && (
           <button
             onClick={() => navigate("/mlm/home-shopping")}
@@ -880,6 +965,446 @@ const ReferralCodeCard = ({
   </div>
 );
 
+/**
+ * ProfileCard
+ *
+ * Identity strip rendered between the hero row and the wallet row
+ * on the MLM dashboard. Surfaces the customer's name, public
+ * user-id handle (the SE-prefixed string they share with support),
+ * phone, email, and member-since date so they don't have to bounce
+ * to `/profile` just to confirm which account they're looking at.
+ *
+ * Data sources:
+ *   - `user` (from `useAuth().user`) → name, phone, email, userId
+ *   - `membership` (from dashboard overview) → joinedAt
+ *
+ * Layout:
+ *   - Mobile: avatar + name on top, info rows stacked below.
+ *   - Desktop (md:+): avatar + name on the left (col-span-4), a
+ *     2x2 grid of contact info on the right (col-span-8), with the
+ *     Edit Profile action pinned to the top-right corner.
+ *
+ * Gracefully handles the empty-profile case (auth still loading,
+ * stale cache) by rendering placeholder "—" cells instead of
+ * blank space, so the card never collapses to zero height.
+ */
+const ProfileCard = ({ user, membership }) => {
+  const initial = (user?.name || "U").trim().charAt(0).toUpperCase();
+  const handle = user?.userId || null;
+  const memberSince = membership?.joinedAt
+    ? new Date(membership.joinedAt).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
+
+  // Verified badge — `isVerified` flips true once the customer has
+  // completed OTP at any point. Falsy for legacy / freshly-imported
+  // rows; we hide the badge instead of showing a misleading "no".
+  const isVerified = !!user?.isVerified;
+
+  // Show-credentials modal state. Lazy-fetches `/customer/credentials`
+  // the first time the modal opens so the dashboard never ships the
+  // plaintext password unless the customer explicitly asked to see
+  // it. See AccountCredentialsPage.jsx for the canonical reveal
+  // pattern; we reuse the same endpoint here so the two surfaces
+  // can never drift in what they expose.
+  const [credsOpen, setCredsOpen] = useState(false);
+
+  const copyHandle = () => {
+    if (!handle) return;
+    navigator.clipboard?.writeText(handle);
+    toast.success("User ID copied!");
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-4 md:p-5">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-5 items-start">
+        {/* Identity column — avatar + name + handle. */}
+        <div className="md:col-span-4 flex items-center md:items-start gap-3 md:gap-4 min-w-0">
+          <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+            {user?.name ? (
+              <span className="text-xl md:text-2xl font-black">{initial}</span>
+            ) : (
+              <UserCircle2 size={28} />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h3 className="text-base md:text-lg font-bold text-slate-900 truncate">
+                {user?.name || "Customer"}
+              </h3>
+              {isVerified && (
+                <span
+                  className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5"
+                  title="Phone verified via OTP"
+                >
+                  <BadgeCheck size={11} /> Verified
+                </span>
+              )}
+            </div>
+            {handle ? (
+              <button
+                type="button"
+                onClick={copyHandle}
+                className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-mono font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors rounded-md px-2 py-0.5 max-w-full"
+                title="Click to copy your user id"
+              >
+                <span className="truncate">{handle}</span>
+                <Copy size={11} className="shrink-0" />
+              </button>
+            ) : (
+              <p className="mt-1 text-[11px] text-slate-400 italic">
+                User ID pending…
+              </p>
+            )}
+          </div>
+          {/* Show-credentials action — pinned right on mobile (next
+              to the name) and reappears as a full-width pill in the
+              desktop info grid below. Mobile keeps it as a compact
+              icon button so it doesn't crowd the avatar row; the
+              `key` icon signals "view login info" without needing a
+              text label at that size. */}
+          <button
+            type="button"
+            onClick={() => setCredsOpen(true)}
+            className="md:hidden shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors"
+            aria-label="Show credentials"
+            title="Show credentials"
+          >
+            <KeyRound size={16} />
+          </button>
+        </div>
+
+        {/* Info grid — Phone / Email / Member since / Show
+            credentials. Stacks 1-col on mobile and goes 2x2 on
+            `sm:+`. */}
+        <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3">
+          <ProfileInfoRow
+            icon={<Phone size={14} />}
+            label="Phone"
+            value={user?.phone ? `+91 ${formatPhone(user.phone)}` : "—"}
+          />
+          <ProfileInfoRow
+            icon={<Mail size={14} />}
+            label="Email"
+            value={user?.email || "—"}
+            mono={!!user?.email}
+            truncate
+          />
+          <ProfileInfoRow
+            icon={<CalendarDays size={14} />}
+            label="Member since"
+            value={memberSince || "—"}
+          />
+          <button
+            type="button"
+            onClick={() => setCredsOpen(true)}
+            className="hidden md:flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs uppercase tracking-wider rounded-xl py-2.5 transition-colors"
+          >
+            <KeyRound size={14} /> Show credentials
+          </button>
+        </div>
+      </div>
+      {credsOpen && <CredentialsModal onClose={() => setCredsOpen(false)} />}
+    </div>
+  );
+};
+
+/**
+ * CredentialsModal
+ *
+ * Lightweight reveal modal launched from the dashboard ProfileCard.
+ * Fetches `/customer/credentials` on open and surfaces the four
+ * login-relevant fields: User ID, Email, Phone, Password.
+ *
+ * The password is masked behind an eye toggle so a screen-share or
+ * casual shoulder-surf can't snipe it; every field has a one-tap
+ * copy button so the customer can paste credentials into a sign-in
+ * form on another device without retyping.
+ *
+ * Why a modal (not a deep-link to AccountCredentialsPage):
+ *   - Keeps the customer on the dashboard so they don't lose their
+ *     scroll position or context.
+ *   - The dashboard's MlmLayout sidebar would hide the existing
+ *     credentials page chrome anyway; an inline reveal is cleaner.
+ *
+ * Both surfaces hit the SAME backend endpoint so the password
+ * exposure surface area can never drift between them. See the
+ * SECURITY NOTE on `_signupPasswordPlaintext` in
+ * `backend/app/models/customer.js` for the trade-off discussion.
+ */
+const CredentialsModal = ({ onClose }) => {
+  const [loading, setLoading] = useState(true);
+  const [creds, setCreds] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await customerApi.getCredentials();
+        if (!mounted) return;
+        setCreds(res.data?.result ?? res.data?.data ?? res.data);
+      } catch (err) {
+        if (mounted) {
+          toast.error(
+            err?.response?.data?.message ||
+              "Failed to load your account details.",
+          );
+        }
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Close on Escape — small UX nicety; matches the pattern used by
+  // most other modals across the app.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const copy = (label, value) => {
+    if (!value) return;
+    navigator.clipboard
+      ?.writeText(value)
+      .then(() => toast.success(`${label} copied!`))
+      .catch(() => toast.error(`Could not copy ${label.toLowerCase()}`));
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-100 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="credentials-modal-title"
+    >
+      <div
+        className="bg-white rounded-3xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+              <KeyRound size={18} />
+            </div>
+            <div className="min-w-0">
+              <h2
+                id="credentials-modal-title"
+                className="text-base font-bold text-slate-900 truncate"
+              >
+                Account Credentials
+              </h2>
+              <p className="text-[11px] text-slate-500 truncate">
+                Your sign-in details on this account
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 -mr-1.5 rounded-full text-slate-500 hover:bg-slate-100 transition-colors shrink-0"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-5 py-5 space-y-3">
+          {/* Privacy nudge — keeps the user honest about who can
+              see their screen the moment the modal opens. Same copy
+              as the standalone AccountCredentialsPage so the
+              security messaging stays consistent. */}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2.5">
+            <ShieldAlert
+              size={16}
+              className="text-amber-600 shrink-0 mt-0.5"
+            />
+            <p className="text-[11px] leading-relaxed text-amber-900">
+              Anyone who can see your screen can sign in as you. Reveal
+              your password only when you need it.
+            </p>
+          </div>
+
+          {loading ? (
+            <div className="py-12 flex justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+            </div>
+          ) : (
+            <>
+              <CredentialModalRow
+                icon={<BadgeCheck size={16} />}
+                label="User ID"
+                value={creds?.userId}
+                placeholder="—"
+                mono
+                onCopy={() => copy("User ID", creds?.userId)}
+              />
+              <CredentialModalRow
+                icon={<Mail size={16} />}
+                label="Email"
+                value={creds?.email}
+                placeholder="No email on record"
+                onCopy={() => copy("Email", creds?.email)}
+                truncate
+              />
+              <CredentialModalRow
+                icon={<Phone size={16} />}
+                label="Phone"
+                value={creds?.phone}
+                placeholder="No phone on record"
+                onCopy={() => copy("Phone", creds?.phone)}
+              />
+              <CredentialModalRow
+                icon={<KeyRound size={16} />}
+                label="Password"
+                value={creds?.password}
+                placeholder="—"
+                isSecret
+                secretRevealed={showPassword}
+                onToggleSecret={() => setShowPassword((v) => !v)}
+                onCopy={() => copy("Password", creds?.password)}
+                footer={
+                  creds && !creds.hasStoredPassword ? (
+                    <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
+                      Your current password was set before we started
+                      keeping a copy for this screen. It still works
+                      for sign-in but can't be shown here — change
+                      your password to record a new one.
+                    </p>
+                  ) : null
+                }
+              />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Single row used inside the credentials modal — mirrors the
+ * `CredentialRow` from AccountCredentialsPage.jsx in look and
+ * feel but tightened (smaller icons, less padding) so all four
+ * rows fit comfortably without the modal needing to scroll.
+ */
+const CredentialModalRow = ({
+  icon,
+  label,
+  value,
+  placeholder = "—",
+  isSecret = false,
+  secretRevealed = false,
+  onToggleSecret,
+  onCopy,
+  footer = null,
+  mono = false,
+  truncate = false,
+}) => {
+  const hasValue = Boolean(value);
+  const display = (() => {
+    if (!hasValue) return placeholder;
+    if (!isSecret) return value;
+    if (secretRevealed) return value;
+    const len = Math.min(value.length, 20);
+    return "•".repeat(len);
+  })();
+  const monoClass = isSecret || mono ? "font-mono tracking-wider" : "";
+
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5">
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 shrink-0">
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            {label}
+          </p>
+          <p
+            className={`mt-0.5 text-sm font-semibold ${truncate ? "truncate" : "break-all"} ${
+              hasValue ? "text-slate-900" : "text-slate-400 italic"
+            } ${monoClass}`}
+            title={truncate && hasValue ? value : undefined}
+          >
+            {display}
+          </p>
+        </div>
+        <div className="flex items-center gap-0.5 shrink-0">
+          {isSecret && (
+            <button
+              type="button"
+              onClick={onToggleSecret}
+              disabled={!hasValue}
+              className="p-2 rounded-lg text-slate-500 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              aria-label={secretRevealed ? "Hide password" : "Show password"}
+            >
+              {secretRevealed ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onCopy}
+            disabled={!hasValue}
+            className="p-2 rounded-lg text-slate-500 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            aria-label={`Copy ${label.toLowerCase()}`}
+          >
+            <Copy size={16} />
+          </button>
+        </div>
+      </div>
+      {footer}
+    </div>
+  );
+};
+
+/**
+ * Single contact-info pill used inside the ProfileCard info grid.
+ * Kept inline (not its own file) because it's only used here and
+ * the styling is intentionally tight to the parent card's density.
+ */
+const ProfileInfoRow = ({ icon, label, value, mono = false, truncate = false }) => (
+  <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 flex items-center gap-2.5 min-w-0">
+    <span className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 shrink-0">
+      {icon}
+    </span>
+    <div className="min-w-0 flex-1">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+        {label}
+      </p>
+      <p
+        className={`text-xs font-semibold text-slate-800 ${truncate ? "truncate" : ""} ${mono ? "font-mono" : ""}`}
+        title={truncate ? value : undefined}
+      >
+        {value}
+      </p>
+    </div>
+  </div>
+);
+
+// Strips the +91 / 91 prefix off the stored phone so the UI shows
+// just the 10-digit Indian number (the +91 chip is rendered next
+// to it). Mirrors the helper in ProfilePage.jsx; duplicated here
+// to keep the dashboard page self-contained.
+const formatPhone = (raw) => {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  if (value.startsWith("+91")) return value.replace(/^\+91[\s-]*/, "");
+  if (value.startsWith("91") && value.length >= 12) return value.replace(/^91[\s-]*/, "");
+  return value;
+};
+
 const WalletCard = ({ label, amount, hint, tone = "violet", icon }) => {
   const tones = {
     violet: { bg: "bg-violet-50", text: "text-violet-700", icon: "text-violet-600" },
@@ -906,6 +1431,12 @@ const WalletCard = ({ label, amount, hint, tone = "violet", icon }) => {
   );
 };
 
+// StatTile uses a responsive density: a compact mobile preset
+// (matches the original sizes so the mobile dashboard is
+// pixel-identical to before) and a roomier desktop preset
+// (`md:` and above) where the 2x4 grid gives each cell a much
+// larger footprint that would otherwise look sparse with the
+// previous typography.
 const StatTile = ({ label, value, icon, tone = "indigo", subtle }) => {
   const tones = {
     indigo: "text-indigo-600 bg-indigo-50",
@@ -915,22 +1446,24 @@ const StatTile = ({ label, value, icon, tone = "indigo", subtle }) => {
     violet: "text-violet-600 bg-violet-50",
   };
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-3.5">
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+    <div className="bg-white rounded-2xl border border-slate-200 p-3.5 md:p-5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-slate-500">
           {label}
         </p>
         <span
-          className={`w-7 h-7 rounded-full flex items-center justify-center ${tones[tone] || tones.indigo}`}
+          className={`w-7 h-7 md:w-9 md:h-9 rounded-full flex items-center justify-center shrink-0 ${tones[tone] || tones.indigo}`}
         >
           {icon}
         </span>
       </div>
-      <p className="text-base font-black text-slate-900 mt-1.5 truncate">
+      <p className="text-base md:text-2xl font-black text-slate-900 mt-1.5 md:mt-3 truncate">
         {value}
       </p>
       {subtle && (
-        <p className="text-[10px] text-slate-500 mt-0.5 truncate">{subtle}</p>
+        <p className="text-[10px] md:text-xs text-slate-500 mt-0.5 md:mt-1 truncate">
+          {subtle}
+        </p>
       )}
     </div>
   );

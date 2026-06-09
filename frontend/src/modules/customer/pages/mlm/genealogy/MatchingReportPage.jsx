@@ -52,7 +52,7 @@ const MatchingReportPage = () => {
   // list page so the Tree View can render edge-to-edge.
   if (loading && !data) {
     return (
-      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 w-full overflow-y-auto pb-24">
+      <div className="max-w-6xl xl:max-w-7xl mx-auto px-3 sm:px-4 md:px-8 py-4 w-full overflow-y-auto pb-24">
         <div className="bg-white rounded-2xl border border-slate-200 p-8 flex justify-center">
           <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
         </div>
@@ -64,7 +64,7 @@ const MatchingReportPage = () => {
   const totalPages = data?.totalPages || 1;
 
   return (
-    <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 w-full overflow-y-auto pb-24 space-y-3">
+    <div className="max-w-6xl xl:max-w-7xl mx-auto px-3 sm:px-4 md:px-8 py-4 w-full overflow-y-auto pb-24 space-y-3">
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900">

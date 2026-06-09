@@ -35,6 +35,22 @@ export const adminMlmApi = {
             data,
         ),
 
+    /**
+     * Admin support tool (PO-request Jun 2026): mint a short-lived
+     * customer JWT for the member identified by `membershipId`. The
+     * admin frontend opens a new tab at `/auth/handoff#token=…` to
+     * land pre-authenticated as the customer, sparing the support
+     * team a manual ID + password copy-paste loop.
+     *
+     * Response: { token, expiresInSeconds, redirect, customer }
+     * — see `issueImpersonationToken` in mlmAdminController for the
+     * security model and audit-log handling.
+     */
+    issueImpersonationToken: (membershipId) =>
+        axiosInstance.post(
+            `/admin/mlm/members/${membershipId}/impersonation-token`,
+        ),
+
     listWithdrawals: (params) =>
         axiosInstance.get('/admin/mlm/withdrawals', { params }),
     approveWithdrawal: (id, data) =>

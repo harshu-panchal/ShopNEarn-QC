@@ -94,11 +94,21 @@ import {
 // every leaf is one `SLOT_WIDTH` apart, so a tighter HORIZONTAL_GAP
 // directly compresses the whole canvas without changing the visual
 // hierarchy.
+//
+// `NODE_WIDTH` / `NODE_HEIGHT` are visual constants (used by the
+// pill cards directly) and stay module-scoped. `HORIZONTAL_GAP` and
+// `VERTICAL_GAP` are LAYOUT-ONLY defaults — when the host passes
+// `compactSpacing` (admin tree, per PO Jun 2026) we substitute
+// tighter values in the layout walker without touching the node
+// visuals, which keeps both consumers visually consistent at the
+// per-node level while letting the admin view fit more of the tree
+// in the same viewport.
 const NODE_WIDTH = 104;
 const NODE_HEIGHT = 56;
 const HORIZONTAL_GAP = 8;
 const VERTICAL_GAP = 58;
-const SLOT_WIDTH = NODE_WIDTH + HORIZONTAL_GAP;
+const COMPACT_HORIZONTAL_GAP = 4;
+const COMPACT_VERTICAL_GAP = 28;
 
 /**
  * Resolve the canonical colour theme for a FILLED member node based
@@ -298,6 +308,12 @@ const GenealogyTreeCanvas = ({
   // Per-node accent toggle — set false on admin tree to skip the
   // "(You)" suffix that the customer-side surface uses.
   highlightViewerSelf = true,
+  // Layout-only spacing toggle (admin tree, Jun 2026). When true,
+  // the leaves-first walker uses `COMPACT_HORIZONTAL_GAP` and
+  // `COMPACT_VERTICAL_GAP` in place of the defaults so the canvas
+  // fits more nodes in the same viewport. Node pill dimensions are
+  // unchanged — only the empty space between cells shrinks.
+  compactSpacing = false,
 }) => {
   const containerRef = useRef(null);
   const stageRef = useRef(null);
@@ -365,6 +381,17 @@ const GenealogyTreeCanvas = ({
     const edgeList = [];
     const filledMap = new Map();
 
+    // Effective layout spacing — admin-only tightening toggled by
+    // the `compactSpacing` prop. Node-visual constants (NODE_WIDTH,
+    // NODE_HEIGHT) are NOT scaled here; only the empty space
+    // between cells changes, which keeps the pill cards visually
+    // identical between customer and admin surfaces.
+    const horizontalGap = compactSpacing
+      ? COMPACT_HORIZONTAL_GAP
+      : HORIZONTAL_GAP;
+    const verticalGap = compactSpacing ? COMPACT_VERTICAL_GAP : VERTICAL_GAP;
+    const slotWidth = NODE_WIDTH + horizontalGap;
+
     let leafIndex = 0;
 
     /**
@@ -375,7 +402,7 @@ const GenealogyTreeCanvas = ({
      */
     function place(node, depthLevel) {
       if (!node) return null;
-      const y = depthLevel * (NODE_HEIGHT + VERTICAL_GAP);
+      const y = depthLevel * (NODE_HEIGHT + verticalGap);
       const id = nodeIdFor(node);
 
       const leftCenter = node.left ? place(node.left, depthLevel + 1) : null;
@@ -384,7 +411,7 @@ const GenealogyTreeCanvas = ({
       let centerX;
       if (leftCenter === null && rightCenter === null) {
         // Leaf — take the next equispaced slot.
-        centerX = leafIndex * SLOT_WIDTH + NODE_WIDTH / 2;
+        centerX = leafIndex * slotWidth + NODE_WIDTH / 2;
         leafIndex += 1;
       } else if (leftCenter !== null && rightCenter !== null) {
         centerX = (leftCenter + rightCenter) / 2;
@@ -440,7 +467,7 @@ const GenealogyTreeCanvas = ({
       treeHeight: maxY + 40,
       filledById: filledMap,
     };
-  }, [augmentedTree]);
+  }, [augmentedTree, compactSpacing]);
 
   const positionedNodes = nodes;
 

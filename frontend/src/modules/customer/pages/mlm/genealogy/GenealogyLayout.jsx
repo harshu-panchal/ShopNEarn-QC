@@ -1,6 +1,7 @@
 import React from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { ChevronLeft, Network, GitBranch, FileBarChart2, UserSquare2 } from "lucide-react";
+import { NavLink, Outlet } from "react-router-dom";
+import { Menu, Network, GitBranch, FileBarChart2, UserSquare2 } from "lucide-react";
+import { useMlmDrawer } from "../MlmLayout";
 
 /**
  * Customer-MLM-rebuild Phase 8 — Genealogy section layout.
@@ -31,7 +32,7 @@ const TABS = [
 ];
 
 const GenealogyLayout = () => {
-  const navigate = useNavigate();
+  const { openDrawer } = useMlmDrawer();
   return (
     // EXACT viewport height, never more. `CustomerLayout` detects the
     // `/mlm/genealogy` prefix and skips its default `pb-16` gutter
@@ -48,18 +49,35 @@ const GenealogyLayout = () => {
     // pan, list-page scroll) lives strictly inside the
     // `flex-1 min-h-0` outlet below.
     <div className="h-dvh bg-slate-50 flex flex-col overflow-hidden pb-[80px] md:pb-0">
-      <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm px-4 pt-4 pb-2 border-b border-slate-200/60 shrink-0">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm px-4 md:px-8 pt-4 pb-2 border-b border-slate-200/60 shrink-0">
+        {/* Mobile-only hamburger + title row. On desktop the
+            `MlmLayout` sidebar already shows "Genealogy" as the
+            active item, and the tab pills below this block carry
+            the section label via the active tab — so we suppress
+            the duplicate chrome on `md:+`. The hamburger opens the
+            same sidebar as a slide-in drawer. */}
+        <div className="md:hidden flex items-center gap-2 mb-3">
           <button
-            onClick={() => navigate("/mlm")}
+            onClick={openDrawer}
             className="w-10 h-10 flex items-center justify-center hover:bg-slate-200/70 rounded-full transition-colors -ml-1"
-            aria-label="Back to dashboard"
+            aria-label="Open navigation"
           >
-            <ChevronLeft size={22} className="text-slate-800" />
+            <Menu size={22} className="text-slate-800" />
           </button>
           <h1 className="text-xl font-semibold text-slate-900 tracking-tight flex-1">
             Genealogy
           </h1>
+        </div>
+
+        <div className="hidden md:flex items-end justify-between gap-4 mb-3 pt-2">
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+              Genealogy
+            </h1>
+            <p className="text-sm text-slate-500 mt-1">
+              Visualise your binary tree, audit pairs, and review your sponsor chain.
+            </p>
+          </div>
         </div>
 
         <nav className="flex gap-1 overflow-x-auto -mx-1 px-1 no-scrollbar">

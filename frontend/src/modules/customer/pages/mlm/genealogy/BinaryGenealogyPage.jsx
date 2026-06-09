@@ -40,9 +40,13 @@ const BinaryGenealogyPage = () => {
   // list page so the Tree View can render edge-to-edge. The outer
   // wrapper here also handles vertical scrolling within the layout's
   // flex-1 outlet shell.
+  // Container widths bumped from `max-w-6xl` to `xl:max-w-none` so
+  // the binary tree can use the full desktop panel width beside the
+  // sidebar. The 3-up summary strip (md:+) replaces the old 2+1
+  // stack and reads as a single horizontal KPI band.
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 w-full overflow-y-auto pb-24">
+      <div className="max-w-6xl xl:max-w-none mx-auto px-3 sm:px-4 md:px-8 py-4 w-full overflow-y-auto pb-24">
         <div className="bg-white rounded-2xl border border-slate-200 p-8 flex justify-center">
           <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
         </div>
@@ -52,7 +56,7 @@ const BinaryGenealogyPage = () => {
 
   if (!data?.isMember) {
     return (
-      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 w-full overflow-y-auto pb-24">
+      <div className="max-w-6xl xl:max-w-none mx-auto px-3 sm:px-4 md:px-8 py-4 w-full overflow-y-auto pb-24">
         <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
           <Sparkles className="w-10 h-10 mx-auto text-slate-300 mb-2" />
           <p className="text-sm text-slate-500">
@@ -64,8 +68,8 @@ const BinaryGenealogyPage = () => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 w-full overflow-y-auto pb-24 space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+    <div className="max-w-6xl xl:max-w-none mx-auto px-3 sm:px-4 md:px-8 py-4 w-full overflow-y-auto pb-24 space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <SummaryCard
           label="Left Leg Directs"
           count={data.leftLegCount || 0}
@@ -78,15 +82,14 @@ const BinaryGenealogyPage = () => {
           icon={<ArrowRight size={18} />}
           tone="emerald"
         />
+        <SummaryCard
+          label="Pairs Completed"
+          count={data.pairsCompleted || 0}
+          icon={<Sparkles size={18} />}
+          tone="amber"
+          spanFullOnMobile
+        />
       </div>
-
-      <SummaryCard
-        label="Pairs Completed"
-        count={data.pairsCompleted || 0}
-        icon={<Sparkles size={18} />}
-        tone="amber"
-        wide
-      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <LegList
@@ -106,15 +109,19 @@ const BinaryGenealogyPage = () => {
   );
 };
 
-const SummaryCard = ({ label, count, icon, tone = "indigo", wide }) => {
+const SummaryCard = ({ label, count, icon, tone = "indigo", spanFullOnMobile }) => {
   const tones = {
     indigo: "bg-indigo-50 text-indigo-700",
     emerald: "bg-emerald-50 text-emerald-700",
     amber: "bg-amber-50 text-amber-700",
   };
+  // `spanFullOnMobile` makes the card take 2 columns at the
+  // `grid-cols-2` mobile breakpoint (so it sits below as a wide
+  // banner), but reverts to a normal cell at `md:grid-cols-3`
+  // where it can fit alongside the two leg cards.
   return (
     <div
-      className={`bg-white rounded-2xl border border-slate-200 p-4 ${wide ? "col-span-2" : ""}`}
+      className={`bg-white rounded-2xl border border-slate-200 p-4 ${spanFullOnMobile ? "col-span-2 md:col-span-1" : ""}`}
     >
       <div className="flex items-center justify-between">
         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">

@@ -85,7 +85,12 @@ const WalletHistoryPage = () => {
   const totalPages = data?.totalPages || 1;
 
   return (
-    <div className="space-y-3">
+    // Wallet history is a single chronological ledger, so it doesn't
+    // benefit from a 2-col split. Instead we keep the natural single
+    // column but cap its width on very wide screens (`xl:max-w-4xl`)
+    // so the rows stay readable and don't stretch into thin strips
+    // across the full panel.
+    <div className="space-y-3 xl:max-w-4xl xl:mx-auto">
       <div className="bg-white rounded-2xl border border-slate-200 p-3 flex gap-2 overflow-x-auto no-scrollbar">
         {DIRECTION_FILTERS.map((f) => (
           <button

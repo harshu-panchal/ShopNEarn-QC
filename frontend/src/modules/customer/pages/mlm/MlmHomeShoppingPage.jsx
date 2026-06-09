@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Gift, CheckCircle2, Lock, ShoppingCart } from 'lucide-react';
+import { Menu, Gift, CheckCircle2, Lock, ShoppingCart } from 'lucide-react';
 import { toast } from 'sonner';
 import { mlmApi } from '../../services/mlmApi';
+import { useMlmDrawer } from './MlmLayout';
 
 /**
  * MLM Home Shopping (Plan B exclusive).
@@ -22,6 +23,7 @@ import { mlmApi } from '../../services/mlmApi';
  */
 const MlmHomeShoppingPage = () => {
     const navigate = useNavigate();
+    const { openDrawer } = useMlmDrawer();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [claiming, setClaiming] = useState(false);
@@ -62,15 +64,34 @@ const MlmHomeShoppingPage = () => {
     const progress = Math.min(100, Math.round(((m?.lifetimePlanAEarnings || 0) / goal) * 100));
 
     return (
-        <div className="min-h-screen bg-slate-50 pb-24">
-            <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm px-4 pt-4 pb-3 border-b border-slate-200/60 mb-4 flex items-center gap-2">
-                <button onClick={() => navigate(-1)} className="w-10 h-10 flex items-center justify-center hover:bg-slate-200/70 rounded-full transition-colors -ml-1">
-                    <ChevronLeft size={22} className="text-slate-800" />
+        <div className="min-h-screen bg-slate-50 pb-24 md:pb-12">
+            {/* Mobile-only hamburger + title — desktop sidebar
+                already surfaces "Home Shopping" as the active item,
+                and the hamburger opens that same sidebar as a
+                slide-in drawer on phones. */}
+            <div className="md:hidden sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm px-4 pt-4 pb-3 border-b border-slate-200/60 mb-4 flex items-center gap-2">
+                <button
+                    onClick={openDrawer}
+                    className="w-10 h-10 flex items-center justify-center hover:bg-slate-200/70 rounded-full transition-colors -ml-1"
+                    aria-label="Open navigation"
+                >
+                    <Menu size={22} className="text-slate-800" />
                 </button>
                 <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Home Shopping</h1>
             </div>
 
-            <div className="max-w-2xl mx-auto px-4 space-y-4">
+            <div className="max-w-2xl md:max-w-5xl mx-auto px-4 md:px-8 space-y-4 md:space-y-6">
+                <div className="hidden md:flex items-end justify-between gap-4 pt-6 pb-4 border-b border-slate-200/80">
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+                            Home Shopping
+                        </h1>
+                        <p className="text-sm text-slate-500 mt-1">
+                            Premium-tier benefit unlocked at ₹{goal.toLocaleString('en-IN')} lifetime Plan A earnings.
+                        </p>
+                    </div>
+                </div>
+
                 <div className="bg-gradient-to-br from-amber-500 to-orange-600 text-white rounded-2xl p-5">
                     <Gift size={28} />
                     <h2 className="text-2xl font-black mt-2">Plan B Exclusive</h2>
@@ -79,81 +100,88 @@ const MlmHomeShoppingPage = () => {
                     </p>
                 </div>
 
-                {loading ? (
-                    <div className="text-center text-sm text-slate-500 py-8">Loading...</div>
-                ) : !data?.isMember ? (
-                    <Locked
-                        icon={Lock}
-                        title="Activate Your Rewards Account First"
-                        sub="Activate your rewards account, refer friends, hit ₹30k Plan A earnings, then claim your Home Shopping benefit."
-                    />
-                ) : !isPlanB || !isUnlocked ? (
-                    <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
-                        <div className="flex items-center gap-2 text-slate-700">
-                            <Lock size={18} />
-                            <h3 className="text-base font-bold">Plan B Required</h3>
-                        </div>
-                        <p className="text-sm text-slate-600">
-                            Reach ₹{goal.toLocaleString('en-IN')} in lifetime Plan A earnings to auto-upgrade and unlock Home Shopping.
-                        </p>
-                        <div>
-                            <div className="flex items-center justify-between text-xs mb-1.5">
-                                <span className="text-slate-600 font-semibold">Progress</span>
-                                <span className="text-slate-900 font-bold">₹{(m?.lifetimePlanAEarnings || 0).toLocaleString('en-IN')} / ₹{goal.toLocaleString('en-IN')}</span>
+                {/* Action card + Commission preview — stacked on
+                    mobile, side-by-side on `md:+`. Both cards have
+                    enough density to fit a 2-col layout cleanly. */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-start">
+                    <div>
+                        {loading ? (
+                            <div className="text-center text-sm text-slate-500 py-8">Loading...</div>
+                        ) : !data?.isMember ? (
+                            <Locked
+                                icon={Lock}
+                                title="Activate Your Rewards Account First"
+                                sub="Activate your rewards account, refer friends, hit ₹30k Plan A earnings, then claim your Home Shopping benefit."
+                            />
+                        ) : !isPlanB || !isUnlocked ? (
+                            <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
+                                <div className="flex items-center gap-2 text-slate-700">
+                                    <Lock size={18} />
+                                    <h3 className="text-base font-bold">Plan B Required</h3>
+                                </div>
+                                <p className="text-sm text-slate-600">
+                                    Reach ₹{goal.toLocaleString('en-IN')} in lifetime Plan A earnings to auto-upgrade and unlock Home Shopping.
+                                </p>
+                                <div>
+                                    <div className="flex items-center justify-between text-xs mb-1.5">
+                                        <span className="text-slate-600 font-semibold">Progress</span>
+                                        <span className="text-slate-900 font-bold">₹{(m?.lifetimePlanAEarnings || 0).toLocaleString('en-IN')} / ₹{goal.toLocaleString('en-IN')}</span>
+                                    </div>
+                                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                        <div className="h-full bg-amber-500" style={{ width: `${progress}%` }} />
+                                    </div>
+                                </div>
                             </div>
-                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                                <div className="h-full bg-amber-500" style={{ width: `${progress}%` }} />
+                        ) : isClaimed ? (
+                            <div className="bg-white border border-emerald-200 rounded-2xl p-5">
+                                <div className="flex items-center gap-2 text-emerald-700">
+                                    <CheckCircle2 size={20} />
+                                    <h3 className="text-base font-bold">Home Shopping Claimed</h3>
+                                </div>
+                                <p className="text-sm text-slate-600 mt-2">
+                                    Your Home Shopping benefit is active. Add the product to your cart and complete checkout.
+                                </p>
+                                {cfg.homeShoppingProductId && (
+                                    <button
+                                        onClick={() => navigate(`/product/${cfg.homeShoppingProductId}`)}
+                                        className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"
+                                    >
+                                        <ShoppingCart size={16} /> View Product
+                                    </button>
+                                )}
                             </div>
-                        </div>
-                    </div>
-                ) : isClaimed ? (
-                    <div className="bg-white border border-emerald-200 rounded-2xl p-5">
-                        <div className="flex items-center gap-2 text-emerald-700">
-                            <CheckCircle2 size={20} />
-                            <h3 className="text-base font-bold">Home Shopping Claimed</h3>
-                        </div>
-                        <p className="text-sm text-slate-600 mt-2">
-                            Your Home Shopping benefit is active. Add the product to your cart and complete checkout.
-                        </p>
-                        {cfg.homeShoppingProductId && (
-                            <button
-                                onClick={() => navigate(`/product/${cfg.homeShoppingProductId}`)}
-                                className="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"
-                            >
-                                <ShoppingCart size={16} /> View Product
-                            </button>
+                        ) : (
+                            <div className="bg-white border border-amber-200 rounded-2xl p-5">
+                                <div className="flex items-center gap-2 text-amber-700">
+                                    <Gift size={20} />
+                                    <h3 className="text-base font-bold">Ready to Claim</h3>
+                                </div>
+                                <p className="text-sm text-slate-600 mt-2">
+                                    One-time claim. Once claimed, you can purchase the Home Shopping product
+                                    and the entire upline will earn Plan B Home Shopping commissions.
+                                </p>
+                                <button
+                                    onClick={handleClaim}
+                                    disabled={claiming}
+                                    className="mt-4 w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 disabled:bg-slate-300"
+                                >
+                                    {claiming ? 'Claiming...' : 'Claim Home Shopping'}
+                                </button>
+                            </div>
                         )}
                     </div>
-                ) : (
-                    <div className="bg-white border border-amber-200 rounded-2xl p-5">
-                        <div className="flex items-center gap-2 text-amber-700">
-                            <Gift size={20} />
-                            <h3 className="text-base font-bold">Ready to Claim</h3>
-                        </div>
-                        <p className="text-sm text-slate-600 mt-2">
-                            One-time claim. Once claimed, you can purchase the Home Shopping product
-                            and the entire upline will earn Plan B Home Shopping commissions.
-                        </p>
-                        <button
-                            onClick={handleClaim}
-                            disabled={claiming}
-                            className="mt-4 w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 disabled:bg-slate-300"
-                        >
-                            {claiming ? 'Claiming...' : 'Claim Home Shopping'}
-                        </button>
-                    </div>
-                )}
 
-                {/* Commission preview — informational only */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-5">
-                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-3">
-                        How upline earns when you buy
-                    </h3>
-                    <ul className="space-y-2 text-sm text-slate-700">
-                        <li className="flex justify-between"><span>L1 (Direct Sponsor)</span><b>{cfg.homeShoppingCommissions?.salesPercent ?? 10}%</b></li>
-                        <li className="flex justify-between"><span>L2 (Grandsponsor)</span><b>{cfg.homeShoppingCommissions?.referralPercent ?? 5}%</b></li>
-                        <li className="flex justify-between"><span>L3 (Great-grandsponsor)</span><b>{cfg.homeShoppingCommissions?.royaltyPercent ?? 2}%</b></li>
-                    </ul>
+                    {/* Commission preview — informational only */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-5">
+                        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-3">
+                            How upline earns when you buy
+                        </h3>
+                        <ul className="space-y-2 text-sm text-slate-700">
+                            <li className="flex justify-between"><span>L1 (Direct Sponsor)</span><b>{cfg.homeShoppingCommissions?.salesPercent ?? 10}%</b></li>
+                            <li className="flex justify-between"><span>L2 (Grandsponsor)</span><b>{cfg.homeShoppingCommissions?.referralPercent ?? 5}%</b></li>
+                            <li className="flex justify-between"><span>L3 (Great-grandsponsor)</span><b>{cfg.homeShoppingCommissions?.royaltyPercent ?? 2}%</b></li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>

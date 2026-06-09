@@ -20,6 +20,11 @@ import ApplicationPending from '../../modules/seller/pages/ApplicationPending';
 import AdminAuth from '../../modules/admin/pages/AdminAuth';
 import DeliveryAuth from '../../modules/delivery/pages/DeliveryAuth';
 import CustomerAuth from '../../modules/customer/pages/CustomerAuth';
+// Admin "Log in as Member" support flow lands here in a new tab to
+// install the impersonation JWT before forwarding to /mlm. Must be
+// public (no ProtectedRoute) because the whole point is to install
+// the customer session for an unauthenticated browser context.
+const AuthHandoff = lazy(() => import('../../modules/customer/pages/AuthHandoff'));
 
 // Customer Pages (lazy-loaded)
 const Home = lazy(() => import('../../modules/customer/pages/Home'));
@@ -54,6 +59,11 @@ const MlmHomeShoppingPage = lazy(() => import('../../modules/customer/pages/mlm/
 const ManualPaymentPage = lazy(() => import('../../modules/customer/pages/mlm/ManualPaymentPage'));
 // Customer-MLM-rebuild Phase 8 — new dashboard + Genealogy + Payouts sections.
 const MainDashboardPage = lazy(() => import('../../modules/customer/pages/mlm/MainDashboardPage'));
+// Desktop-only sidebar chrome that wraps every `/mlm/*` URL on
+// `md:+`. Renders just `<Outlet/>` below the breakpoint so mobile
+// stays visually identical to the pre-sidebar version. See file
+// header for the design rationale.
+const MlmLayout = lazy(() => import('../../modules/customer/pages/mlm/MlmLayout'));
 const GenealogyLayout = lazy(() => import('../../modules/customer/pages/mlm/genealogy/GenealogyLayout'));
 const TreeViewPage = lazy(() => import('../../modules/customer/pages/mlm/genealogy/TreeViewPage'));
 const BinaryGenealogyPage = lazy(() => import('../../modules/customer/pages/mlm/genealogy/BinaryGenealogyPage'));
@@ -136,6 +146,19 @@ const AppRouter = () => {
                     path: 'delivery/auth',
                     element: <DeliveryAuth />,
                 },
+                // Admin impersonation handoff — public on purpose.
+                // The page reads the JWT from `location.hash`, scrubs
+                // it, then `useAuth().login(...)` + `navigate(...)`
+                // off to the customer destination. See AuthHandoff.jsx
+                // header for the security model.
+                {
+                    path: 'auth/handoff',
+                    element: (
+                        <Suspense fallback={<div className="flex h-screen items-center justify-center font-outfit">Signing you in…</div>}>
+                            <AuthHandoff />
+                        </Suspense>
+                    ),
+                },
                 {
                     path: 'seller/*',
                     element: (
@@ -200,43 +223,59 @@ const AppRouter = () => {
                         // Customer-MLM-rebuild Phase 8 — `/mlm` is the new
                         // MainDashboardPage. Legacy MlmDashboardPage is
                         // retained at `/mlm/legacy` for safe rollback.
-                        { path: 'mlm', element: <ProtectedRoute><MainDashboardPage /></ProtectedRoute> },
-                        { path: 'mlm/legacy', element: <ProtectedRoute><MlmDashboardPage /></ProtectedRoute> },
-                        { path: 'mlm/referrals', element: <ProtectedRoute><MlmReferralPage /></ProtectedRoute> },
-                        // Genealogy section — tabbed layout (Tree / Binary /
-                        // Matching / Sponsor). `/mlm/genealogy` redirects to
-                        // the Tree View by default.
+                        //
+                        // Sidebar shell (added Jun 2026): every `/mlm/*`
+                        // URL is wrapped in `MlmLayout` so the desktop
+                        // view (md:+) gets the panel/sidebar chrome.
+                        // `ProtectedRoute` is hoisted to the parent so
+                        // the auth gate runs once for the whole branch
+                        // instead of on every leaf. Mobile is unchanged
+                        // because `MlmLayout` renders only `<Outlet/>`
+                        // below the `md:` breakpoint.
                         {
-                            path: 'mlm/genealogy',
-                            element: <ProtectedRoute><GenealogyLayout /></ProtectedRoute>,
+                            path: 'mlm',
+                            element: <ProtectedRoute><MlmLayout /></ProtectedRoute>,
                             children: [
-                                { index: true, element: <Navigate to="tree" replace /> },
-                                { path: 'tree', element: <TreeViewPage /> },
-                                { path: 'binary', element: <BinaryGenealogyPage /> },
-                                { path: 'matching-report', element: <MatchingReportPage /> },
-                                { path: 'direct-sponsor', element: <DirectSponsorPage /> },
+                                { index: true, element: <MainDashboardPage /> },
+                                { path: 'legacy', element: <MlmDashboardPage /> },
+                                { path: 'referrals', element: <MlmReferralPage /> },
+                                // Genealogy section — tabbed layout (Tree /
+                                // Binary / Matching / Sponsor). `/mlm/genealogy`
+                                // redirects to the Tree View by default.
+                                {
+                                    path: 'genealogy',
+                                    element: <GenealogyLayout />,
+                                    children: [
+                                        { index: true, element: <Navigate to="tree" replace /> },
+                                        { path: 'tree', element: <TreeViewPage /> },
+                                        { path: 'binary', element: <BinaryGenealogyPage /> },
+                                        { path: 'matching-report', element: <MatchingReportPage /> },
+                                        { path: 'direct-sponsor', element: <DirectSponsorPage /> },
+                                    ],
+                                },
+                                // Payouts section — tabbed layout (Earnings /
+                                // Payout / Wallet History). `/mlm/payouts`
+                                // redirects to Earnings by default.
+                                {
+                                    path: 'payouts',
+                                    element: <PayoutsLayout />,
+                                    children: [
+                                        { index: true, element: <Navigate to="earnings" replace /> },
+                                        { path: 'earnings', element: <MyEarningsPage /> },
+                                        { path: 'withdrawals', element: <MyPayoutPage /> },
+                                        { path: 'wallet-history', element: <WalletHistoryPage /> },
+                                    ],
+                                },
+                                // Legacy direct paths — kept so old
+                                // notifications / deep links keep working;
+                                // they render the new tabbed versions inside
+                                // the Payouts layout.
+                                { path: 'earnings', element: <Navigate to="/mlm/payouts/earnings" replace /> },
+                                { path: 'withdrawals', element: <Navigate to="/mlm/payouts/withdrawals" replace /> },
+                                { path: 'home-shopping', element: <MlmHomeShoppingPage /> },
+                                { path: 'manual-payment/:paymentId', element: <ManualPaymentPage /> },
                             ],
                         },
-                        // Payouts section — tabbed layout (Earnings / Payout /
-                        // Wallet History). `/mlm/payouts` redirects to
-                        // Earnings by default.
-                        {
-                            path: 'mlm/payouts',
-                            element: <ProtectedRoute><PayoutsLayout /></ProtectedRoute>,
-                            children: [
-                                { index: true, element: <Navigate to="earnings" replace /> },
-                                { path: 'earnings', element: <MyEarningsPage /> },
-                                { path: 'withdrawals', element: <MyPayoutPage /> },
-                                { path: 'wallet-history', element: <WalletHistoryPage /> },
-                            ],
-                        },
-                        // Legacy direct paths — kept so old notifications /
-                        // deep links keep working; they render the new
-                        // tabbed versions inside the Payouts layout.
-                        { path: 'mlm/earnings', element: <Navigate to="/mlm/payouts/earnings" replace /> },
-                        { path: 'mlm/withdrawals', element: <Navigate to="/mlm/payouts/withdrawals" replace /> },
-                        { path: 'mlm/home-shopping', element: <ProtectedRoute><MlmHomeShoppingPage /></ProtectedRoute> },
-                        { path: 'mlm/manual-payment/:paymentId', element: <ProtectedRoute><ManualPaymentPage /></ProtectedRoute> },
                         { path: 'search', element: <SearchPage /> },
                     ]
                 },

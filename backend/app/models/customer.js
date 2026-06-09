@@ -123,6 +123,9 @@ const userSchema = new mongoose.Schema(
          * new read sites beyond:
          *   - `sendCustomerWelcomeEmail` (signup time)
          *   - `getCustomerCredentials` controller (in-app reveal)
+         *   - `getMlmMemberDetail` controller (admin-only, Jun 2026
+         *     PO-request — lets admin staff verbally share creds
+         *     with customers who lost their welcome email)
          *
          * EXISTING ROWS: customers who signed up BEFORE this field
          * became permanent have `_signupPasswordPlaintext === undefined`.

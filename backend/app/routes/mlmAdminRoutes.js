@@ -11,6 +11,7 @@ import {
   getMlmMemberDetail,
   getMlmMemberDownlineTree,
   getMlmSettings,
+  issueImpersonationToken,
   listAdminWithdrawals,
   listJoiningReviews,
   listMilestoneRules,
@@ -43,6 +44,15 @@ router.post("/members/:id/approve", ...adminGuard, approveMlmMember);
 // `POST /api/customer/mlm/genealogy/add-member` but bypasses the
 // downline-ownership check (admins can place anywhere).
 router.post("/members/:id/add-child", ...adminGuard, addChildMember);
+
+// Admin support tool (PO-request Jun 2026): mint a short-lived
+// customer JWT so the admin can open a new tab pre-authenticated
+// as this member. See controller for the audit / security notes.
+router.post(
+  "/members/:id/impersonation-token",
+  ...adminGuard,
+  issueImpersonationToken,
+);
 
 router.get("/withdrawals", ...adminGuard, listAdminWithdrawals);
 router.post("/withdrawals/:id/approve", ...adminGuard, approveWithdrawal);

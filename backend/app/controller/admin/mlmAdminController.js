@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
 import handleResponse from "../../utils/helper.js";
 import Setting from "../../models/setting.js";
 import MlmMembership from "../../models/mlmMembership.js";
@@ -147,6 +148,28 @@ export const getMlmDashboard = async (req, res) => {
 
 /**
  * GET /api/admin/mlm/members?page=&limit=&q=&planType=&status=
+ *
+ * Search semantics (Jun 2026): the `q` param matches across the
+ * entire member collection — NOT just the rows that happen to fall
+ * on the current page. Previously the search ran in-memory on the
+ * already-paginated 25-row window, which meant typing a customer's
+ * name on page 1 silently missed any matching customer on page 2+.
+ *
+ * Implementation:
+ *   1. Resolve `q` to a list of matching `User._id`s by regex-
+ *      scanning `name`, `phone`, `email`, and public `userId` on
+ *      the User collection (the User collection is small enough
+ *      that an indexed-name + non-indexed `$or` regex is fine
+ *      here; if it ever becomes a hot path we should add a text
+ *      index and switch to `$text` search).
+ *   2. Add `referralCode` (regex) OR `userId IN matchingUserIds`
+ *      to the membership query, so Mongo does the filtering AND
+ *      the pagination AND the `countDocuments` consistently.
+ *
+ * Side-benefits: `total` / `totalPages` returned to the client are
+ * now accurate when `q` is set (previously they reflected the
+ * unfiltered count, so the paginator showed "Page 1 of 12" while
+ * the visible body only had 2 matching rows).
  */
 export const listMlmMembers = async (req, res) => {
   try {
@@ -160,24 +183,45 @@ export const listMlmMembers = async (req, res) => {
     }
     if (req.query.status) query.status = req.query.status;
 
+    const rawNeedle = req.query.q ? String(req.query.q).trim() : "";
+    if (rawNeedle) {
+      // Escape regex meta-characters so admin input like "user+test@x"
+      // doesn't accidentally compile to invalid regex.
+      const escaped = rawNeedle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const rx = new RegExp(escaped, "i");
+
+      const matchingUserIds = await Customer.find({
+        $or: [
+          { name: rx },
+          { phone: rx },
+          { email: rx },
+          { userId: rx },
+        ],
+      })
+        .select({ _id: 1 })
+        .lean()
+        .then((users) => users.map((u) => u._id));
+
+      // Combine the User-side matches with a direct `referralCode`
+      // match on the membership. We always set at least one branch
+      // (`referralCode`) so an empty `matchingUserIds` doesn't
+      // collapse the `$or` into a no-op that returns every row.
+      query.$or = [
+        { referralCode: rx },
+        ...(matchingUserIds.length > 0
+          ? [{ userId: { $in: matchingUserIds } }]
+          : []),
+      ];
+    }
+
+    // `let` (not `const`) because the sponsor-enrichment block
+    // below remaps the array in place.
     let items = await MlmMembership.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .populate("userId", "name phone email mlm userId")
       .lean();
-
-    if (req.query.q) {
-      const needle = String(req.query.q).toLowerCase();
-      items = items.filter((row) => {
-        const u = row.userId || {};
-        // Phase 7 (PO-request): also match the customer's public
-        // User ID so admins can paste it from a support ticket.
-        return `${u.name || ""} ${u.phone || ""} ${u.email || ""} ${u.userId || ""} ${row.referralCode || ""}`
-          .toLowerCase()
-          .includes(needle);
-      });
-    }
 
     // Customer-MLM-rebuild Phase 10 — enrich rows with sponsor name +
     // referral code so the admin table can show "sponsor" without a
@@ -233,11 +277,31 @@ export const listMlmMembers = async (req, res) => {
   }
 };
 
-/** GET /api/admin/mlm/members/:id */
+/** GET /api/admin/mlm/members/:id
+ *
+ * Plaintext-password disclosure (Jun 2026, PO-request):
+ * the populate string includes `+_signupPasswordPlaintext` so admins
+ * can see the member's password directly on the member-detail page
+ * — typically to verbally share credentials with a customer who has
+ * lost access to their welcome email. This is a deliberate
+ * extension of the documented read-site list on
+ * `Customer._signupPasswordPlaintext`; the underlying field has
+ * been persisted as plaintext since Phase 7, so we're surfacing
+ * existing data, not introducing new sensitive storage.
+ *
+ * Access control: this endpoint sits under the admin auth
+ * middleware (`/api/admin/mlm/...`), so the disclosure is gated to
+ * authenticated admin sessions. Legacy rows (created before the
+ * field became permanent) will return `""`, which the frontend
+ * renders as a "—" placeholder.
+ */
 export const getMlmMemberDetail = async (req, res) => {
   try {
     const membership = await MlmMembership.findById(req.params.id)
-      .populate("userId", "name phone email mlm walletBalance userId")
+      .populate(
+        "userId",
+        "name phone email mlm walletBalance userId +_signupPasswordPlaintext",
+      )
       .lean();
     if (!membership) return handleResponse(res, 404, "Member not found");
 
@@ -360,6 +424,116 @@ export const approveMlmMember = async (req, res) => {
       error.statusCode || 500,
       error.message,
       error.code ? { code: error.code } : {},
+    );
+  }
+};
+
+/**
+ * POST /api/admin/mlm/members/:id/impersonation-token
+ *
+ * Admin support tool (PO-request Jun 2026): mints a short-lived
+ * customer JWT for the member identified by `:id` and returns it so
+ * the admin frontend can open a new tab pre-authenticated as the
+ * customer. Eliminates the manual "copy User ID, copy password,
+ * sign out, paste, sign in" loop that the support team was doing
+ * dozens of times a day.
+ *
+ * Why this is acceptable:
+ *   - Admins already see the plaintext signup password via
+ *     `_signupPasswordPlaintext` on the member detail endpoint
+ *     (see SECURITY NOTE in models/customer.js). They can already
+ *     impersonate manually; this just automates it.
+ *   - The token carries an `act` claim with the admin's user id so
+ *     a future audit reader can tell impersonated sessions apart.
+ *     The customer auth middleware ignores it (only `id` + `role`
+ *     are required), so no existing controller breaks.
+ *   - Expiry is `IMPERSONATION_TOKEN_TTL` (15 minutes) — long
+ *     enough to land on `/mlm` and for the front-end to refresh the
+ *     profile, short enough that a leaked token isn't a persistent
+ *     foothold. The downstream `verifyToken` middleware will re-
+ *     check the JWT exp on every subsequent request, so once the
+ *     customer-shaped session expires the new tab will get a 401
+ *     and the admin will need to mint a fresh handoff.
+ *   - SUSPENDED / TERMINATED memberships are blocked — they can't
+ *     log in normally either, so impersonating them would surface
+ *     UI flows the real user has no path to.
+ *
+ * Response shape mirrors `loginWithPassword` / `verifyCustomerOTP`
+ * (token + sanitised customer) so the frontend handoff page can
+ * eagerly populate `useAuth().user` and avoid a one-frame "Loading"
+ * flash while `/customer/profile` refetches.
+ *
+ * The token is returned in the JSON body (HTTPS-only); the admin
+ * frontend ships it to the new tab via a URL hash fragment so it
+ * never reaches the server in a Referer header.
+ */
+const IMPERSONATION_TOKEN_TTL_SECONDS = 15 * 60;
+const IMPERSONATION_BLOCKED_STATUSES = new Set([
+  "suspended",
+  "terminated",
+]);
+export const issueImpersonationToken = async (req, res) => {
+  try {
+    const membership = await MlmMembership.findById(req.params.id)
+      .populate("userId")
+      .lean();
+    if (!membership) return handleResponse(res, 404, "Member not found");
+    if (!membership.userId || !membership.userId._id) {
+      return handleResponse(
+        res,
+        409,
+        "Membership has no linked customer account.",
+      );
+    }
+    if (IMPERSONATION_BLOCKED_STATUSES.has(membership.status)) {
+      return handleResponse(
+        res,
+        403,
+        "Cannot impersonate a suspended or terminated member.",
+      );
+    }
+
+    const customer = membership.userId;
+    const adminId = req.user?.id || null;
+
+    // Lazy-import sanitizeCustomer to keep the controller bundle
+    // free of the OTP service surface (it pulls in nodemailer +
+    // twilio). We only need the helper at request-time.
+    const { sanitizeCustomer } = await import(
+      "../../services/otpAuthService.js"
+    );
+
+    const token = jwt.sign(
+      {
+        id: customer._id,
+        role: "customer",
+        // Actor claim — recorded for future audit-log readers.
+        // `verifyToken` ignores extra claims, so this is forward-
+        // compatible with no controller changes.
+        act: { id: adminId, type: "admin" },
+        impersonated: true,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: IMPERSONATION_TOKEN_TTL_SECONDS },
+    );
+
+    console.warn(
+      `[admin-impersonation] admin=${adminId} -> customer=${customer._id} membership=${membership._id}`,
+    );
+
+    return handleResponse(res, 200, "Impersonation token issued", {
+      token,
+      expiresInSeconds: IMPERSONATION_TOKEN_TTL_SECONDS,
+      // Default landing page for the new tab — matches the
+      // customer's POST_LOGIN_DEFAULT in CustomerAuth.jsx.
+      redirect: "/mlm",
+      customer: sanitizeCustomer(customer),
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to issue impersonation token",
     );
   }
 };
