@@ -20,6 +20,10 @@ import {
 } from "../services/mlm/mlmMembershipService.js";
 import { createMemberInBinarySlot } from "../services/mlm/mlmManualSlotPlacementService.js";
 import {
+  buildBinaryTreeBottomUp,
+  classifyDirectReferralsByLegUnderRoot,
+} from "../services/mlm/mlmBinaryTreeBuilder.js";
+import {
   getManualQrConfig,
   getMlmConfig,
   getPlanAPairBonusForPairIndex,
@@ -782,65 +786,53 @@ export const getDashboardOverview = async (req, res) => {
 };
 
 /**
- * Recursive binary-tree walker — clone of the admin tree builder
- * scoped to the caller's downline. Returns each node with at most
- * `left` and `right` children. Phone numbers are masked except for
- * direct (L1) referrals so privacy holds for distant downline members.
+ * Shape a single tree node into the wire payload the frontend
+ * tooltip / canvas expect. Customer-side view masks phone numbers
+ * for the entire downline (admin view does not — see admin
+ * controller's `shapeAdminNode`).
  *
  * Per-node payload intentionally includes everything the frontend
  * tooltip needs (public User ID, name, code, plan, status, joined,
  * leg counts, lifetime earnings) so a hover/click on any node never
  * has to issue a second roundtrip.
  */
-async function buildCustomerBinaryTree(rootMembership, depthLeft, position) {
-  // `userId` on the membership is populated to the User document so
-  // we can surface the public-facing User ID (the SE-prefixed code
-  // displayed on the credentials page) directly in the tooltip.
-  const u = rootMembership.userId || {};
-  const node = {
-    _id: rootMembership._id,
-    userId: rootMembership.userId,
+function shapeCustomerNode(member, position) {
+  const u = member.userId || {};
+  return {
+    _id: member._id,
+    userId: member.userId,
     name: u?.name || null,
     phone: maskPhoneForDownline(u?.phone || null),
     publicUserId: u?.userId || null,
-    referralCode: rootMembership.referralCode,
-    planType: rootMembership.planType,
-    status: rootMembership.status,
+    referralCode: member.referralCode,
+    planType: member.planType,
+    status: member.status,
     position,
-    joinedAt: rootMembership.joinedAt,
-    planAJoinedAt: rootMembership.planAJoinedAt || null,
-    directReferralsCount: rootMembership.directReferralsCount || 0,
-    totalDownlineCount: rootMembership.totalDownlineCount || 0,
-    leftLegDirectCount: rootMembership.leftLegDirectCount || 0,
-    rightLegDirectCount: rootMembership.rightLegDirectCount || 0,
-    pairsCompleted: rootMembership.pairsCompleted || 0,
-    lifetimePlanAEarnings: rootMembership.lifetimePlanAEarnings || 0,
-    lifetimePlanBEarnings: rootMembership.lifetimePlanBEarnings || 0,
+    joinedAt: member.joinedAt,
+    planAJoinedAt: member.planAJoinedAt || null,
+    directReferralsCount: member.directReferralsCount || 0,
+    totalDownlineCount: member.totalDownlineCount || 0,
+    leftLegDirectCount: member.leftLegDirectCount || 0,
+    rightLegDirectCount: member.rightLegDirectCount || 0,
+    pairsCompleted: member.pairsCompleted || 0,
+    lifetimePlanAEarnings: member.lifetimePlanAEarnings || 0,
+    lifetimePlanBEarnings: member.lifetimePlanBEarnings || 0,
     left: null,
     right: null,
   };
-  if (depthLeft <= 0) return node;
+}
 
-  const [leftChild, rightChild] = await Promise.all([
-    rootMembership.binaryLeftChildId
-      ? MlmMembership.findOne({ userId: rootMembership.binaryLeftChildId })
-          .populate("userId", "name phone userId")
-          .lean()
-      : null,
-    rootMembership.binaryRightChildId
-      ? MlmMembership.findOne({ userId: rootMembership.binaryRightChildId })
-          .populate("userId", "name phone userId")
-          .lean()
-      : null,
-  ]);
-
-  if (leftChild) {
-    node.left = await buildCustomerBinaryTree(leftChild, depthLeft - 1, "L");
-  }
-  if (rightChild) {
-    node.right = await buildCustomerBinaryTree(rightChild, depthLeft - 1, "R");
-  }
-  return node;
+/**
+ * Convert the shared tree-builder's raw nodes into the customer
+ * payload shape (recursive). Returns `null` for a `null` node so
+ * the frontend's empty-slot rendering keeps working unchanged.
+ */
+function shapeCustomerTree(node) {
+  if (!node) return null;
+  const shaped = shapeCustomerNode(node.raw, node.position);
+  shaped.left = shapeCustomerTree(node.left);
+  shaped.right = shapeCustomerTree(node.right);
+  return shaped;
 }
 
 /**
@@ -950,7 +942,23 @@ export const getMyGenealogyTree = async (req, res) => {
       }
     }
 
-    const tree = await buildCustomerBinaryTree(rootMembership, depth, null);
+    const { tree: rawTree, drift, totalDescendants, renderedCount, orphanedCount } =
+      await buildBinaryTreeBottomUp({
+        rootMembership,
+        depthLeft: depth,
+      });
+    const tree = shapeCustomerTree(rawTree);
+
+    // Emit a single console.warn line per request when the
+    // bottom-up assembly disagreed with the parent's denormalised
+    // top-down child pointers, so we don't lose visibility of legacy
+    // data drift while the audit playbook's Phase 4 repair job lands.
+    if (drift.length) {
+      console.warn(
+        `[mlm-tree] rootUserId=${requestedRoot} renderedCount=${renderedCount} totalDescendants=${totalDescendants} orphaned=${orphanedCount} drift=${drift.length}`,
+      );
+    }
+
     return handleResponse(res, 200, "Tree", {
       depth,
       tree,
@@ -970,6 +978,17 @@ export const getMyGenealogyTree = async (req, res) => {
  * roster as two arrays, with subtree counts. Each row is one of the
  * caller's direct referrals; spillover downline counts are surfaced
  * via the row's `subtreeCount` field.
+ *
+ * Leg classification:
+ *   Each direct referral's `binaryPosition` field is its position
+ *   relative to its IMMEDIATE `binaryParent` — that's NOT necessarily
+ *   the same as which subtree of the CALLER it landed in. A referral
+ *   spilled deep under one of the caller's children may have a
+ *   `binaryPosition` of "L" because they slotted into a left position
+ *   of their immediate parent, while actually living in the caller's
+ *   RIGHT subtree. We therefore walk up `binaryParentId` chains via
+ *   `classifyDirectReferralsByLegUnderRoot` so the leg labels here
+ *   always match what the tree view renders.
  */
 export const getMyBinaryGenealogy = async (req, res) => {
   try {
@@ -1001,7 +1020,12 @@ export const getMyBinaryGenealogy = async (req, res) => {
       .lean();
     const userById = new Map(userRows.map((u) => [String(u._id), u]));
 
-    const shape = (m) => {
+    const legByReferral = await classifyDirectReferralsByLegUnderRoot({
+      rootMembership: membership,
+      directReferrals: directs,
+    });
+
+    const shape = (m, actualLeg) => {
       const u = userById.get(String(m.userId));
       return {
         userId: m.userId,
@@ -1009,7 +1033,12 @@ export const getMyBinaryGenealogy = async (req, res) => {
         phone: maskPhoneForDownline(u?.phone || null),
         referralCode: m.referralCode,
         status: m.status,
-        position: m.binaryPosition,
+        // `position` here is leg-of-root (matches the tree view).
+        // The legacy `m.binaryPosition` (relative to immediate parent)
+        // is intentionally NOT exposed because it caused tree/binary
+        // mismatches whenever spillover put a direct referral under a
+        // descendant rather than directly under the caller.
+        position: actualLeg || null,
         joinedAt: m.joinedAt,
         subtreeCount: m.totalDownlineCount || 0,
         pairsCompleted: m.pairsCompleted || 0,
@@ -1020,8 +1049,16 @@ export const getMyBinaryGenealogy = async (req, res) => {
       };
     };
 
-    const leftLeg = directs.filter((m) => m.binaryPosition === "L").map(shape);
-    const rightLeg = directs.filter((m) => m.binaryPosition === "R").map(shape);
+    const leftLeg = [];
+    const rightLeg = [];
+    for (const m of directs) {
+      const leg = legByReferral.get(String(m._id)) || null;
+      if (leg === "L") leftLeg.push(shape(m, leg));
+      else if (leg === "R") rightLeg.push(shape(m, leg));
+      // Unclassifiable (no path back to root) → omitted; would
+      // otherwise show up under the wrong leg and re-introduce the
+      // bug we're fixing.
+    }
 
     return handleResponse(res, 200, "Binary genealogy", {
       isMember: true,

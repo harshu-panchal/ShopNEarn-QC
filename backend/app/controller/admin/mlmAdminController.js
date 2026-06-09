@@ -40,6 +40,7 @@ import {
   syncCustomerMlmProjection,
 } from "../../services/mlm/mlmMembershipService.js";
 import { createMemberInBinarySlot } from "../../services/mlm/mlmManualSlotPlacementService.js";
+import { buildBinaryTreeBottomUp } from "../../services/mlm/mlmBinaryTreeBuilder.js";
 import { getMlmConfig } from "../../services/mlm/mlmConfigService.js";
 import { verifyMlmMemberWallet } from "../../jobs/mlmWalletLedgerVerifierJob.js";
 
@@ -576,11 +577,32 @@ export const getMlmMemberDownlineTree = async (req, res) => {
       .lean();
     if (!membership) return handleResponse(res, 404, "Member not found");
 
-    const tree = await buildBinaryDownlineTree(membership, depth, null);
+    const { tree: rawTree, drift, totalDescendants, renderedCount, orphanedCount } =
+      await buildBinaryTreeBottomUp({
+        rootMembership: membership,
+        depthLeft: depth,
+      });
+    const tree = shapeAdminTree(rawTree);
+
+    if (drift.length) {
+      console.warn(
+        `[admin-mlm-tree] rootMembershipId=${membership._id} renderedCount=${renderedCount} totalDescendants=${totalDescendants} orphaned=${orphanedCount} drift=${drift.length}`,
+      );
+    }
+
     return handleResponse(res, 200, "Downline tree", {
       depth,
       tree,
       rootMembershipId: String(membership._id),
+      // Surface drift counters so the admin panel can render a
+      // "data drift detected — N nodes orphaned" banner once the
+      // frontend lands the corresponding UI in a follow-up.
+      diagnostics: {
+        totalDescendants,
+        renderedCount,
+        orphanedCount,
+        driftEntries: drift.length,
+      },
     });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
@@ -645,64 +667,60 @@ export const addChildMember = async (req, res) => {
 };
 
 /**
- * Recursive binary-tree walker. Returns a node shaped as
+ * Shape a single membership doc into the admin tree payload. Admin
+ * view does NOT mask phone numbers (compare with the customer
+ * controller's `shapeCustomerNode`).
+ *
+ * Returns a node of shape
  *   { ...meta, position, left: <node|null>, right: <node|null> }
  * `position` is the position THIS node occupies under its parent
  * ("L"/"R"/null for root) — the UI uses it for per-row labels.
  *
- * Per-node payload mirrors the customer-side `buildCustomerBinaryTree`
+ * Per-node payload mirrors the customer-side `shapeCustomerNode`
  * so the same `GenealogyTreeCanvas` component (shared in
  * `frontend/src/shared/components/mlm/`) can render either tree with
  * an identical tooltip. The User document's `userId` (public-facing
  * SE-prefixed ID) is populated so the tooltip's "User ID" row reads
  * the human-facing identifier directly without an extra round-trip.
+ *
+ * Tree assembly itself is delegated to the shared
+ * `buildBinaryTreeBottomUp` service which walks bottom-up
+ * `binaryParentId` linkage — robust to the legacy data drift where
+ * a parent's denormalised `binaryLeftChildId`/`binaryRightChildId`
+ * pointers became stale (see the service for context).
  */
-async function buildBinaryDownlineTree(rootMembership, depthLeft, position) {
-  const u = rootMembership.userId || {};
-  const node = {
-    _id: rootMembership._id,
-    userId: rootMembership.userId,
+function shapeAdminNode(member, position) {
+  const u = member.userId || {};
+  return {
+    _id: member._id,
+    userId: member.userId,
     name: u?.name || null,
     phone: u?.phone || null,
     publicUserId: u?.userId || null,
-    referralCode: rootMembership.referralCode,
-    planType: rootMembership.planType,
-    status: rootMembership.status,
+    referralCode: member.referralCode,
+    planType: member.planType,
+    status: member.status,
     position,
-    joinedAt: rootMembership.joinedAt || null,
-    planAJoinedAt: rootMembership.planAJoinedAt || null,
-    directReferralsCount: rootMembership.directReferralsCount || 0,
-    totalDownlineCount: rootMembership.totalDownlineCount || 0,
-    leftLegDirectCount: rootMembership.leftLegDirectCount || 0,
-    rightLegDirectCount: rootMembership.rightLegDirectCount || 0,
-    pairsCompleted: rootMembership.pairsCompleted || 0,
-    lifetimePlanAEarnings: rootMembership.lifetimePlanAEarnings || 0,
-    lifetimePlanBEarnings: rootMembership.lifetimePlanBEarnings || 0,
+    joinedAt: member.joinedAt || null,
+    planAJoinedAt: member.planAJoinedAt || null,
+    directReferralsCount: member.directReferralsCount || 0,
+    totalDownlineCount: member.totalDownlineCount || 0,
+    leftLegDirectCount: member.leftLegDirectCount || 0,
+    rightLegDirectCount: member.rightLegDirectCount || 0,
+    pairsCompleted: member.pairsCompleted || 0,
+    lifetimePlanAEarnings: member.lifetimePlanAEarnings || 0,
+    lifetimePlanBEarnings: member.lifetimePlanBEarnings || 0,
     left: null,
     right: null,
   };
-  if (depthLeft <= 0) return node;
+}
 
-  const [leftChild, rightChild] = await Promise.all([
-    rootMembership.binaryLeftChildId
-      ? MlmMembership.findOne({ userId: rootMembership.binaryLeftChildId })
-          .populate("userId", "name phone userId")
-          .lean()
-      : null,
-    rootMembership.binaryRightChildId
-      ? MlmMembership.findOne({ userId: rootMembership.binaryRightChildId })
-          .populate("userId", "name phone userId")
-          .lean()
-      : null,
-  ]);
-
-  if (leftChild) {
-    node.left = await buildBinaryDownlineTree(leftChild, depthLeft - 1, "L");
-  }
-  if (rightChild) {
-    node.right = await buildBinaryDownlineTree(rightChild, depthLeft - 1, "R");
-  }
-  return node;
+function shapeAdminTree(node) {
+  if (!node) return null;
+  const shaped = shapeAdminNode(node.raw, node.position);
+  shaped.left = shapeAdminTree(node.left);
+  shaped.right = shapeAdminTree(node.right);
+  return shaped;
 }
 
 /** GET /api/admin/mlm/withdrawals */

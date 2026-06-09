@@ -6,6 +6,12 @@ export const customerApi = {
   sendSignupOtp: (data) =>
     axiosInstance.post("/customer/send-signup-otp", data),
   verifyOtp: (data) => axiosInstance.post("/customer/verify-otp", data),
+  // Public — preview a sponsor's display name from their referral
+  // code. Returns { valid, sponsorName, referralCode, reason? }.
+  // Used by the signup form to confirm the user is enrolling under
+  // the right person before they request an OTP.
+  lookupReferralCode: (code) =>
+    axiosInstance.get("/customer/lookup-referral", { params: { code } }),
   // Customer-MLM-rebuild Phase 2: email-or-phone + password login.
   // Body: { identifier, password }
   loginWithPassword: (data) =>

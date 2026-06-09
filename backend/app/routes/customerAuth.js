@@ -9,6 +9,7 @@ import {
     changeCustomerPassword,
     updateCustomerProfile,
     getCustomerTransactions,
+    lookupReferralCode,
 } from "../controller/customerAuthController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 import {
@@ -23,6 +24,12 @@ const smallAuthPayload = createContentLengthGuard(
     "Auth payload too large",
 );
 router.post("/send-signup-otp", authRouteRateLimiter, otpRouteRateLimiter, smallAuthPayload, signupCustomer);
+
+// Public preview of a sponsor's display name for the signup form's
+// "Sponsor: <name>" hint. The same auth-route rate limiter shields
+// the endpoint from referral-code enumeration; only the sponsor's
+// public display name is ever returned.
+router.get("/lookup-referral", authRouteRateLimiter, lookupReferralCode);
 router.post("/send-login-otp", authRouteRateLimiter, otpRouteRateLimiter, smallAuthPayload, loginCustomer);
 router.post("/verify-otp", authRouteRateLimiter, otpRouteRateLimiter, smallAuthPayload, verifyCustomerOTP);
 

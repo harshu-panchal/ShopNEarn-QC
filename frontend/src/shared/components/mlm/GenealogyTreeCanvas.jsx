@@ -103,11 +103,32 @@ import {
 // visuals, which keeps both consumers visually consistent at the
 // per-node level while letting the admin view fit more of the tree
 // in the same viewport.
-const NODE_WIDTH = 104;
+// PO-request Jun 2026 (round 3): compress further still. The slot
+// can't shrink below the intrinsic width of the pill it contains
+// (an over-wide pill spills sideways and overlaps the neighbour),
+// so this round shrinks BOTH the slot AND the pill in lockstep.
+//
+// New pill geometry (see `NodeCard` below): `px-1.5 py-1
+// text-[11px] font-mono font-bold` — a 8-char referral code now
+// renders at roughly 60 px wide instead of 80, freeing 16 px per
+// node that the slot can reclaim. `NODE_WIDTH = 60` matches the
+// new pill size with ~zero clearance, and `HORIZONTAL_GAP = 0`
+// keeps adjacent slots flush. Net leaf pitch is now 60 px, down
+// from 112 px before round 1 — a 46 % reduction.
+//
+// Drop NODE_WIDTH lower than 56 and the dashed "OPEN SLOT" circle
+// in `EmptyNodeCard` (which is 48 px diameter) starts to clip; the
+// pill text also becomes uncomfortably small below 11 px.
+const NODE_WIDTH = 60;
 const NODE_HEIGHT = 56;
-const HORIZONTAL_GAP = 8;
+const HORIZONTAL_GAP = 0;
 const VERTICAL_GAP = 58;
-const COMPACT_HORIZONTAL_GAP = 4;
+// Admin "compact" mode matches the customer default — both
+// surfaces collapse to the tightest practical packing. The prop
+// is retained so future divergence (either way) is a one-line
+// change rather than re-introducing the branching logic in
+// `place()`.
+const COMPACT_HORIZONTAL_GAP = 0;
 const COMPACT_VERTICAL_GAP = 28;
 
 /**
@@ -914,13 +935,13 @@ const NodeCard = ({ node, onTap, isSelected, highlightViewerSelf }) => {
       className="flex flex-col items-center justify-start cursor-pointer select-none"
     >
       <span
-        className={`px-3 py-1.5 rounded-md text-[12px] font-mono font-bold tracking-wider shadow-md whitespace-nowrap transition-transform ${pillClass} ${
+        className={`px-1.5 py-1 rounded-md text-[11px] font-mono font-bold shadow-md whitespace-nowrap transition-transform ${pillClass} ${
           isSelected ? `ring-2 ring-offset-1 ${accent.ring} scale-[1.05]` : ""
         }`}
       >
         {data.referralCode || "—"}
       </span>
-      <span className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 truncate max-w-full text-center">
+      <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700 truncate max-w-full text-center">
         {data.name || "Member"}
         {isRoot && highlightViewerSelf && data.__isViewerSelf && (
           <span className={`ml-1 normal-case font-bold ${accent.tooltipAccent}`}>

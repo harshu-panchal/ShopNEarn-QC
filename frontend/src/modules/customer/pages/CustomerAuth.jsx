@@ -130,6 +130,27 @@ const CustomerAuth = () => {
         loginPhone: '',
     });
 
+    // Live sponsor-name preview for the signup referral code.
+    //
+    // The lookup fires after the user has typed at least 4 chars and
+    // then paused for 400ms; the debouncer cancels in-flight lookups
+    // if the input changes again. We only ever display the sponsor's
+    // public NAME (no phone/email/network info) and "Continue" is
+    // gated on `status === 'valid'` so the signup payload never
+    // reaches the backend with an unknown sponsor.
+    //
+    // Status flow:
+    //   idle      — input too short or empty; no UI hint
+    //   loading   — request in flight
+    //   valid     — sponsor exists; show "Sponsor: <name>"
+    //   invalid   — sponsor missing/ineligible; show inline error
+    const [referralLookup, setReferralLookup] = useState({
+        code: '',
+        status: 'idle',
+        sponsorName: null,
+        reason: null,
+    });
+
     // Pre-fill referral code STRICTLY from the URL `?ref=…` param.
     // If a referral code is present, flip the screen to the signup
     // tab so the user lands directly on a form pre-populated with
@@ -177,6 +198,63 @@ const CustomerAuth = () => {
         return () => clearInterval(interval);
     }, [timer]);
 
+    // Debounced sponsor-name lookup. We attach the result to the
+    // *normalised* code we queried (uppercase, trimmed); the render
+    // path ignores stale results whose code no longer matches what's
+    // in the field, so a fast typer never sees the wrong name flash.
+    useEffect(() => {
+        const raw = (formData.referralCode || '').trim().toUpperCase();
+        if (authMode !== 'signup') {
+            return undefined;
+        }
+        if (!raw || raw.length < 4) {
+            setReferralLookup({ code: raw, status: 'idle', sponsorName: null, reason: null });
+            return undefined;
+        }
+        // Indicate the lookup is queued so the UI can show a subtle
+        // spinner even before the network request fires.
+        setReferralLookup((prev) =>
+            prev.code === raw && prev.status === 'valid'
+                ? prev
+                : { code: raw, status: 'loading', sponsorName: null, reason: null },
+        );
+        let cancelled = false;
+        const timeoutId = setTimeout(async () => {
+            try {
+                const res = await customerApi.lookupReferralCode(raw);
+                if (cancelled) return;
+                const payload = res?.data?.result ?? res?.data?.data ?? res?.data ?? {};
+                if (payload.valid) {
+                    setReferralLookup({
+                        code: raw,
+                        status: 'valid',
+                        sponsorName: payload.sponsorName || 'Sponsor',
+                        reason: null,
+                    });
+                } else {
+                    setReferralLookup({
+                        code: raw,
+                        status: 'invalid',
+                        sponsorName: null,
+                        reason: payload.reason || 'NOT_FOUND',
+                    });
+                }
+            } catch (err) {
+                if (cancelled) return;
+                setReferralLookup({
+                    code: raw,
+                    status: 'invalid',
+                    sponsorName: null,
+                    reason: 'NETWORK_ERROR',
+                });
+            }
+        }, 400);
+        return () => {
+            cancelled = true;
+            clearTimeout(timeoutId);
+        };
+    }, [formData.referralCode, authMode]);
+
     const updateField = (key, value) => {
         setFormData((prev) => ({ ...prev, [key]: value }));
     };
@@ -217,6 +295,22 @@ const CustomerAuth = () => {
             toast.error('A valid referral code is required.');
             return;
         }
+        // Reject the submission BEFORE the OTP roundtrip if the
+        // sponsor preview did not resolve. This mirrors what the
+        // backend would respond with (REFERRAL_CODE_INVALID) and
+        // keeps the user from spending an SMS just to discover the
+        // typo.
+        if (
+            referralLookup.code !== referralCode ||
+            referralLookup.status !== 'valid'
+        ) {
+            toast.error(
+                referralLookup.status === 'loading'
+                    ? 'Verifying referral code — please wait a moment.'
+                    : 'Enter a valid referral code (we could not find that sponsor).',
+            );
+            return;
+        }
         if (!['L', 'R'].includes(leg)) {
             toast.error('Please choose a leg position (Left or Right).');
             return;
@@ -249,6 +343,15 @@ const CustomerAuth = () => {
                 toast.error(apiMessage || 'A valid referral code is required.');
             } else if (apiCode === 'LEG_POSITION_REQUIRED') {
                 toast.error('Please choose a leg position (Left or Right).');
+            } else if (apiCode === 'PHONE_ALREADY_REGISTERED') {
+                toast.error(apiMessage || 'This phone number is already registered. Please log in instead.');
+                // Move the user toward the login screen with the phone
+                // pre-filled so they don't have to re-type it.
+                setFormData((prev) => ({
+                    ...prev,
+                    loginIdentifier: prev.phone || prev.loginIdentifier || '',
+                }));
+                setAuthMode('login');
             } else {
                 toast.error(apiMessage || 'Failed to send OTP');
             }
@@ -591,6 +694,7 @@ const CustomerAuth = () => {
                                             theme={activeCategory.theme}
                                             shadow={activeCategory.shadow}
                                             onSubmit={handleSignupSendOtp}
+                                            referralLookup={referralLookup}
                                         />
                                     )}
 
@@ -819,8 +923,34 @@ function SignupPane({
     theme,
     shadow,
     onSubmit,
+    referralLookup,
 }) {
     const setLeg = (leg) => updateField('leg', leg);
+    // Only treat the lookup result as "live" when it matches the
+    // CURRENT text in the field — otherwise a stale lookup from the
+    // previous code keystroke would briefly render the wrong hint.
+    const normalisedCode = (formData.referralCode || '').trim().toUpperCase();
+    const lookupMatches =
+        referralLookup && referralLookup.code === normalisedCode;
+    const lookupStatus = lookupMatches ? referralLookup.status : 'idle';
+    const sponsorName = lookupMatches ? referralLookup.sponsorName : null;
+    const lookupReason = lookupMatches ? referralLookup.reason : null;
+    const submitDisabled = isLoading || lookupStatus !== 'valid';
+
+    const invalidMessage = (() => {
+        if (lookupStatus !== 'invalid') return null;
+        switch (lookupReason) {
+            case 'INELIGIBLE_STATUS':
+                return 'This sponsor cannot accept referrals right now.';
+            case 'NETWORK_ERROR':
+                return 'Could not verify the code. Check your connection and try again.';
+            case 'MALFORMED':
+                return 'Referral codes are 4–16 letters or numbers.';
+            case 'NOT_FOUND':
+            default:
+                return 'No member found with this code.';
+        }
+    })();
     return (
         <div className="space-y-4">
             <div className="space-y-1 text-center">
@@ -875,21 +1005,73 @@ function SignupPane({
                         </button>
                     }
                 />
-                <div className="relative group">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300">
-                        <Star size={18} />
+                <div>
+                    <div className="relative group">
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300">
+                            <Star size={18} />
+                        </div>
+                        <input
+                            required
+                            placeholder="Referral Code"
+                            value={formData.referralCode}
+                            maxLength={16}
+                            minLength={4}
+                            className={`w-full bg-gray-50 border rounded-2xl pl-12 pr-12 py-4 text-sm font-bold text-gray-800 outline-none focus:bg-white transition-all uppercase tracking-widest ${
+                                lookupStatus === 'valid'
+                                    ? 'border-green-300'
+                                    : lookupStatus === 'invalid'
+                                    ? 'border-red-300'
+                                    : 'border-gray-100'
+                            }`}
+                            onChange={(e) => updateField('referralCode', e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())}
+                            onFocus={(e) => {
+                                if (lookupStatus === 'idle' || lookupStatus === 'loading') {
+                                    e.target.style.borderColor = theme;
+                                }
+                            }}
+                            onBlur={(e) => {
+                                if (lookupStatus === 'idle' || lookupStatus === 'loading') {
+                                    e.target.style.borderColor = '#F3F4F6';
+                                }
+                            }}
+                        />
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center">
+                            {lookupStatus === 'loading' && (
+                                <span
+                                    className="block w-4 h-4 rounded-full border-2 border-gray-200 border-t-gray-500 animate-spin"
+                                    aria-hidden="true"
+                                />
+                            )}
+                            {lookupStatus === 'valid' && (
+                                <BadgeCheck size={18} className="text-green-500" aria-hidden="true" />
+                            )}
+                            {lookupStatus === 'invalid' && (
+                                <span
+                                    className="block w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold leading-4 text-center"
+                                    aria-hidden="true"
+                                >
+                                    !
+                                </span>
+                            )}
+                        </div>
                     </div>
-                    <input
-                        required
-                        placeholder="Referral Code"
-                        value={formData.referralCode}
-                        maxLength={16}
-                        minLength={4}
-                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold text-gray-800 outline-none focus:bg-white transition-all uppercase tracking-widest"
-                        onChange={(e) => updateField('referralCode', e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())}
-                        onFocus={(e) => (e.target.style.borderColor = theme)}
-                        onBlur={(e) => (e.target.style.borderColor = '#F3F4F6')}
-                    />
+                    <div className="mt-1.5 pl-1 min-h-[14px]" aria-live="polite">
+                        {lookupStatus === 'valid' && sponsorName && (
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-green-600">
+                                Sponsor: <span className="normal-case tracking-normal">{sponsorName}</span>
+                            </p>
+                        )}
+                        {lookupStatus === 'invalid' && (
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-red-500">
+                                {invalidMessage}
+                            </p>
+                        )}
+                        {lookupStatus === 'loading' && (
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                                Verifying code…
+                            </p>
+                        )}
+                    </div>
                 </div>
 
                 {/* Leg position selector — two large cards */}
@@ -920,8 +1102,8 @@ function SignupPane({
 
                 <button
                     type="submit"
-                    disabled={isLoading}
-                    className="w-full text-white py-5 rounded-[24px] text-xs font-black tracking-[4px] flex items-center justify-center gap-3 active:scale-95 transition-all uppercase"
+                    disabled={submitDisabled}
+                    className="w-full text-white py-5 rounded-[24px] text-xs font-black tracking-[4px] flex items-center justify-center gap-3 active:scale-95 transition-all uppercase disabled:cursor-not-allowed disabled:opacity-60"
                     style={{ backgroundColor: theme, boxShadow: `0 20px 40px ${shadow}` }}
                 >
                     {isLoading ? 'Sending OTP...' : 'Continue'}

@@ -140,10 +140,88 @@ export const signupCustomer = async (req, res) => {
     } catch (error) {
         // Phase 7: the email duplicate-key handler is gone (email is
         // no longer unique). The only remaining unique index on
-        // `users` is `phone`, and the OTP service short-circuits a
-        // phone-retry by re-using the existing not-yet-verified row,
-        // so a 11000 here would be a genuine race we cannot recover
-        // from cleanly — surface it generically.
+        // `users` is `phone`. `issueCustomerOtp` short-circuits
+        // verified phones with `code = PHONE_ALREADY_REGISTERED`
+        // (HTTP 409) and a clear message; un-verified retries are
+        // absorbed silently (same row reused). Any 11000 surfacing
+        // here would be a genuine race against an in-flight signup —
+        // we surface it as a generic phone-taken error using the same
+        // code so the frontend handler is uniform.
+        if (error?.code === 11000 && error?.keyPattern?.phone) {
+            return handleResponse(res, 409, "This phone number is already registered. Please log in instead.", {
+                code: "PHONE_ALREADY_REGISTERED",
+            });
+        }
+        return handleResponse(
+            res,
+            error.statusCode || 500,
+            error.message,
+            error.code ? { code: error.code } : {},
+        );
+    }
+};
+
+/* ===============================
+   GET /api/customer/auth/lookup-referral?code=<code>
+
+   PUBLIC, rate-limited. Lets the signup form preview the sponsor's
+   name as the user types their referral code so they can verify
+   they're enrolling under the right person before submitting.
+
+   Response shape (always 200):
+     { valid: true,  sponsorName: "Jane Doe", referralCode: "ABCD1234" }
+     { valid: false, sponsorName: null,       reason: "NOT_FOUND" | "INELIGIBLE_STATUS" }
+
+   We deliberately do NOT 404 on missing/ineligible codes: returning
+   200 with `valid: false` makes the client-side debouncer simpler
+   (no error-vs-result branching) and keeps the response body
+   self-describing.
+
+   Privacy: returns only the sponsor's name, never their email,
+   phone, or any earnings/downline data. The name is already
+   considered shareable — it appears on the referral landing page
+   and across genealogy tooltips for downline members.
+================================ */
+export const lookupReferralCode = async (req, res) => {
+    try {
+        const raw = String(req.query.code || "").trim().toUpperCase();
+        if (!raw || raw.length < 4 || raw.length > 16 || !/^[A-Z0-9]+$/.test(raw)) {
+            return handleResponse(res, 200, "Referral lookup", {
+                valid: false,
+                sponsorName: null,
+                referralCode: raw || null,
+                reason: "MALFORMED",
+            });
+        }
+
+        const sponsor = await getMembershipByReferralCode(raw);
+        if (!sponsor) {
+            return handleResponse(res, 200, "Referral lookup", {
+                valid: false,
+                sponsorName: null,
+                referralCode: raw,
+                reason: "NOT_FOUND",
+            });
+        }
+        if (!VALID_SPONSOR_STATUSES.has(sponsor.status)) {
+            return handleResponse(res, 200, "Referral lookup", {
+                valid: false,
+                sponsorName: null,
+                referralCode: raw,
+                reason: "INELIGIBLE_STATUS",
+            });
+        }
+
+        // Sponsor membership stores `userId` (FK to User). Pull just
+        // the name field for the preview — avoids leaking phone or
+        // email when an unauthenticated caller probes random codes.
+        const userRow = await Customer.findById(sponsor.userId, { name: 1 }).lean();
+        return handleResponse(res, 200, "Referral lookup", {
+            valid: true,
+            sponsorName: userRow?.name || null,
+            referralCode: raw,
+        });
+    } catch (error) {
         return handleResponse(res, error.statusCode || 500, error.message);
     }
 };

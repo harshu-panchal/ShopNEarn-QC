@@ -209,11 +209,40 @@ export async function issueCustomerOtp({
     customer = await Customer.findById(customer._id).select(
       "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpLastSentAt +otpSessionVersion +otp +otpExpiry +_signupPasswordPlaintext",
     );
-  } else if (flow === "signup" && !customer.mlm?.active) {
-    // Existing un-verified or un-activated customer is retrying signup
-    // — refresh the full snapshot so the OTP-verify step has the
-    // latest email/password/leg/referralCode picked up by the new
-    // membership creation hook.
+  } else if (flow === "signup") {
+    // Phone uniqueness — the canonical login identifier (alongside
+    // userId) must point at a single account for life. There are two
+    // sub-cases when an existing customer row is found:
+    //
+    //   • UN-verified row → that row represents an ABANDONED signup
+    //     (someone requested an OTP but never typed it back).
+    //     Letting the signer retry just refreshes the snapshot
+    //     in-place and reissues an OTP — no second account is
+    //     created and the original signer hasn't authenticated
+    //     anything, so there's nothing to overwrite.
+    //
+    //   • VERIFIED row → the phone is fully registered to someone.
+    //     Allowing a "retry" here would silently overwrite their
+    //     name/email/password/sponsor with the new signup payload
+    //     (the old gate was `!customer.mlm?.active`, which let a
+    //     verified-but-MLM-inactive account be hijacked by anyone
+    //     who reused the phone). We now refuse explicitly and surface
+    //     a code the frontend can localise.
+    if (customer.isVerified) {
+      otpAuditLog("customer_otp_signup_rejected_phone_taken", {
+        phone: maskPhone(phone),
+        ipAddress,
+      });
+      const err = new Error(
+        "This phone number is already registered. Please log in instead.",
+      );
+      err.statusCode = 409;
+      err.code = "PHONE_ALREADY_REGISTERED";
+      throw err;
+    }
+    // Un-verified retry — refresh the full snapshot so the OTP-
+    // verify step has the latest email/password/leg/referralCode
+    // picked up by the new membership creation hook.
     if (name) customer.name = name;
     if (normalizedEmail) customer.email = normalizedEmail;
     if (passwordHash) customer.password = passwordHash;
