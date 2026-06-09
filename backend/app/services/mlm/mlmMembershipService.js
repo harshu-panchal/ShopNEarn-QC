@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import crypto from "crypto";
 import MlmMembership from "../../models/mlmMembership.js";
 import Customer from "../../models/customer.js";
 import {
@@ -25,37 +24,22 @@ import { getMlmConfig } from "./mlmConfigService.js";
  * skill).
  */
 
-const REFERRAL_CODE_MAX_RETRIES = 8;
-
-function randomCodeChars(length, alphabet) {
-  const buf = crypto.randomBytes(length);
-  let out = "";
-  for (let i = 0; i < length; i += 1) {
-    out += alphabet[buf[i] % alphabet.length];
-  }
-  return out;
-}
-
 /**
- * Generate a unique uppercase referral code. Collision-retry up to N
- * attempts (extremely unlikely beyond 1 with 8-char alphanumeric).
+ * @deprecated Jun 2026 — the PO consolidated `referralCode` and
+ * `Customer.userId` into a single identifier. New memberships pull
+ * their `referralCode` directly from `customer.userId` inside
+ * `createOrGetMembership`, so this random-code generator should
+ * never be invoked. The function is retained (rather than deleted)
+ * so any forgotten import surfaces a loud error instead of silently
+ * minting an orphan code that would re-introduce the dual-identifier
+ * problem.
+ *
+ * Safe to fully remove after a release cycle confirms zero callers.
  */
-export async function generateReferralCode({ session } = {}) {
-  const cfg = await getMlmConfig();
-  const length = Number(cfg.referralCodeLength) || MLM_DEFAULTS.referralCodeLength;
-  const alphabet = MLM_DEFAULTS.referralCodeAlphabet;
-
-  for (let attempt = 0; attempt < REFERRAL_CODE_MAX_RETRIES; attempt += 1) {
-    const candidate = randomCodeChars(length, alphabet);
-    const existing = await MlmMembership.findOne(
-      { referralCode: candidate, __includeDeleted: true },
-      null,
-      session ? { session } : {},
-    ).lean();
-    if (!existing) return candidate;
-  }
+export async function generateReferralCode() {
   throw new Error(
-    `Could not generate a unique referral code after ${REFERRAL_CODE_MAX_RETRIES} attempts`,
+    "generateReferralCode is deprecated. referralCode now mirrors Customer.userId; " +
+      "use createOrGetMembership (which reads userId for you) instead.",
   );
 }
 
@@ -68,12 +52,34 @@ export async function getMembershipByUserId(userId, { session } = {}) {
   return MlmMembership.findOne({ userId }, null, session ? { session } : {});
 }
 
+/**
+ * Resolve a sponsor by their shareable code. Post-migration the
+ * canonical `referralCode` IS `Customer.userId` (e.g. "SE12345678"),
+ * but customers may still share PRE-migration codes (e.g. "3HBQUC97")
+ * from old WhatsApp messages / printed cards. We try the canonical
+ * code first and only fall back to `legacyReferralCode` on a miss —
+ * the fallback is a SECOND indexed query (no scans), so the cost is
+ * one extra round-trip per unknown / legacy code.
+ *
+ * Both indexes are unique, so `findOne` returns at most one row from
+ * each branch and there's no ambiguity in the fallback.
+ */
 export async function getMembershipByReferralCode(code, { session } = {}) {
   if (!code) return null;
-  return MlmMembership.findOne(
-    { referralCode: String(code).trim().toUpperCase() },
+  const normalized = String(code).trim().toUpperCase();
+  const sessionOpt = session ? { session } : {};
+
+  const canonical = await MlmMembership.findOne(
+    { referralCode: normalized },
     null,
-    session ? { session } : {},
+    sessionOpt,
+  );
+  if (canonical) return canonical;
+
+  return MlmMembership.findOne(
+    { legacyReferralCode: normalized },
+    null,
+    sessionOpt,
   );
 }
 
@@ -429,7 +435,36 @@ export async function createOrGetMembership(
   const existing = await getMembershipByUserId(userId, { session });
   if (existing) return { membership: existing, created: false };
 
-  const referralCode = await generateReferralCode({ session });
+  // PO consolidation (Jun 2026): a member's shareable code IS their
+  // public User ID. We no longer mint a random alphanumeric code at
+  // signup. Loads the Customer row inside the same session so a
+  // race between userId assignment (in `issueCustomerOtp`) and
+  // membership creation never produces an empty referralCode.
+  const customer = await Customer.findById(userId, { userId: 1 }, {
+    ...(session ? { session } : {}),
+    // Customer's pre-find filter hides tombstoned rows; we definitely
+    // don't want to attach a membership to a deleted customer.
+  });
+  if (!customer) {
+    const err = new Error(`Customer ${userId} not found`);
+    err.statusCode = 404;
+    err.code = "CUSTOMER_NOT_FOUND";
+    throw err;
+  }
+  if (!customer.userId) {
+    // Defensive: every signup path mints a userId before reaching
+    // this point. If a legacy code path slips through we'd rather
+    // fail loudly than fall back to a random code (which would
+    // re-introduce the dual-identifier problem we're consolidating).
+    const err = new Error(
+      `Customer ${userId} has no public userId; run backfill-customer-userids first.`,
+    );
+    err.statusCode = 422;
+    err.code = "CUSTOMER_MISSING_USERID";
+    throw err;
+  }
+  const referralCode = String(customer.userId).toUpperCase();
+
   const now = new Date();
   const isRegisteredOnly = status === MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID;
   const created = await MlmMembership.create(

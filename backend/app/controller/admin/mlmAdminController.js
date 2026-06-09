@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
+import bcrypt from "bcrypt";
 import handleResponse from "../../utils/helper.js";
 import Setting from "../../models/setting.js";
 import MlmMembership from "../../models/mlmMembership.js";
@@ -13,6 +14,7 @@ import {
   ALL_MLM_WITHDRAWAL_STATUSES,
   MLM_BONUS_TYPE,
   MLM_IDEMPOTENCY_PREFIX,
+  MLM_MEMBERSHIP_STATUS,
   MLM_PLAN_TYPE,
 } from "../../constants/mlm.js";
 import { LEDGER_TRANSACTION_TYPE, OWNER_TYPE } from "../../constants/finance.js";
@@ -42,7 +44,12 @@ import {
 import { createMemberInBinarySlot } from "../../services/mlm/mlmManualSlotPlacementService.js";
 import { buildBinaryTreeBottomUp } from "../../services/mlm/mlmBinaryTreeBuilder.js";
 import { getMlmConfig } from "../../services/mlm/mlmConfigService.js";
+import { softDeleteMlmMember } from "../../services/mlm/mlmMemberSoftDeleteService.js";
 import { verifyMlmMemberWallet } from "../../jobs/mlmWalletLedgerVerifierJob.js";
+import { USER_ID_PATTERN } from "../../utils/userIdGenerator.js";
+import { normalizePhoneNumber } from "../../utils/phone.js";
+
+const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "10", 10);
 
 /**
  * GET /api/admin/mlm/dashboard
@@ -535,6 +542,401 @@ export const issueImpersonationToken = async (req, res) => {
       res,
       error.statusCode || 500,
       error.message || "Failed to issue impersonation token",
+    );
+  }
+};
+
+/**
+ * POST /api/admin/mlm/members/:id/soft-delete
+ *
+ * Tombstones a single membership and restructures the binary tree.
+ * The heavy lifting (promotion + spillover + sponsor remap +
+ * withdrawal cancel + counter rebalance) lives in
+ * `mlmMemberSoftDeleteService.softDeleteMlmMember`, which runs the
+ * whole thing inside a single mongoose transaction.
+ *
+ * Request body (optional): `{ reason: string }` — surfaced into the
+ * `MlmWithdrawalRequest.rejectionReason` for any pending payouts that
+ * get auto-cancelled, so the customer-facing receipt stays useful.
+ *
+ * Response: `summary` object describing what changed (which child
+ * was promoted, who the spillover landed under, how many direct
+ * referrals were re-parented). The admin UI uses this to show a
+ * confirmation toast.
+ */
+export const softDeleteMember = async (req, res) => {
+  try {
+    const reason = (req.body?.reason || "").toString().trim().slice(0, 240);
+    const summary = await softDeleteMlmMember({
+      membershipId: req.params.id,
+      adminId: req.user?.id,
+      reason: reason || "Soft-deleted by admin",
+    });
+    console.warn(
+      `[admin-soft-delete] admin=${req.user?.id} -> membership=${req.params.id} ` +
+        `result=${JSON.stringify(summary)}`,
+    );
+    return handleResponse(
+      res,
+      summary.alreadyDeleted ? 200 : 200,
+      summary.alreadyDeleted
+        ? "Member was already soft-deleted"
+        : "Member soft-deleted",
+      summary,
+    );
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to soft-delete member",
+    );
+  }
+};
+
+/**
+ * PATCH /api/admin/mlm/members/:id/profile
+ *
+ * Admin-only profile editor for an MLM member. Lets support staff
+ * fix typos in name/email/phone, re-issue the public User ID, or
+ * reset a forgotten password without forcing the customer through
+ * the OTP-based "forgot password" flow.
+ *
+ * Body (all fields optional — only provided fields are updated):
+ *   {
+ *     userId:   "SE12345678",          // public User ID
+ *     name:     "Manishaben Mehta",
+ *     email:    "manishaben@example.com",
+ *     phone:    "+918000139993",
+ *     password: "NewPassw0rd!"         // plaintext; we bcrypt it
+ *   }
+ *
+ * Uniqueness is enforced on userId / email / phone against ALL
+ * customers (including soft-deleted rows — a tombstoned account's
+ * email/phone must NOT be re-issued to a new live customer because
+ * downstream wallets/ledgers reference it).
+ *
+ * Password updates also refresh `_signupPasswordPlaintext` so the
+ * "Show Credentials" admin reveal + customer self-serve credentials
+ * screen surface the new value. See the SECURITY NOTE in
+ * `models/customer.js` for the trade-off rationale.
+ *
+ * All writes happen inside ONE mongoose transaction so a partial
+ * failure (e.g. a unique-index violation on the second field) rolls
+ * back the first.
+ */
+export const updateMemberProfile = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    const membership = await MlmMembership.findById(req.params.id, null);
+    if (!membership) return handleResponse(res, 404, "Member not found");
+
+    const customer = await Customer.findById(membership.userId).select(
+      "+password +_signupPasswordPlaintext",
+    );
+    if (!customer) {
+      return handleResponse(res, 404, "Linked customer account not found");
+    }
+
+    const updates = {};
+    const customerUpdates = {};
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "userId")) {
+      const raw = String(req.body.userId || "").trim().toUpperCase();
+      if (!raw) {
+        return handleResponse(res, 400, "User ID cannot be empty", {
+          code: "USER_ID_EMPTY",
+        });
+      }
+      if (!USER_ID_PATTERN.test(raw)) {
+        return handleResponse(
+          res,
+          400,
+          "User ID must be 'SE' followed by 8 digits (or legacy 8-char unambiguous alphanumeric).",
+          { code: "USER_ID_INVALID_FORMAT" },
+        );
+      }
+      if (raw !== (customer.userId || "").toUpperCase()) {
+        const collision = await Customer.findOne(
+          {
+            userId: raw,
+            _id: { $ne: customer._id },
+            __includeDeleted: true,
+          },
+          { _id: 1 },
+        );
+        if (collision) {
+          return handleResponse(res, 409, "User ID is already taken", {
+            code: "USER_ID_TAKEN",
+          });
+        }
+        customerUpdates.userId = raw;
+        updates.userId = raw;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "name")) {
+      const name = String(req.body.name || "").trim().slice(0, 120);
+      if (!name) {
+        return handleResponse(res, 400, "Name cannot be empty", {
+          code: "NAME_EMPTY",
+        });
+      }
+      if (name !== customer.name) {
+        customerUpdates.name = name;
+        updates.name = name;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "email")) {
+      const email = String(req.body.email || "").trim().toLowerCase();
+      // Email is OPTIONAL on the schema, but if provided it must
+      // be a well-formed address; downstream credential reveal +
+      // welcome-email replay rely on it being syntactically valid.
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return handleResponse(res, 400, "Invalid email address", {
+          code: "EMAIL_INVALID",
+        });
+      }
+      if (email !== (customer.email || "").toLowerCase()) {
+        if (email) {
+          const collision = await Customer.findOne(
+            {
+              email,
+              _id: { $ne: customer._id },
+              __includeDeleted: true,
+            },
+            { _id: 1 },
+          );
+          if (collision) {
+            return handleResponse(res, 409, "Email is already taken", {
+              code: "EMAIL_TAKEN",
+            });
+          }
+        }
+        customerUpdates.email = email || null;
+        updates.email = email || null;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "phone")) {
+      const rawPhone = String(req.body.phone || "").trim();
+      if (!rawPhone) {
+        return handleResponse(res, 400, "Phone cannot be empty", {
+          code: "PHONE_EMPTY",
+        });
+      }
+      let normalized;
+      try {
+        normalized = normalizePhoneNumber(rawPhone);
+      } catch (e) {
+        return handleResponse(res, 400, "Invalid phone number", {
+          code: "PHONE_INVALID",
+        });
+      }
+      if (normalized !== customer.phone) {
+        const collision = await Customer.findOne(
+          {
+            phone: normalized,
+            _id: { $ne: customer._id },
+            __includeDeleted: true,
+          },
+          { _id: 1 },
+        );
+        if (collision) {
+          return handleResponse(
+            res,
+            409,
+            "Phone number is already taken",
+            { code: "PHONE_TAKEN" },
+          );
+        }
+        customerUpdates.phone = normalized;
+        updates.phone = normalized;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "password")) {
+      const plaintext = String(req.body.password || "");
+      if (plaintext.length < 6) {
+        return handleResponse(
+          res,
+          400,
+          "Password must be at least 6 characters.",
+          { code: "PASSWORD_TOO_SHORT" },
+        );
+      }
+      if (plaintext.length > 128) {
+        return handleResponse(
+          res,
+          400,
+          "Password is too long (max 128 characters).",
+          { code: "PASSWORD_TOO_LONG" },
+        );
+      }
+      const hash = await bcrypt.hash(plaintext, BCRYPT_ROUNDS);
+      customerUpdates.password = hash;
+      customerUpdates._signupPasswordPlaintext = plaintext;
+      updates.password = "(changed)";
+    }
+
+    if (Object.keys(customerUpdates).length === 0) {
+      return handleResponse(res, 200, "No changes detected", {
+        membershipId: String(membership._id),
+        updates: {},
+      });
+    }
+
+    await session.withTransaction(async () => {
+      for (const [k, v] of Object.entries(customerUpdates)) {
+        customer[k] = v;
+      }
+      customer.updatedBy = req.user?.id || null;
+      await customer.save({ session });
+
+      // PO consolidation (Jun 2026): when the admin changes the
+      // public User ID, the membership's `referralCode` must follow
+      // — otherwise the canonical "referralCode === Customer.userId"
+      // invariant the rest of the system relies on would silently
+      // break. Old code is preserved in `legacyReferralCode` so
+      // anyone still sharing the previous identifier (links / cards)
+      // continues to resolve via the soft-transition lookup.
+      if (customerUpdates.userId) {
+        const oldReferralCode = membership.referralCode;
+        membership.referralCode = customerUpdates.userId;
+        if (oldReferralCode && oldReferralCode !== customerUpdates.userId) {
+          // Only stash the FIRST replaced code so we don't lose the
+          // original. If `legacyReferralCode` is already populated
+          // from the bulk migration, leave it alone — a customer's
+          // truly original code is more valuable for back-compat
+          // than the intermediate one.
+          if (!membership.legacyReferralCode) {
+            membership.legacyReferralCode = oldReferralCode;
+          }
+        }
+        membership.updatedBy = req.user?.id || null;
+        await membership.save({ session });
+        // Refresh the denormalised Customer.mlm.referralCode mirror
+        // so customer dashboards reflect the new code without a
+        // forced page reload.
+        await syncCustomerMlmProjection(membership.userId, { session });
+      }
+    });
+
+    try {
+      await invalidate(`/admin/mlm/members`);
+      await invalidate(`/admin/mlm/members/${req.params.id}`);
+    } catch (_) {
+      /* non-fatal */
+    }
+
+    console.warn(
+      `[admin-edit-member] admin=${req.user?.id} -> membership=${req.params.id} fields=${Object.keys(updates).join(",")}`,
+    );
+
+    return handleResponse(res, 200, "Member profile updated", {
+      membershipId: String(membership._id),
+      updates,
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      // Defensive — our explicit collision checks above should
+      // catch every case, but a race between the check and the
+      // save could still surface a duplicate-key error.
+      const dupField = Object.keys(error.keyPattern || {})[0] || "field";
+      return handleResponse(
+        res,
+        409,
+        `${dupField} is already taken (race detected)`,
+        { code: "UNIQUE_VIOLATION", field: dupField },
+      );
+    }
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to update member profile",
+    );
+  } finally {
+    await session.endSession();
+  }
+};
+
+/**
+ * POST /api/admin/mlm/members/:id/deactivate
+ *
+ * Inverse of `approveMlmMember`. Flips an ACTIVE membership back
+ * to REGISTERED_UNPAID. The member stays in the binary tree (so
+ * downstream child placements aren't orphaned), but:
+ *   - the canvas paints them in the "unpaid" red colour
+ *   - they no longer receive ANY new commission credits while in
+ *     `REGISTERED_UNPAID` (the existing bonus engine already
+ *     gates on `MLM_MEMBERSHIP_STATUS.ACTIVE`)
+ *   - any pair-match bonuses sponsored from their leg are HELD
+ *     against the sponsor until they're re-activated
+ *
+ * Re-activation is the existing "Approve Plan A" button, which
+ * also runs the held-bonus release logic. No data is destroyed
+ * here; the action is fully reversible.
+ *
+ * Body (optional): `{ reason: string }` — surfaced into a console
+ * audit line for traceability.
+ */
+export const deactivateMember = async (req, res) => {
+  try {
+    const membership = await MlmMembership.findById(req.params.id);
+    if (!membership) return handleResponse(res, 404, "Member not found");
+    if (membership.deletedAt) {
+      return handleResponse(
+        res,
+        410,
+        "Member is soft-deleted; restore them before changing status.",
+        { code: "MEMBERSHIP_DELETED" },
+      );
+    }
+    if (membership.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) {
+      return handleResponse(
+        res,
+        200,
+        `Member is already ${membership.status}; no change applied.`,
+        { skipped: true, status: membership.status },
+      );
+    }
+
+    const reason = String(req.body?.reason || "").trim().slice(0, 240);
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        membership.status = MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID;
+        membership.updatedBy = req.user?.id || null;
+        await membership.save({ session });
+        // Keep the denormalised Customer.mlm.active projection in
+        // sync so the customer dashboard reflects the change
+        // without a forced refetch.
+        await syncCustomerMlmProjection(membership.userId, { session });
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    try {
+      await invalidate(`/admin/mlm/members`);
+      await invalidate(`/admin/mlm/members/${req.params.id}`);
+    } catch (_) {
+      /* non-fatal */
+    }
+
+    console.warn(
+      `[admin-deactivate] admin=${req.user?.id} -> membership=${req.params.id} reason="${reason || "(none)"}"`,
+    );
+
+    return handleResponse(res, 200, "Member Plan A deactivated", {
+      membershipId: String(membership._id),
+      status: membership.status,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to deactivate member",
     );
   }
 };

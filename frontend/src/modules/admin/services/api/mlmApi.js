@@ -51,6 +51,43 @@ export const adminMlmApi = {
             `/admin/mlm/members/${membershipId}/impersonation-token`,
         ),
 
+    /**
+     * Soft-delete a member. The backend tombstones the membership +
+     * customer rows and restructures the binary tree (larger
+     * subtree promoted into the vacant slot; the other child spills
+     * down the same-leg chain; direct referrals re-parented to the
+     * deleted member's sponsor). Optional body `{ reason }` is
+     * surfaced into the auto-cancelled withdrawal receipts.
+     */
+    softDeleteMember: (membershipId, data) =>
+        axiosInstance.post(
+            `/admin/mlm/members/${membershipId}/soft-delete`,
+            data || {},
+        ),
+
+    /**
+     * Admin profile editor. Body can include any subset of
+     * { userId, name, email, phone, password } — only provided
+     * fields are updated. Uniqueness on userId/email/phone is
+     * checked against ALL customers (including soft-deleted).
+     */
+    updateMemberProfile: (membershipId, data) =>
+        axiosInstance.patch(
+            `/admin/mlm/members/${membershipId}/profile`,
+            data,
+        ),
+
+    /**
+     * Flip an ACTIVE membership back to REGISTERED_UNPAID. Reverse
+     * with the existing `approveMember` call. Optional body
+     * `{ reason }` surfaced into the audit log.
+     */
+    deactivateMember: (membershipId, data) =>
+        axiosInstance.post(
+            `/admin/mlm/members/${membershipId}/deactivate`,
+            data || {},
+        ),
+
     listWithdrawals: (params) =>
         axiosInstance.get('/admin/mlm/withdrawals', { params }),
     approveWithdrawal: (id, data) =>

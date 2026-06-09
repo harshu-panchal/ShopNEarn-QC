@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw, Eye, EyeOff, Copy, LogIn } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw, Eye, EyeOff, Copy, LogIn, Trash2, X, Pencil, PauseCircle } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
 import GenealogyTreeCanvas from '@shared/components/mlm/GenealogyTreeCanvas';
 
@@ -46,6 +46,7 @@ function formatBonusType(raw) {
 
 const MlmMemberDetail = () => {
     const { id } = useParams();
+    const navigate = useNavigate();
     const [data, setData] = useState(null);
     const [downlineTree, setDownlineTree] = useState(null);
     // Default depth = 3 levels. Opening the entire downline by
@@ -72,6 +73,33 @@ const MlmMemberDetail = () => {
     const [verifying, setVerifying] = useState(false);
     const [approving, setApproving] = useState(false);
     const [impersonating, setImpersonating] = useState(false);
+    // Soft-delete modal state. We deliberately use a modal (not
+    // window.confirm) because the action is destructive AND the
+    // admin needs to (a) see the binary restructuring summary that
+    // will follow and (b) optionally type a reason that's surfaced
+    // into any pending withdrawal rejections.
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [deleteReason, setDeleteReason] = useState('');
+    const [deleting, setDeleting] = useState(false);
+    // Profile-edit modal. Initial values are populated from the
+    // loaded member on open; the modal owns its own form state so
+    // mid-edit cancellations don't pollute the parent component.
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [editForm, setEditForm] = useState({
+        userId: '',
+        name: '',
+        email: '',
+        phone: '',
+        password: '',
+    });
+    const [editing, setEditing] = useState(false);
+    const [showEditPassword, setShowEditPassword] = useState(false);
+    // Deactivate-Plan-A confirmation modal. Reuses the
+    // `delete-reason` UX: small textarea for an optional reason
+    // that's logged on the audit line.
+    const [deactivateModalOpen, setDeactivateModalOpen] = useState(false);
+    const [deactivateReason, setDeactivateReason] = useState('');
+    const [deactivating, setDeactivating] = useState(false);
 
     const load = async () => {
         setLoading(true);
@@ -234,6 +262,180 @@ const MlmMemberDetail = () => {
             );
         } finally {
             setImpersonating(false);
+        }
+    };
+
+    /**
+     * Open the profile-edit modal pre-filled with the member's
+     * current values. Leaves `password` empty so the admin only
+     * needs to type it if they actually want to change it
+     * (omitted-field semantics on the backend).
+     */
+    const openEditModal = () => {
+        const u = data?.membership?.userId || {};
+        setEditForm({
+            userId: u.userId || '',
+            name: u.name || '',
+            email: u.email || '',
+            phone: u.phone || '',
+            password: '',
+        });
+        setShowEditPassword(false);
+        setEditModalOpen(true);
+    };
+
+    /**
+     * Submit the profile-edit form. Only sends fields whose value
+     * differs from the loaded snapshot (mirrors the backend's
+     * "only provided fields are updated" contract) so a noop edit
+     * round-trips as a noop rather than a 200-with-empty-updates.
+     */
+    const handleEditSubmit = async (e) => {
+        e?.preventDefault?.();
+        if (editing) return;
+        const u = data?.membership?.userId || {};
+        const payload = {};
+        const trim = (s) => String(s || '').trim();
+        if (trim(editForm.userId).toUpperCase() !== (u.userId || '').toUpperCase()) {
+            payload.userId = trim(editForm.userId).toUpperCase();
+        }
+        if (trim(editForm.name) !== (u.name || '')) {
+            payload.name = trim(editForm.name);
+        }
+        if (trim(editForm.email).toLowerCase() !== (u.email || '').toLowerCase()) {
+            payload.email = trim(editForm.email).toLowerCase();
+        }
+        if (trim(editForm.phone) !== (u.phone || '')) {
+            payload.phone = trim(editForm.phone);
+        }
+        if (editForm.password) {
+            payload.password = editForm.password;
+        }
+
+        if (Object.keys(payload).length === 0) {
+            toast.info('No changes to save.');
+            setEditModalOpen(false);
+            return;
+        }
+
+        setEditing(true);
+        try {
+            await adminMlmApi.updateMemberProfile(id, payload);
+            toast.success(
+                `Profile updated (${Object.keys(payload)
+                    .map((k) => (k === 'password' ? 'password' : k))
+                    .join(', ')}).`,
+            );
+            setEditModalOpen(false);
+            await load();
+        } catch (err) {
+            toast.error(
+                err?.response?.data?.message ||
+                err?.message ||
+                'Failed to update profile',
+            );
+        } finally {
+            setEditing(false);
+        }
+    };
+
+    /**
+     * Flip the member from ACTIVE -> REGISTERED_UNPAID. Reverses
+     * with the existing "Approve Plan A" button. The genealogy
+     * canvas auto-paints them in the unpaid red colour after the
+     * refetch — no extra navigation needed.
+     */
+    const handleDeactivate = async () => {
+        if (deactivating) return;
+        const memberName = data?.membership?.userId?.name || 'this member';
+        setDeactivating(true);
+        try {
+            const res = await adminMlmApi.deactivateMember(id, {
+                reason: deactivateReason.trim() || undefined,
+            });
+            const result = res.data?.result ?? res.data?.data ?? {};
+            if (result.skipped) {
+                toast.info(`${memberName} is already ${result.status}; no change applied.`);
+            } else {
+                toast.success(`${memberName} deactivated. Plan A is now REGISTERED_UNPAID.`);
+            }
+            setDeactivateModalOpen(false);
+            setDeactivateReason('');
+            await load();
+        } catch (err) {
+            toast.error(
+                err?.response?.data?.message ||
+                err?.message ||
+                'Failed to deactivate member',
+            );
+        } finally {
+            setDeactivating(false);
+        }
+    };
+
+    /**
+     * Soft-delete the current member. Promotes the larger subtree
+     * into the vacated slot, spills the other child down the
+     * promoted sibling's same-leg chain, re-parents direct
+     * referrals to the deleted member's sponsor, auto-cancels
+     * pending withdrawals, and tombstones the Customer + MLM
+     * membership rows. Whole flow runs inside one DB transaction
+     * on the backend; see `mlmMemberSoftDeleteService.js`.
+     */
+    const handleSoftDelete = async () => {
+        if (deleting) return;
+        const memberName = data?.membership?.userId?.name || 'this member';
+        setDeleting(true);
+        try {
+            const res = await adminMlmApi.softDeleteMember(id, {
+                reason: deleteReason.trim() || undefined,
+            });
+            const summary = res.data?.result ?? res.data?.data ?? {};
+            if (summary.alreadyDeleted) {
+                toast.info(`${memberName} was already soft-deleted.`);
+            } else {
+                const parts = [];
+                if (summary.promotion?.promotedUserId) {
+                    parts.push(
+                        `promoted ${summary.promotion.promotedUserId} into the vacated slot`,
+                    );
+                }
+                if (summary.spillover?.loserUserId) {
+                    parts.push(
+                        `spilled ${summary.spillover.loserUserId} under ${summary.spillover.newParentUserId}`,
+                    );
+                }
+                if (summary.directReferralsRemapped) {
+                    parts.push(
+                        `${summary.directReferralsRemapped} direct referral${
+                            summary.directReferralsRemapped === 1 ? '' : 's'
+                        } re-parented`,
+                    );
+                }
+                if (summary.withdrawalsCancelled?.length) {
+                    parts.push(
+                        `${summary.withdrawalsCancelled.length} pending withdrawal${
+                            summary.withdrawalsCancelled.length === 1 ? '' : 's'
+                        } cancelled`,
+                    );
+                }
+                toast.success(
+                    `${memberName} soft-deleted.${
+                        parts.length ? ` ${parts.join('; ')}.` : ''
+                    }`,
+                );
+            }
+            setDeleteModalOpen(false);
+            setDeleteReason('');
+            navigate('/admin/mlm/members');
+        } catch (err) {
+            toast.error(
+                err?.response?.data?.message ||
+                err?.message ||
+                'Failed to soft-delete member',
+            );
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -403,6 +605,31 @@ const MlmMemberDetail = () => {
                             {approving ? 'Approving…' : 'Approve Plan A'}
                         </button>
                     )}
+                    {m.status === 'active' && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setDeactivateReason('');
+                                setDeactivateModalOpen(true);
+                            }}
+                            disabled={deactivating}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white transition-colors shadow-sm"
+                            title="Flip Plan A back to REGISTERED_UNPAID (reversible)"
+                        >
+                            <PauseCircle size={14} />
+                            Deactivate Plan A
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={openEditModal}
+                        disabled={editing}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-slate-700 hover:bg-slate-800 disabled:bg-slate-400 text-white transition-colors shadow-sm"
+                        title="Edit User ID, name, email, phone, or password"
+                    >
+                        <Pencil size={14} />
+                        Edit profile
+                    </button>
                     {/* Admin support tool — opens the member's MLM
                         dashboard in a new tab, pre-authenticated as
                         them. Blocked for suspended / terminated rows
@@ -424,6 +651,23 @@ const MlmMemberDetail = () => {
                             {impersonating ? 'Signing in…' : 'Log in as Member'}
                         </button>
                     )}
+                    {/* Destructive action — gated behind a modal so
+                        the admin sees the restructuring rules before
+                        confirming. Hidden when the row is already
+                        tombstoned (backend would no-op anyway). */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setDeleteReason('');
+                            setDeleteModalOpen(true);
+                        }}
+                        disabled={deleting}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white transition-colors shadow-sm"
+                        title="Soft-delete this member and promote their larger subtree"
+                    >
+                        <Trash2 size={14} />
+                        Soft delete
+                    </button>
                 </div>
             </div>
 
@@ -503,7 +747,13 @@ const MlmMemberDetail = () => {
                             {STATUS_LABEL[m.status] || m.status}
                         </span>
                     } />
-                    <Row label="Leg position" value={m.position === 'L' ? 'Left' : m.position === 'R' ? 'Right' : '—'} />
+                    {/* Leg position is the member's slot under their
+                        binary parent (which may differ from the
+                        sponsor when a spillover placement happened).
+                        Field is `binaryPosition` on the schema — the
+                        previous `m.position` lookup was a typo and
+                        always rendered "—". */}
+                    <Row label="Leg position" value={m.binaryPosition === 'L' ? 'Left' : m.binaryPosition === 'R' ? 'Right' : '—'} />
                     <Row label="Phone" value={u.phone} />
                     <Row label="Email" value={u.email || '-'} />
                     {/* Password reveal — PO-request Jun 2026. Reads
@@ -731,6 +981,337 @@ const MlmMemberDetail = () => {
                     />
                 </div>
             </div>
+
+            {/* Edit-profile modal. Mirrors the soft-delete modal's
+                shape (header / body / footer) for visual
+                consistency. Only fields whose value differs from
+                the loaded snapshot get sent to the backend, so a
+                noop save round-trips as a toast and a close. */}
+            {editModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                    <form
+                        onSubmit={handleEditSubmit}
+                        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden"
+                    >
+                        <div className="flex items-start justify-between px-5 py-4 border-b border-slate-200">
+                            <div className="flex items-start gap-3">
+                                <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                                    <Pencil size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-900">
+                                        Edit member profile
+                                    </h3>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        Only the fields you change are saved. User ID, email and phone are checked for uniqueness across all customers.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => !editing && setEditModalOpen(false)}
+                                disabled={editing}
+                                className="w-7 h-7 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                                aria-label="Close"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="px-5 py-4 space-y-3">
+                            <label className="block">
+                                <span className="text-xs font-semibold text-slate-700 block mb-1">User ID</span>
+                                <input
+                                    type="text"
+                                    value={editForm.userId}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, userId: e.target.value.toUpperCase() }))}
+                                    disabled={editing}
+                                    spellCheck={false}
+                                    placeholder="SE12345678"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400 disabled:bg-slate-50"
+                                />
+                                <span className="text-[10px] text-slate-500 mt-1 block">
+                                    Format: <code>SE</code> + 8 digits (e.g. <code>SE12345678</code>). Legacy 8-char alphanumeric IDs also accepted.
+                                </span>
+                            </label>
+
+                            <label className="block">
+                                <span className="text-xs font-semibold text-slate-700 block mb-1">Name</span>
+                                <input
+                                    type="text"
+                                    value={editForm.name}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                                    disabled={editing}
+                                    maxLength={120}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400 disabled:bg-slate-50"
+                                />
+                            </label>
+
+                            <label className="block">
+                                <span className="text-xs font-semibold text-slate-700 block mb-1">Email</span>
+                                <input
+                                    type="email"
+                                    value={editForm.email}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                                    disabled={editing}
+                                    spellCheck={false}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400 disabled:bg-slate-50"
+                                />
+                            </label>
+
+                            <label className="block">
+                                <span className="text-xs font-semibold text-slate-700 block mb-1">Phone</span>
+                                <input
+                                    type="tel"
+                                    value={editForm.phone}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                                    disabled={editing}
+                                    spellCheck={false}
+                                    placeholder="+918000139993"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400 disabled:bg-slate-50"
+                                />
+                                <span className="text-[10px] text-slate-500 mt-1 block">
+                                    Phone is normalised to E.164 server-side. Indian numbers may be entered as <code>9876543210</code> or <code>+919876543210</code>.
+                                </span>
+                            </label>
+
+                            <label className="block">
+                                <span className="text-xs font-semibold text-slate-700 block mb-1">
+                                    Password <span className="text-slate-400 font-normal">(leave blank to keep current)</span>
+                                </span>
+                                <div className="relative">
+                                    <input
+                                        type={showEditPassword ? 'text' : 'password'}
+                                        value={editForm.password}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))}
+                                        disabled={editing}
+                                        spellCheck={false}
+                                        autoComplete="new-password"
+                                        placeholder="New password (6-128 chars)"
+                                        className="w-full px-3 py-2 pr-9 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400 disabled:bg-slate-50"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowEditPassword((v) => !v)}
+                                        disabled={editing}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 disabled:opacity-40"
+                                        aria-label={showEditPassword ? 'Hide password' : 'Show password'}
+                                    >
+                                        {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setEditModalOpen(false)}
+                                disabled={editing}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={editing}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400 text-white transition-colors"
+                            >
+                                {editing ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                    <Check size={14} />
+                                )}
+                                {editing ? 'Saving…' : 'Save changes'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* Deactivate-Plan-A confirmation modal. Shorter than the
+                soft-delete modal because the action is reversible
+                via the existing Approve Plan A button. */}
+            {deactivateModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
+                        <div className="flex items-start justify-between px-5 py-4 border-b border-slate-200">
+                            <div className="flex items-start gap-3">
+                                <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                                    <PauseCircle size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-900">
+                                        Deactivate Plan A for {u.name || 'this member'}?
+                                    </h3>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        Flips status to <strong>REGISTERED_UNPAID</strong>. Member stays in the binary tree (children unaffected) but stops earning commissions.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => !deactivating && setDeactivateModalOpen(false)}
+                                disabled={deactivating}
+                                className="w-7 h-7 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                                aria-label="Close"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="px-5 py-4 space-y-3 text-sm text-slate-700">
+                            <ul className="list-disc list-inside space-y-1 text-slate-600 text-xs">
+                                <li>The genealogy canvas will paint them in the <strong>unpaid (red)</strong> colour.</li>
+                                <li>Any pair-match bonuses sponsored through this member's leg get <strong>held</strong> against the sponsor until re-activation.</li>
+                                <li>Reverse anytime with the <strong>Approve Plan A</strong> button (which also releases held bonuses).</li>
+                                <li>No data is destroyed; wallet, commission history, and tree structure stay intact.</li>
+                            </ul>
+
+                            <label className="block pt-2">
+                                <span className="text-xs font-semibold text-slate-700 block mb-1">
+                                    Reason <span className="text-slate-400 font-normal">(optional, max 240 chars)</span>
+                                </span>
+                                <textarea
+                                    rows={2}
+                                    maxLength={240}
+                                    value={deactivateReason}
+                                    onChange={(e) => setDeactivateReason(e.target.value)}
+                                    disabled={deactivating}
+                                    placeholder="e.g. Pending fraud investigation / refund processed"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400 disabled:bg-slate-50"
+                                />
+                            </label>
+                        </div>
+
+                        <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setDeactivateModalOpen(false)}
+                                disabled={deactivating}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDeactivate}
+                                disabled={deactivating}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white transition-colors"
+                            >
+                                {deactivating ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                    <PauseCircle size={14} />
+                                )}
+                                {deactivating ? 'Deactivating…' : 'Confirm deactivate'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Soft-delete confirmation modal. Rendered inside the
+                page wrapper (not a portal) — `position: fixed`
+                pulls it out of normal flow regardless, and keeping
+                it inside the component tree means it inherits the
+                same React context (toasts/auth/etc.) without any
+                extra plumbing. */}
+            {deleteModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
+                        <div className="flex items-start justify-between px-5 py-4 border-b border-slate-200">
+                            <div className="flex items-start gap-3">
+                                <div className="w-9 h-9 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                                    <Trash2 size={18} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-slate-900">
+                                        Soft-delete {u.name || 'this member'}?
+                                    </h3>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        This action restructures the binary tree. It cannot be undone from the UI.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => !deleting && setDeleteModalOpen(false)}
+                                disabled={deleting}
+                                className="w-7 h-7 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                                aria-label="Close"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="px-5 py-4 space-y-3 text-sm text-slate-700">
+                            <p>What will happen:</p>
+                            <ul className="list-disc list-inside space-y-1 text-slate-600 text-xs">
+                                <li>
+                                    The child with the <strong>larger subtree</strong> is promoted into{' '}
+                                    {u.name || 'this member'}'s slot.
+                                </li>
+                                <li>
+                                    The other child is <strong>spilled</strong> down the promoted sibling's
+                                    same-leg chain (L or R) until an empty slot is found.
+                                </li>
+                                <li>
+                                    Direct referrals are <strong>re-parented</strong> to{' '}
+                                    {u.name || 'this member'}'s own sponsor; their sponsorChain stays gap-free.
+                                </li>
+                                <li>
+                                    Pending withdrawals are <strong>auto-cancelled</strong> (wallet stays in
+                                    place; the ledger is reversed).
+                                </li>
+                                <li>
+                                    The member's <strong>login account is disabled</strong> and they are
+                                    hidden from genealogy / member lists.
+                                </li>
+                            </ul>
+
+                            <label className="block pt-2">
+                                <span className="text-xs font-semibold text-slate-700 block mb-1">
+                                    Reason <span className="text-slate-400 font-normal">(optional, max 240 chars)</span>
+                                </span>
+                                <textarea
+                                    rows={2}
+                                    maxLength={240}
+                                    value={deleteReason}
+                                    onChange={(e) => setDeleteReason(e.target.value)}
+                                    disabled={deleting}
+                                    placeholder="e.g. Duplicate signup / fraud / account-holder request"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-400 disabled:bg-slate-50"
+                                />
+                            </label>
+                        </div>
+
+                        <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setDeleteModalOpen(false)}
+                                disabled={deleting}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSoftDelete}
+                                disabled={deleting}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white transition-colors"
+                            >
+                                {deleting ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                    <Trash2 size={14} />
+                                )}
+                                {deleting ? 'Deleting…' : 'Confirm soft delete'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -6,6 +6,7 @@ import {
   approveMlmMember,
   approveWithdrawal,
   createMilestoneRule,
+  deactivateMember,
   deleteMilestoneRule,
   getMlmDashboard,
   getMlmMemberDetail,
@@ -18,6 +19,8 @@ import {
   listMlmMembers,
   rejectJoiningReview,
   rejectWithdrawal,
+  softDeleteMember,
+  updateMemberProfile,
   updateMilestoneRule,
   updateMlmSettings,
   verifyMemberWalletEndpoint,
@@ -52,6 +55,35 @@ router.post(
   "/members/:id/impersonation-token",
   ...adminGuard,
   issueImpersonationToken,
+);
+
+// Soft-delete a member and promote their larger subtree into the
+// vacated slot. See `mlmMemberSoftDeleteService` for the full
+// restructuring contract.
+router.post(
+  "/members/:id/soft-delete",
+  ...adminGuard,
+  softDeleteMember,
+);
+
+// Admin edits to a member's profile: User ID, name, email, phone,
+// password. All fields optional; only provided fields are written.
+// Uniqueness is checked against ALL customers including soft-deleted
+// rows (we don't want to recycle an identifier that downstream
+// ledgers still reference). See controller for the full contract.
+router.patch(
+  "/members/:id/profile",
+  ...adminGuard,
+  updateMemberProfile,
+);
+
+// Inverse of `approveMlmMember`: flips an ACTIVE membership back to
+// REGISTERED_UNPAID. Re-activation is the existing "Approve Plan A"
+// button. Fully reversible; no data destroyed.
+router.post(
+  "/members/:id/deactivate",
+  ...adminGuard,
+  deactivateMember,
 );
 
 router.get("/withdrawals", ...adminGuard, listAdminWithdrawals);

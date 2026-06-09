@@ -58,6 +58,37 @@ const mlmMembershipSchema = new mongoose.Schema(
       index: true,
     },
 
+    /*
+     * Soft-transition aid for the "referralCode = userId" consolidation
+     * (Jun 2026 PO-request). Before the migration ran, every membership
+     * had a random 8-char referralCode (e.g. "3HBQUC97") that customers
+     * shared in WhatsApp / printed cards / QR codes. After the migration,
+     * `referralCode` mirrors `Customer.userId` (e.g. "SE12345678") so the
+     * customer has ONE identifier to memorise.
+     *
+     * `legacyReferralCode` stores the PRE-migration code so the public
+     * sponsor-lookup endpoint (`getMembershipByReferralCode`) can still
+     * resolve old codes shared externally. Once analytics confirm no one
+     * is using legacy codes any more (PO suggests a 30-60 day soak),
+     * this field can be dropped and the lookup simplified.
+     *
+     * Set ONLY by `scripts/migrateReferralCodesToUserIds.js` and by the
+     * admin profile editor (when an admin changes `userId` post-
+     * migration, the previous referralCode is shifted here for
+     * back-compat). Sparse index so pre-migration rows don't waste
+     * index space, unique so two memberships never claim the same
+     * legacy code (would shadow a real referral lookup).
+     */
+    legacyReferralCode: {
+      type: String,
+      uppercase: true,
+      trim: true,
+      default: null,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+
     planType: {
       type: String,
       enum: ALL_MLM_PLAN_TYPES,
