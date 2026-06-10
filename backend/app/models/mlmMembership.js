@@ -83,7 +83,6 @@ const mlmMembershipSchema = new mongoose.Schema(
       type: String,
       uppercase: true,
       trim: true,
-      default: null,
       unique: true,
       sparse: true,
       index: true,
