@@ -36,6 +36,7 @@ import {
   ShieldAlert,
   X,
   Menu,
+  Edit2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../services/mlmApi";
@@ -62,7 +63,7 @@ const MainDashboardPage = () => {
   // Profile Card can render contact info (name, phone, email,
   // user id, member-since) without an extra round-trip — the
   // /customer/profile call already ran during AuthProvider mount.
-  const { user } = useAuth();
+  const { user, login } = useAuth();
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState(null);
   const [pendingJoining, setPendingJoining] = useState(null);
@@ -125,8 +126,7 @@ const MainDashboardPage = () => {
       />
     );
   }
-
-  return <MemberDashboard overview={overview} navigate={navigate} user={user} />;
+  return <MemberDashboard overview={overview} navigate={navigate} user={user} login={login} />;
 };
 
 // Page-level mobile header. Hidden on desktop (`md:hidden`) because
@@ -368,7 +368,7 @@ const PendingPaymentBanner = ({ pending, onResume, onRetry, retrying }) => {
      wallet balance, left/right leg counts, pending payout, today's
      earnings, next-pair preview.
    ================================================================ */
-const MemberDashboard = ({ overview, navigate, user }) => {
+const MemberDashboard = ({ overview, navigate, user, login }) => {
   const { membership, wallet, earnings, referrals, binary, payout, dailyCap, config } = overview;
   const isUnpaid = !!membership.isRegisteredUnpaid;
 
@@ -475,7 +475,7 @@ const MemberDashboard = ({ overview, navigate, user }) => {
             on every breakpoint; the internal layout is the one that
             adapts (single column on mobile, avatar+name on the left
             with a 4-cell info grid on desktop). */}
-        <ProfileCard user={user} membership={membership} />
+        <ProfileCard user={user} membership={membership} login={login} />
 
         {/* Wallet snapshot — 2-up on every breakpoint. Pinned above
             the KPI strip so the customer always sees their available
@@ -988,7 +988,7 @@ const ReferralCodeCard = ({
  * stale cache) by rendering placeholder "—" cells instead of
  * blank space, so the card never collapses to zero height.
  */
-const ProfileCard = ({ user, membership }) => {
+const ProfileCard = ({ user, membership, login }) => {
   const initial = (user?.name || "U").trim().charAt(0).toUpperCase();
   const handle = user?.userId || null;
   const memberSince = membership?.joinedAt
@@ -1011,6 +1011,7 @@ const ProfileCard = ({ user, membership }) => {
   // pattern; we reuse the same endpoint here so the two surfaces
   // can never drift in what they expose.
   const [credsOpen, setCredsOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const copyHandle = () => {
     if (!handle) return;
@@ -1060,21 +1061,28 @@ const ProfileCard = ({ user, membership }) => {
               </p>
             )}
           </div>
-          {/* Show-credentials action — pinned right on mobile (next
-              to the name) and reappears as a full-width pill in the
-              desktop info grid below. Mobile keeps it as a compact
-              icon button so it doesn't crowd the avatar row; the
-              `key` icon signals "view login info" without needing a
-              text label at that size. */}
-          <button
-            type="button"
-            onClick={() => setCredsOpen(true)}
-            className="md:hidden shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors"
-            aria-label="Show credentials"
-            title="Show credentials"
-          >
-            <KeyRound size={16} />
-          </button>
+          {/* Actions row — pinned right on mobile (next to the name).
+              We wrap both Edit and Show-credentials in a flex box. */}
+          <div className="md:hidden flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setEditOpen(true)}
+              className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors"
+              aria-label="Edit profile"
+              title="Edit profile"
+            >
+              <Edit2 size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setCredsOpen(true)}
+              className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors"
+              aria-label="Show credentials"
+              title="Show credentials"
+            >
+              <KeyRound size={16} />
+            </button>
+          </div>
         </div>
 
         {/* Info grid — Phone / Email / Member since / Show
@@ -1098,16 +1106,26 @@ const ProfileCard = ({ user, membership }) => {
             label="Member since"
             value={memberSince || "—"}
           />
-          <button
-            type="button"
-            onClick={() => setCredsOpen(true)}
-            className="hidden md:flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs uppercase tracking-wider rounded-xl py-2.5 transition-colors"
-          >
-            <KeyRound size={14} /> Show credentials
-          </button>
+          <div className="hidden md:grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setEditOpen(true)}
+              className="flex items-center justify-center gap-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl py-2.5 transition-colors"
+            >
+              <Edit2 size={14} /> Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => setCredsOpen(true)}
+              className="flex items-center justify-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs uppercase tracking-wider rounded-xl py-2.5 transition-colors"
+            >
+              <KeyRound size={14} /> Creds
+            </button>
+          </div>
         </div>
       </div>
       {credsOpen && <CredentialsModal onClose={() => setCredsOpen(false)} />}
+      {editOpen && <EditProfileModal onClose={() => setEditOpen(false)} user={user} login={login} />}
     </div>
   );
 };
@@ -1532,6 +1550,155 @@ const DailyCapMeter = ({ cap, used }) => {
       <p className="mt-2 text-[10px] text-slate-500">
         Earnings beyond the daily cap roll over to the next IST day automatically.
       </p>
+    </div>
+  );
+};
+
+/**
+ * EditProfileModal
+ *
+ * Lightweight modal to edit user's name, email, and password.
+ */
+const EditProfileModal = ({ onClose, user, login }) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: user?.name || '',
+    email: user?.email || '',
+    password: ''
+  });
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      const response = await customerApi.updateProfile(formData);
+      const updatedUser = response.data.result;
+
+      // Update local auth state
+      login({ ...user, ...updatedUser });
+
+      toast.success('Profile updated successfully!');
+      onClose();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update profile');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-100 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-profile-modal-title"
+    >
+      <div
+        className="bg-white rounded-3xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+              <Edit2 size={18} />
+            </div>
+            <div className="min-w-0">
+              <h2
+                id="edit-profile-modal-title"
+                className="text-base font-bold text-slate-900 truncate"
+              >
+                Edit Profile
+              </h2>
+              <p className="text-[11px] text-slate-500 truncate">
+                Update your account details
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 -mr-1.5 rounded-full text-slate-500 hover:bg-slate-100 transition-colors shrink-0"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-5 py-5">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Full Name</label>
+              <div className="flex items-center gap-3 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-500/10 transition-all">
+                <UserCircle2 size={20} className="text-slate-400" />
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  className="bg-transparent w-full text-slate-800 font-bold outline-none placeholder:font-medium"
+                  placeholder="Enter your name"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email Address</label>
+              <div className="flex items-center gap-3 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-500/10 transition-all">
+                <Mail size={20} className="text-slate-400" />
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  className="bg-transparent w-full text-slate-800 font-bold outline-none placeholder:font-medium"
+                  placeholder="Enter email address"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">New Password (optional)</label>
+              <div className="flex items-center gap-3 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-500/10 transition-all">
+                <KeyRound size={20} className="text-slate-400" />
+                <input
+                  type="text"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  className="bg-transparent w-full text-slate-800 font-bold outline-none placeholder:font-medium"
+                  placeholder="Leave blank to keep current"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="mt-2 w-full py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isLoading ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : (
+                <Edit2 size={20} />
+              )}
+              {isLoading ? 'Saving...' : 'Save Changes'}
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 };
