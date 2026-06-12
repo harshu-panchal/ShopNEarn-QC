@@ -707,6 +707,7 @@ const CustomerAuth = () => {
                                             shadow={activeCategory.shadow}
                                             onSubmit={handleSignupSendOtp}
                                             referralLookup={referralLookup}
+                                            isLegLocked={isLegLocked}
                                         />
                                     )}
 
@@ -936,8 +937,13 @@ function SignupPane({
     shadow,
     onSubmit,
     referralLookup,
+    isLegLocked,
 }) {
-    const setLeg = (leg) => updateField('leg', leg);
+    const setLeg = (leg) => {
+        if (!isLegLocked) {
+            updateField('leg', leg);
+        }
+    };
     // Only treat the lookup result as "live" when it matches the
     // CURRENT text in the field — otherwise a stale lookup from the
     // previous code keystroke would briefly render the wrong hint.
