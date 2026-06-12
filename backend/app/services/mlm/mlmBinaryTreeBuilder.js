@@ -85,14 +85,30 @@ export async function buildBinaryTreeBottomUp({ rootMembership, depthLeft }) {
   const rootUserId =
     rootMembership.userId?._id || rootMembership.userId;
 
-  // Fetch all descendants in one round-trip. `sponsorChain` contains
-  // the root for every downline member — including spillover
-  // placements whose `binaryParent` is deeper in the tree.
-  const descendants = await MlmMembership.find({
-    sponsorChain: rootUserId,
-  })
-    .populate("userId", "name phone userId")
-    .lean();
+  // Fetch all binary descendants in one round-trip using $graphLookup.
+  // The previous implementation queried by `sponsorChain`, which is a
+  // UNILEVEL field and completely ignores binary spillovers placed
+  // under this root by someone further up the tree.
+  const aggResult = await MlmMembership.aggregate([
+    { $match: { userId: rootUserId } },
+    {
+      $graphLookup: {
+        from: MlmMembership.collection.name,
+        startWith: "$userId",
+        connectFromField: "userId",
+        connectToField: "binaryParentId",
+        as: "descendants",
+        maxDepth: Math.max(0, depthLeft - 1),
+      },
+    },
+  ]);
+
+  let descendants = aggResult[0]?.descendants || [];
+  // $graphLookup doesn't populate refs, so we populate them manually.
+  descendants = await MlmMembership.populate(descendants, {
+    path: "userId",
+    select: "name phone userId",
+  });
 
   // Ensure the root has its User populated for the per-node payload.
   let populatedRoot = rootMembership;
@@ -287,10 +303,37 @@ export async function classifyDirectReferralsByLegUnderRoot({
     rootMembership.userId?._id || rootMembership.userId;
   const rootKey = String(rootUserId);
 
-  const descendants = await MlmMembership.find(
-    { sponsorChain: rootUserId },
-    { userId: 1, binaryParentId: 1, binaryPosition: 1 },
-  ).lean();
+  const aggResult = await MlmMembership.aggregate([
+    { $match: { userId: rootUserId } },
+    {
+      $graphLookup: {
+        from: MlmMembership.collection.name,
+        startWith: "$userId",
+        connectFromField: "userId",
+        connectToField: "binaryParentId",
+        as: "descendants",
+        // Bounded depth to prevent massive payload walks
+        maxDepth: 64,
+      },
+    },
+    {
+      $project: {
+        descendants: {
+          $map: {
+            input: "$descendants",
+            as: "d",
+            in: {
+              userId: "$$d.userId",
+              binaryParentId: "$$d.binaryParentId",
+              binaryPosition: "$$d.binaryPosition",
+            },
+          },
+        },
+      },
+    },
+  ]);
+
+  const descendants = aggResult[0]?.descendants || [];
 
   const parentLinkByUser = new Map();
   for (const d of descendants) {

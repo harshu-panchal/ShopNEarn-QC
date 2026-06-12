@@ -269,7 +269,7 @@ export const getEarningsSummary = async (req, res) => {
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
 
-    const [totalCredited, totalThisMonth, byType] = await Promise.all([
+    const [totalCredited, totalThisMonth, byType, wallet] = await Promise.all([
       MlmCommissionEvent.aggregate([
         { $match: { recipientId: new mongoose.Types.ObjectId(userId) } },
         { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
@@ -293,6 +293,7 @@ export const getEarningsSummary = async (req, res) => {
           },
         },
       ]),
+      Wallet.findOne({ ownerType: OWNER_TYPE.CUSTOMER, ownerId: userId }).lean(),
     ]);
 
     return handleResponse(res, 200, "Earnings summary", {
@@ -301,6 +302,7 @@ export const getEarningsSummary = async (req, res) => {
         (membership?.lifetimePlanBEarnings || 0),
       lifetimePlanAEarnings: membership?.lifetimePlanAEarnings || 0,
       lifetimePlanBEarnings: membership?.lifetimePlanBEarnings || 0,
+      shoppingWalletBalance: wallet?.shoppingBalance || 0,
       totalCredited: totalCredited[0]?.total || 0,
       totalThisMonth: totalThisMonth[0]?.total || 0,
       byType: byType.map((row) => ({
@@ -329,6 +331,7 @@ export const getEarningsHistory = async (req, res) => {
 
     const [items, total] = await Promise.all([
       MlmCommissionEvent.find(query)
+        .populate("sourceUserId", "name userId phone")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)

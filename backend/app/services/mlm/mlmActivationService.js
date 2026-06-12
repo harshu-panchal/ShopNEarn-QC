@@ -201,7 +201,8 @@ export async function activateMembershipFromJoiningPayment(
         ownerType: OWNER_TYPE.CUSTOMER,
         ownerId: customerId,
         amount: shoppingCreditAmount,
-        bucket: "earnings",
+        // Shopping bucket: spendable at checkout, NOT withdrawable as cash.
+        bucket: "shopping",
         session,
         ledgerType: LEDGER_TRANSACTION_TYPE.MLM_JOINING_PACKAGE_SHOPPING_CREDIT,
         ledgerReference: `${MLM_IDEMPOTENCY_PREFIX.JOINING_PACKAGE_CREDIT}-${payment._id}`,

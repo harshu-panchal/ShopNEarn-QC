@@ -17,6 +17,7 @@ const formatDate = (d) =>
 
 const bonusTypeLabel = (t) => {
   const map = {
+    SIGNUP_BONUS_SPONSOR: "Referral Signup Bonus",
     DIRECT_REFERRAL_MILESTONE: "Referral Milestone (legacy)",
     BINARY_PAIR_MATCH: "Pair Match Bonus",
     REPURCHASE_BONUS: "Repurchase Bonus",
@@ -110,12 +111,24 @@ const MyEarningsPage = () => {
                 </p>
               </div>
             </div>
+
             {summary.dailyCapTracker?.usedAmount > 0 && (
               <p className="text-[11px] opacity-80 mt-3">
                 Today: {formatINR(summary.dailyCapTracker.usedAmount)} of daily
                 cap used
               </p>
             )}
+          </div>
+        )}
+
+        {summary && (
+          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-2xl p-5 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-widest opacity-80">
+              Shopping Wallet
+            </p>
+            <h2 className="text-2xl sm:text-3xl font-black mt-1 break-all">
+              {formatINR(summary.shoppingWalletBalance || 0)}
+            </h2>
           </div>
         )}
 
@@ -203,7 +216,13 @@ const MyEarningsPage = () => {
                           </span>
                         ) : null}
                       </p>
-                      <p className="text-[11px] text-slate-500">
+                      {row.sourceUserId && (
+                        <p className="text-[12px] text-slate-700 font-medium my-0.5">
+                          From: {row.sourceUserId.name || "User"}{" "}
+                          {row.sourceUserId.userId ? `(${row.sourceUserId.userId})` : ""}
+                        </p>
+                      )}
+                      <p className="text-[11px] text-slate-500 mt-0.5">
                         {formatDate(row.createdAt)}
                       </p>
                       {row.status === "capped_rollover" && (
