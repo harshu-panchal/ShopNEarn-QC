@@ -11,52 +11,42 @@ export const getNearbySellers = async (req, res) => {
   try {
     const { lat, lng } = req.query;
 
-    if (!lat || !lng) {
-      return handleResponse(res, 400, "Latitude and longitude are required");
-    }
-
-    const customerLat = Number(lat);
-    const customerLng = Number(lng);
+    const customerLat = lat !== undefined ? Number(lat) : null;
+    const customerLng = lng !== undefined ? Number(lng) : null;
+    const hasCoords = Number.isFinite(customerLat) && Number.isFinite(customerLng);
 
     // Fetch all active/verified sellers
-    // We could use $geoNear, but to strictly follow the requirement of individual radii,
-    // we'll fetch sellers within a reasonable max distance (e.g. 100km) and then filter.
     const sellers = await Seller.find({
       isActive: true,
       isVerified: true,
-      location: {
-        $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [customerLng, customerLat],
-          },
-          $maxDistance: 100000, // 100km max search area for performance
-        },
-      },
     }).lean();
 
-    // Filter based on individual service radius
-    const nearbySellers = sellers.filter((seller) => {
-      const sellerLng = seller.location.coordinates[0];
-      const sellerLat = seller.location.coordinates[1];
-      const distance = calculateDistance(
-        customerLat,
-        customerLng,
-        sellerLat,
-        sellerLng,
-      );
-
-      // Add distance to seller object for frontend
-      seller.distance = distance;
-
-      return distance <= (seller.serviceRadius || 5);
+    // Calculate distance if coordinates are provided, but do not filter by radius
+    const mappedSellers = sellers.map((seller) => {
+      let distance = null;
+      const coords = seller?.location?.coordinates;
+      if (hasCoords && Array.isArray(coords) && coords.length >= 2) {
+        const [sellerLng, sellerLat] = coords;
+        if (Number.isFinite(sellerLat) && Number.isFinite(sellerLng)) {
+          distance = calculateDistance(
+            customerLat,
+            customerLng,
+            sellerLat,
+            sellerLng,
+          );
+        }
+      }
+      return {
+        ...seller,
+        distance,
+      };
     });
 
     return handleResponse(
       res,
       200,
       "Nearby sellers fetched successfully",
-      nearbySellers,
+      mappedSellers,
     );
   } catch (error) {
     return handleResponse(res, 500, error.message);

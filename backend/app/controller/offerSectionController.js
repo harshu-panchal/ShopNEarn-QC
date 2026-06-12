@@ -9,29 +9,16 @@ import { getApprovedOrLegacyFilter } from "../services/productModerationService.
 
 export const getPublicOfferSections = async (req, res) => {
   try {
-    const coords = parseCustomerCoordinates(req.query || {});
-    if (!coords.valid) {
-      return handleResponse(
-        res,
-        400,
-        "lat and lng are required for customer offer visibility",
-      );
-    }
-
-    // Round coordinates to 3 decimals for cache bucket
     const cacheKey = buildKey(
       "offersections",
       "public",
-      `${coords.lat.toFixed(3)}:${coords.lng.toFixed(3)}`,
+      "global",
     );
 
     const filteredSections = await getOrSet(
       cacheKey,
       async () => {
-        const nearbySellerIds = await getNearbySellerIdsForCustomer(
-          coords.lat,
-          coords.lng,
-        );
+        const nearbySellerIds = await getNearbySellerIdsForCustomer();
         const nearbySellerSet = new Set(nearbySellerIds.map(String));
 
         const sections = await OfferSection.find({ status: "active" })

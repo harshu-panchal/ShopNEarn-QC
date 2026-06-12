@@ -251,47 +251,16 @@ export const getProducts = async (req, res) => {
     if (finalSubcategoryId && finalSubcategoryId !== "all") query.subcategoryId = finalSubcategoryId;
 
     const requestedSellerIds = parseSellerIdFilters({ sellerId, sellerIds });
-    const coords = parseCustomerCoordinates({ lat, lng });
-    const shouldApplyLocationFilter = enforceRadius || coords.valid;
-    if (enforceRadius && !coords.valid) {
-      return handleResponse(
-        res,
-        400,
-        "lat and lng are required for customer product visibility",
-      );
-    }
-    if (shouldApplyLocationFilter) {
-      const nearbySellerIds = await getNearbySellerIdsForCustomer(
-        coords.lat,
-        coords.lng,
-      );
 
-      if (!nearbySellerIds.length) {
-        return handleResponse(res, 200, "No sellers found in your area", {
-          items: [],
-          page: 1,
-          limit: 24,
-          total: 0,
-          totalPages: 1,
-        });
-      }
-
-      const nearbySet = new Set(nearbySellerIds.map(String));
+    if (enforceRadius) {
+      const activeSellerIds = await getNearbySellerIdsForCustomer();
       const finalSellerIds = requestedSellerIds.length
-        ? requestedSellerIds.filter((id) => nearbySet.has(String(id)))
-        : nearbySellerIds;
-
-      if (!finalSellerIds.length) {
-        return handleResponse(res, 200, "No products available in your area", {
-          items: [],
-          page: 1,
-          limit: 24,
-          total: 0,
-          totalPages: 1,
-        });
-      }
+        ? requestedSellerIds.filter((id) => activeSellerIds.includes(String(id)))
+        : activeSellerIds;
 
       query.sellerId = { $in: finalSellerIds };
+    } else if (requestedSellerIds.length) {
+      query.sellerId = { $in: requestedSellerIds };
     }
 
     if (categoryIds && typeof categoryIds === "string") {
@@ -963,23 +932,6 @@ export const getProductById = async (req, res) => {
     const { id } = req.params;
     const enforceRadius = isCustomerVisibilityRequest(req);
 
-    let nearbySellerSet = null;
-    const coords = parseCustomerCoordinates(req.query || {});
-    if (enforceRadius) {
-      if (!coords.valid) {
-        return handleResponse(
-          res,
-          400,
-          "lat and lng are required for customer product visibility",
-        );
-      }
-      const nearbySellerIds = await getNearbySellerIdsForCustomer(
-        coords.lat,
-        coords.lng,
-      );
-      nearbySellerSet = new Set(nearbySellerIds.map(String));
-    }
-
     const cacheKey = buildKey("catalog", "product", id);
     const product = await getOrSet(
       cacheKey,
@@ -1005,12 +957,11 @@ export const getProductById = async (req, res) => {
       if (product.status !== "active" || approvalState !== PRODUCT_APPROVAL_STATUS.APPROVED) {
         return handleResponse(res, 404, "Product not found");
       }
-    }
 
-    if (enforceRadius) {
+      const activeSellerIds = await getNearbySellerIdsForCustomer();
       const sellerIdForProduct = String(product?.sellerId?._id || product?.sellerId);
-      if (!nearbySellerSet || !nearbySellerSet.has(sellerIdForProduct)) {
-        return handleResponse(res, 404, "Product not available in your area");
+      if (!activeSellerIds.includes(sellerIdForProduct)) {
+        return handleResponse(res, 404, "Product not found");
       }
     }
 
