@@ -372,55 +372,6 @@ const MemberDashboard = ({ overview, navigate, user, login }) => {
   const { membership, wallet, earnings, referrals, binary, payout, dailyCap, config } = overview;
   const isUnpaid = !!membership.isRegisteredUnpaid;
 
-  // Canonical share URL — every signup that lands on `/signup?ref=…`
-  // pre-fills the referral code, so this is the only link the
-  // customer ever needs to hand out.
-  const shareUrl = membership.referralCode
-    ? `${window.location.origin}/signup?ref=${membership.referralCode}`
-    : "";
-
-  const copyReferralCode = () => {
-    if (!membership.referralCode) return;
-    navigator.clipboard?.writeText(membership.referralCode);
-    toast.success("Referral code copied!");
-  };
-
-  const copyShareLink = () => {
-    if (!shareUrl) return;
-    navigator.clipboard?.writeText(shareUrl);
-    toast.success("Signup link copied!");
-  };
-
-  const shareReferral = async () => {
-    if (!membership.referralCode) return;
-    // The Web Share API on most platforms (Android, iOS, WhatsApp,
-    // Telegram, etc.) appends `url` to the end of `text` when both are
-    // supplied — so embedding the URL inside `text` AND passing `url`
-    // produces a duplicate link in the final share payload. We pass
-    // them separately so the platform composes the message cleanly:
-    //   - `text` = the human-readable invite (no URL)
-    //   - `url`  = the canonical signup link (added by the OS)
-    //
-    // The clipboard fallback joins them with a newline so the user
-    // still gets a single coherent message when navigator.share is
-    // unavailable.
-    const message = `Join me on the rewards program! Sign up with my referral code ${membership.referralCode}.`;
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: "Join the Rewards Program",
-          text: message,
-          url: shareUrl,
-        });
-        return;
-      }
-      navigator.clipboard?.writeText(`${message}\n${shareUrl}`);
-      toast.success("Share link copied!");
-    } catch {
-      /* ignore */
-    }
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 pb-24 md:pb-12">
       <Header title="My Rewards" navigate={navigate} />
@@ -460,10 +411,6 @@ const MemberDashboard = ({ overview, navigate, user, login }) => {
           <div className="md:col-span-5 lg:col-span-4">
             <ReferralCodeCard
               code={membership.referralCode}
-              shareUrl={shareUrl}
-              onCopyCode={copyReferralCode}
-              onCopyLink={copyShareLink}
-              onShare={shareReferral}
             />
           </div>
         </div>
@@ -894,13 +841,45 @@ const MyPlanCard = ({ membership, earnings, config }) => {
  * from `sm:` upwards. The signup link is shown read-only beneath
  * the code so users can see exactly what they're about to share.
  */
-const ReferralCodeCard = ({
-  code,
-  shareUrl,
-  onCopyCode,
-  onCopyLink,
-  onShare,
-}) => (
+const ReferralCodeCard = ({ code }) => {
+  const [leg, setLeg] = useState('L');
+  
+  const shareUrl = code
+    ? `${window.location.origin}/signup?ref=${code}&leg=${leg}`
+    : "";
+
+  const onCopyCode = () => {
+    if (!code) return;
+    navigator.clipboard?.writeText(code);
+    toast.success("Referral code copied!");
+  };
+
+  const onCopyLink = () => {
+    if (!shareUrl) return;
+    navigator.clipboard?.writeText(shareUrl);
+    toast.success(`${leg === 'L' ? 'Left' : 'Right'} leg link copied!`);
+  };
+
+  const onShare = async () => {
+    if (!code) return;
+    const message = `Join me on the rewards program! Sign up with my referral code ${code}.`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Join the Rewards Program",
+          text: message,
+          url: shareUrl,
+        });
+        return;
+      }
+      navigator.clipboard?.writeText(`${message}\n${shareUrl}`);
+      toast.success("Share link copied!");
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
   <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
     <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
       <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
@@ -911,7 +890,7 @@ const ReferralCodeCard = ({
       </span>
     </div>
 
-    <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-indigo-50 via-violet-50 to-purple-50 border-2 border-dashed border-indigo-200 rounded-xl px-3 sm:px-4 py-4">
+    <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-indigo-50 via-violet-50 to-purple-50 border-2 border-dashed border-indigo-200 rounded-xl px-3 sm:px-4 py-4 mb-4">
       <code className="text-xl sm:text-2xl font-black tracking-widest text-indigo-900 break-all min-w-0">
         {code || "—"}
       </code>
@@ -923,10 +902,26 @@ const ReferralCodeCard = ({
       </button>
     </div>
 
+    {/* Leg Link Selector */}
+    <div className="flex bg-slate-100 rounded-lg p-1 mb-2">
+      <button
+        onClick={() => setLeg('L')}
+        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors uppercase tracking-wider ${leg === 'L' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}
+      >
+        Left Leg Link
+      </button>
+      <button
+        onClick={() => setLeg('R')}
+        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors uppercase tracking-wider ${leg === 'R' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}
+      >
+        Right Leg Link
+      </button>
+    </div>
+
     {/* Signup-link preview — read-only, single line, clipped so even
         very long origins (with port numbers) don't expand the card. */}
     {shareUrl && (
-      <div className="mt-3 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+      <div className="mt-2 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
         <LinkIcon size={14} className="text-slate-400 shrink-0" />
         <p
           className="text-[11px] text-slate-600 font-mono truncate flex-1 min-w-0"
@@ -937,13 +932,7 @@ const ReferralCodeCard = ({
       </div>
     )}
 
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
-      <button
-        onClick={onCopyCode}
-        className="bg-slate-100 hover:bg-slate-200 transition-colors px-3 py-2 rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold text-slate-700"
-      >
-        <Copy size={14} /> Copy Code
-      </button>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
       <button
         onClick={onCopyLink}
         disabled={!shareUrl}
@@ -963,7 +952,8 @@ const ReferralCodeCard = ({
       Share this code — every signup grows your team and unlocks new bonuses.
     </p>
   </div>
-);
+  );
+};
 
 /**
  * ProfileCard

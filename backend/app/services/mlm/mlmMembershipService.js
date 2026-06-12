@@ -325,9 +325,26 @@ export async function placeInBinaryTree({
     }
   } else {
     // manual: require preferredPosition; if not provided, default to L.
-    parentMembership = sponsorMembership;
-    position = position || "L";
-    legUnderSponsor = position;
+    // BUGFIX: Instead of blindly overwriting the pointer, spill down the leg
+    // if the immediate slot is occupied to prevent data corruption/orphaning.
+    const prefer = position || "L";
+    legUnderSponsor = prefer;
+    let cursor = sponsorMembership;
+    const maxIter = Number(cfg.sponsorChainMaxDepth) || 10;
+    for (let i = 0; i < maxIter; i += 1) {
+      const childId = prefer === "L" ? cursor.binaryLeftChildId : cursor.binaryRightChildId;
+      if (!childId) {
+        parentMembership = cursor;
+        position = prefer;
+        break;
+      }
+      cursor = await MlmMembership.findOne(
+        { userId: childId },
+        null,
+        session ? { session } : {},
+      );
+      if (!cursor) break;
+    }
   }
 
   if (!parentMembership || !position) return null;
