@@ -1005,29 +1005,37 @@ export const getMyBinaryGenealogy = async (req, res) => {
       });
     }
 
-    const directs = await MlmMembership.find({
-      sponsorId: userId,
-      status: {
-        $in: [
-          MLM_MEMBERSHIP_STATUS.ACTIVE,
-          MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
-        ],
+    // Fetch all binary descendants under the user's binary tree
+    const aggResult = await MlmMembership.aggregate([
+      { $match: { userId: membership.userId } },
+      {
+        $graphLookup: {
+          from: MlmMembership.collection.name,
+          startWith: "$userId",
+          connectFromField: "userId",
+          connectToField: "binaryParentId",
+          as: "descendants",
+          // Bounded depth to prevent massive payload walks
+          maxDepth: 64,
+        },
       },
-    })
-      .sort({ createdAt: 1 })
-      .lean();
+    ]);
+
+    const descendants = aggResult[0]?.descendants || [];
 
     const userRows = await mongoose
       .model("User")
-      .find({ _id: { $in: directs.map((d) => d.userId) } }, { name: 1, phone: 1 })
+      .find({ _id: { $in: descendants.map((d) => d.userId) } }, { name: 1, phone: 1 })
       .lean();
     const userById = new Map(userRows.map((u) => [String(u._id), u]));
 
-    const legByReferral = await classifyDirectReferralsByLegUnderRoot({
-      rootMembership: membership,
-      directReferrals: directs,
-      includeDepth: true,
-    });
+    const parentLinkByUser = new Map();
+    for (const d of descendants) {
+      parentLinkByUser.set(String(d.userId), {
+        parent: d.binaryParentId ? String(d.binaryParentId) : null,
+        position: d.binaryPosition || null,
+      });
+    }
 
     const shape = (m, actualLeg) => {
       const u = userById.get(String(m.userId));
@@ -1038,10 +1046,6 @@ export const getMyBinaryGenealogy = async (req, res) => {
         referralCode: m.referralCode,
         status: m.status,
         // `position` here is leg-of-root (matches the tree view).
-        // The legacy `m.binaryPosition` (relative to immediate parent)
-        // is intentionally NOT exposed because it caused tree/binary
-        // mismatches whenever spillover put a direct referral under a
-        // descendant rather than directly under the caller.
         position: actualLeg || null,
         joinedAt: m.joinedAt,
         subtreeCount: m.totalDownlineCount || 0,
@@ -1055,10 +1059,31 @@ export const getMyBinaryGenealogy = async (req, res) => {
 
     const leftLeg = [];
     const rightLeg = [];
-    for (const m of directs) {
-      const classification = legByReferral.get(String(m._id)) || { leg: null, depth: 999 };
-      const leg = classification.leg;
-      const depth = classification.depth;
+    const rootKey = String(membership.userId);
+    const MAX_HOPS = 64;
+
+    for (const m of descendants) {
+      const mUserKey = String(m.userId);
+      let cursorUser = mUserKey;
+      let leg = null;
+      let depth = 999;
+      for (let i = 0; i < MAX_HOPS; i += 1) {
+        const link = parentLinkByUser.get(cursorUser);
+        if (!link || !link.parent) {
+          if (cursorUser === mUserKey) {
+            leg = m.binaryPosition || null;
+            depth = 1;
+          }
+          break;
+        }
+        if (link.parent === rootKey) {
+          leg = link.position;
+          depth = i + 1;
+          break;
+        }
+        cursorUser = link.parent;
+      }
+
       if (leg === "L") {
         const shaped = shape(m, leg);
         shaped.depth = depth;
