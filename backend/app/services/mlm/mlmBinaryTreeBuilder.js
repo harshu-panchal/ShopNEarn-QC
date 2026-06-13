@@ -296,6 +296,7 @@ export async function buildBinaryTreeBottomUp({ rootMembership, depthLeft }) {
 export async function classifyDirectReferralsByLegUnderRoot({
   rootMembership,
   directReferrals,
+  includeDepth = false,
 }) {
   const result = new Map();
   if (!rootMembership || !directReferrals?.length) return result;
@@ -348,21 +349,30 @@ export async function classifyDirectReferralsByLegUnderRoot({
     const refUserKey = String(ref.userId);
     let cursorUser = refUserKey;
     let leg = null;
+    let depth = 999;
     for (let i = 0; i < MAX_HOPS; i += 1) {
       const link = parentLinkByUser.get(cursorUser);
       if (!link || !link.parent) {
         // Defensive: orphan chain. Fall back to the referral's own
         // `binaryPosition` (best guess) when we can't reach root.
-        if (cursorUser === refUserKey) leg = ref.binaryPosition || null;
+        if (cursorUser === refUserKey) {
+          leg = ref.binaryPosition || null;
+          depth = 1;
+        }
         break;
       }
       if (link.parent === rootKey) {
         leg = link.position;
+        depth = i + 1;
         break;
       }
       cursorUser = link.parent;
     }
-    result.set(String(ref._id), leg);
+    if (includeDepth) {
+      result.set(String(ref._id), { leg, depth });
+    } else {
+      result.set(String(ref._id), leg);
+    }
   }
   return result;
 }

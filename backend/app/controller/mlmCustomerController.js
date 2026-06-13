@@ -1026,6 +1026,7 @@ export const getMyBinaryGenealogy = async (req, res) => {
     const legByReferral = await classifyDirectReferralsByLegUnderRoot({
       rootMembership: membership,
       directReferrals: directs,
+      includeDepth: true,
     });
 
     const shape = (m, actualLeg) => {
@@ -1055,13 +1056,22 @@ export const getMyBinaryGenealogy = async (req, res) => {
     const leftLeg = [];
     const rightLeg = [];
     for (const m of directs) {
-      const leg = legByReferral.get(String(m._id)) || null;
-      if (leg === "L") leftLeg.push(shape(m, leg));
-      else if (leg === "R") rightLeg.push(shape(m, leg));
-      // Unclassifiable (no path back to root) → omitted; would
-      // otherwise show up under the wrong leg and re-introduce the
-      // bug we're fixing.
+      const classification = legByReferral.get(String(m._id)) || { leg: null, depth: 999 };
+      const leg = classification.leg;
+      const depth = classification.depth;
+      if (leg === "L") {
+        const shaped = shape(m, leg);
+        shaped.depth = depth;
+        leftLeg.push(shaped);
+      } else if (leg === "R") {
+        const shaped = shape(m, leg);
+        shaped.depth = depth;
+        rightLeg.push(shaped);
+      }
     }
+
+    leftLeg.sort((a, b) => a.depth - b.depth);
+    rightLeg.sort((a, b) => a.depth - b.depth);
 
     return handleResponse(res, 200, "Binary genealogy", {
       isMember: true,
