@@ -21,6 +21,7 @@ import {
   HiOutlineFolderOpen,
   HiOutlineSwatch,
   HiOutlineSquaresPlus,
+  HiOutlineDocumentText,
 } from "react-icons/hi2";
 import Modal from "@shared/components/ui/Modal";
 import { cn } from "@/lib/utils";
@@ -240,6 +241,7 @@ const ProductManagement = () => {
 
       let matchesStatus = filterStatus === "All";
       if (filterStatus === "Active") matchesStatus = p.status === "active";
+      if (filterStatus === "Draft") matchesStatus = p.status === "inactive";
       if (filterStatus === "Low Stock")
         matchesStatus = p.stock > 0 && p.stock <= resolveLowStockThreshold(p);
       if (filterStatus === "Out of Stock") matchesStatus = p.stock === 0;
@@ -292,6 +294,9 @@ const ProductManagement = () => {
       active:
         summaryStats?.active ??
         safeProducts.filter((p) => p.status === "active").length,
+      draft:
+        summaryStats?.draft ??
+        safeProducts.filter((p) => p.status === "inactive").length,
     }),
     [safeProducts, summaryStats, total],
   );
@@ -405,6 +410,24 @@ const ProductManagement = () => {
     }
   };
 
+  const handlePublishDraft = async (product) => {
+    try {
+      const data = new FormData();
+      data.append("status", "active");
+      
+      const response = await sellerApi.updateProduct(product._id || product.id, data);
+      const approvalStatus = response?.data?.result?.approvalStatus;
+      if (approvalStatus === "pending") {
+        toast.success("Product submitted for admin approval");
+      } else {
+        toast.success("Product published successfully");
+      }
+      fetchProducts();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to publish product");
+    }
+  };
+
   const openEditModal = (item = null) => {
     if (item) {
       setFormData({
@@ -497,7 +520,7 @@ const ProductManagement = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           {
             label: "All Items",
@@ -514,6 +537,14 @@ const ProductManagement = () => {
             color: "text-brand-600",
             bg: "bg-brand-50",
             status: "Active",
+          },
+          {
+            label: "Draft Items",
+            val: stats.draft,
+            icon: HiOutlineDocumentText,
+            color: "text-slate-600",
+            bg: "bg-slate-50",
+            status: "Draft",
           },
           {
             label: "Low Stock",
@@ -758,6 +789,14 @@ const ProductManagement = () => {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end space-x-2">
+                      {p.status === "inactive" && (
+                        <button
+                          onClick={() => handlePublishDraft(p)}
+                          title="Publish"
+                          className="p-1 hover:text-emerald-600 rounded-lg transition-all text-slate-500">
+                          <HiOutlineCheckCircle className="h-4 w-4" />
+                        </button>
+                      )}
                       <button
                         onClick={() => openEditModal(p)}
                         className="p-1 hover:text-brand-600 rounded-lg transition-all text-slate-500">
@@ -794,6 +833,7 @@ const ProductManagement = () => {
             >
               <option value="All">All</option>
               <option value="Active">Active</option>
+              <option value="Draft">Draft</option>
               <option value="Low Stock">Low Stock</option>
               <option value="Out of Stock">Out of Stock</option>
             </select>

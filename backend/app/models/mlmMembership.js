@@ -165,6 +165,8 @@ const mlmMembershipSchema = new mongoose.Schema(
     // Denormalised counters (eventually-consistent with the source data).
     directReferralsCount: { type: Number, default: 0 },
     totalDownlineCount: { type: Number, default: 0 },
+    activeDownlineCount: { type: Number, default: 0 },
+    inactiveDownlineCount: { type: Number, default: 0 },
 
     // Plan A binary pair bonus — counters of THIS member's own direct
     // referrals partitioned by which leg (L/R) of THIS member's binary

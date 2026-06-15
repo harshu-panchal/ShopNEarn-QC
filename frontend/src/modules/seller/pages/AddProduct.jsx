@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useRef, useMemo, useEffect } from "react";
 import Button from "@shared/components/ui/Button";
 import Badge from "@shared/components/ui/Badge";
 import {
@@ -26,13 +26,15 @@ const AddProduct = () => {
   const [modalTab, setModalTab] = useState("general");
   const [isSaving, setIsSaving] = useState(false);
 
+  const randomSuffixRef = useRef(Math.random().toString(36).substring(2, 6));
+
   const makeSku = (name, index = 1) => {
     const prefix =
       String(name || "")
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "")
         .slice(0, 5) || "item";
-    return `${prefix}-${String(index).padStart(3, "0")}`;
+    return `${prefix}-${String(index).padStart(3, "0")}-${randomSuffixRef.current}`;
   };
 
   const isAutoSku = (sku, name, index = 1) =>
@@ -224,18 +226,24 @@ const AddProduct = () => {
           Back to Products
         </Button>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => navigate(-1)}>
+          <Button 
+            variant="outline" 
+            onClick={() => navigate(-1)}
+            className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm font-semibold"
+          >
             Cancel
           </Button>
           <Button
             onClick={handleSave}
             disabled={isSaving}
-            className="min-w-[140px]">
+            className="min-w-[140px] bg-slate-800 text-white hover:bg-slate-900 shadow-md font-semibold border-none">
             {isSaving ? (
               <>
                 <HiOutlineArrowPath className="mr-2 h-5 w-5 animate-spin" />
-                Publishing...
+                {formData.status === "inactive" ? "Saving..." : "Publishing..."}
               </>
+            ) : formData.status === "inactive" ? (
+              "Save as Draft"
             ) : (
               "Save & Publish"
             )}

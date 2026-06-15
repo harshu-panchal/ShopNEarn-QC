@@ -1107,6 +1107,8 @@ function shapeAdminNode(member, position) {
     planAJoinedAt: member.planAJoinedAt || null,
     directReferralsCount: member.directReferralsCount || 0,
     totalDownlineCount: member.totalDownlineCount || 0,
+    activeDownlineCount: member.activeDownlineCount || 0,
+    inactiveDownlineCount: member.inactiveDownlineCount || 0,
     leftLegDirectCount: member.leftLegDirectCount || 0,
     rightLegDirectCount: member.rightLegDirectCount || 0,
     pairsCompleted: member.pairsCompleted || 0,

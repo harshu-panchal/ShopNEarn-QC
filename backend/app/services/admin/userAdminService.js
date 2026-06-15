@@ -34,7 +34,7 @@ export async function getUsersData({ page, limit, skip }) {
         },
       },
     },
-    { $sort: { totalOrders: -1 } },
+    { $sort: { joinedDate: -1 } },
   ];
 
   const [result] = await User.aggregate([

@@ -548,20 +548,71 @@ const GenealogyTreeCanvas = ({
   }, []);
 
   // ----- Zoom (wheel + buttons) -----
+  const adjustZoomCentered = useCallback((delta) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const cx = rect.width / 2;
+    const cy = rect.height / 2;
+
+    setZoom((z) => {
+      const newZoom = Math.max(0.1, Math.min(2.5, z + delta));
+      if (newZoom === z) return z;
+      
+      setPan((p) => {
+        const treeCx = (cx - p.x) / z;
+        const treeCy = (cy - p.y) / z;
+        return {
+          x: cx - treeCx * newZoom,
+          y: cy - treeCy * newZoom,
+        };
+      });
+      return newZoom;
+    });
+  }, []);
+
   const onWheel = useCallback((e) => {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
-    setZoom((z) => Math.max(0.3, Math.min(2.5, z + (e.deltaY < 0 ? 0.08 : -0.08))));
+    if (!containerRef.current) return;
+    
+    const rect = containerRef.current.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+
+    setZoom((z) => {
+      const newZoom = Math.max(0.1, Math.min(2.5, z + (e.deltaY < 0 ? 0.08 : -0.08)));
+      if (newZoom === z) return z;
+      
+      setPan((p) => {
+        const treeCx = (cx - p.x) / z;
+        const treeCy = (cy - p.y) / z;
+        return {
+          x: cx - treeCx * newZoom,
+          y: cy - treeCy * newZoom,
+        };
+      });
+      return newZoom;
+    });
   }, []);
 
   const fitToCenter = useCallback(() => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
+    
+    let newZoom = zoom;
+    if (treeWidth > 0 && treeHeight > 0) {
+      const scaleX = (rect.width - 40) / treeWidth;
+      const scaleY = (rect.height - 40) / treeHeight;
+      newZoom = Math.min(0.5, Math.min(scaleX, scaleY)); // 0.5 will show as 100%
+      newZoom = Math.max(0.1, newZoom);
+      setZoom(newZoom);
+    }
+
     setPan({
-      x: (rect.width - treeWidth * zoom) / 2,
+      x: (rect.width - treeWidth * newZoom) / 2,
       y: 32,
     });
-  }, [treeWidth, zoom]);
+  }, [treeWidth, treeHeight, zoom]);
 
   useEffect(() => {
     if (!loading && treeWidth > 0) {
@@ -726,7 +777,7 @@ const GenealogyTreeCanvas = ({
         </div>
         <div className="flex items-center gap-1 flex-wrap">
           <button
-            onClick={() => setZoom((z) => Math.max(0.3, z - 0.1))}
+            onClick={() => adjustZoomCentered(-0.05)}
             className="w-8 h-8 rounded-md border border-slate-200 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-600"
             aria-label="Zoom out"
             type="button"
@@ -734,10 +785,10 @@ const GenealogyTreeCanvas = ({
             <Minus size={14} />
           </button>
           <span className="text-xs font-bold text-slate-600 w-10 text-center">
-            {Math.round(zoom * 100)}%
+            {Math.round(zoom * 200)}%
           </span>
           <button
-            onClick={() => setZoom((z) => Math.min(2.5, z + 0.1))}
+            onClick={() => adjustZoomCentered(0.05)}
             className="w-8 h-8 rounded-md border border-slate-200 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-600"
             aria-label="Zoom in"
             type="button"
@@ -1344,6 +1395,8 @@ const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
   const right = Number(data.rightLegDirectCount || 0);
   const pairs = Number(data.pairsCompleted || 0);
   const totalDownline = Number(data.totalDownlineCount || 0);
+  const activeDownline = Number(data.activeDownlineCount || 0);
+  const inactiveDownline = Number(data.inactiveDownlineCount || 0);
   const lifetime =
     Number(data.lifetimePlanAEarnings || 0) +
     Number(data.lifetimePlanBEarnings || 0);
@@ -1491,10 +1544,14 @@ const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
 
         {/* Network summary. */}
         <div className="px-4 py-2.5 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50">
-          <div className="flex items-center gap-1 text-[11px] text-slate-600">
-            <Users size={11} />
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-slate-600 leading-tight max-w-[200px]">
+            <Users size={11} className="shrink-0" />
             <span className="font-bold">{totalDownline}</span>
             <span>downline</span>
+            <span className="text-[10px] text-slate-400">
+              (<span className="text-emerald-600 font-semibold">{activeDownline}</span> Active,{" "}
+              <span className="text-rose-600 font-semibold">{inactiveDownline}</span> Inactive)
+            </span>
           </div>
           <div className="flex items-center gap-1 text-[11px] text-slate-700 font-bold">
             <TrendingUp size={11} className="text-emerald-500" />

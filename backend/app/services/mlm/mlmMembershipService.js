@@ -385,11 +385,19 @@ export async function incrementSponsorLegDirectCount({
  * Returns the post-increment count (used by the caller to evaluate
  * milestone bonuses).
  */
-export async function incrementDirectReferralCount(sponsorUserId, { session } = {}) {
+export async function incrementDirectReferralCount(sponsorUserId, { session, status } = {}) {
   if (!sponsorUserId) return 0;
+
+  const incPayload = { directReferralsCount: 1, totalDownlineCount: 1 };
+  if (status === MLM_MEMBERSHIP_STATUS.ACTIVE) {
+    incPayload.activeDownlineCount = 1;
+  } else if (status === MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID) {
+    incPayload.inactiveDownlineCount = 1;
+  }
+
   const updated = await MlmMembership.findOneAndUpdate(
     { userId: sponsorUserId },
-    { $inc: { directReferralsCount: 1, totalDownlineCount: 1 } },
+    { $inc: incPayload },
     { new: true, session },
   );
   return updated ? updated.directReferralsCount : 0;
@@ -399,15 +407,37 @@ export async function incrementDirectReferralCount(sponsorUserId, { session } = 
  * Increment totalDownlineCount on every ancestor in the chain. Bounded
  * by the sponsor chain length (already capped at `sponsorChainMaxDepth`).
  */
-export async function incrementUplineDownlineCounts(sponsorChain, { session } = {}) {
+export async function incrementUplineDownlineCounts(sponsorChain, { session, status } = {}) {
   if (!Array.isArray(sponsorChain) || sponsorChain.length === 0) return;
   // Skip index 0 — that's the direct sponsor, already bumped by
   // incrementDirectReferralCount above. Bump only further upline.
   const tail = sponsorChain.slice(1);
   if (tail.length === 0) return;
+
+  const incPayload = { totalDownlineCount: 1 };
+  if (status === MLM_MEMBERSHIP_STATUS.ACTIVE) {
+    incPayload.activeDownlineCount = 1;
+  } else if (status === MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID) {
+    incPayload.inactiveDownlineCount = 1;
+  }
+
   await MlmMembership.updateMany(
     { userId: { $in: tail } },
-    { $inc: { totalDownlineCount: 1 } },
+    { $inc: incPayload },
+    session ? { session } : {},
+  );
+}
+
+/**
+ * When a member's status changes from REGISTERED_UNPAID to ACTIVE,
+ * flip their count in all ancestors' downline counters.
+ */
+export async function transitionUplineDownlineStatus(sponsorChain, { session } = {}) {
+  if (!Array.isArray(sponsorChain) || sponsorChain.length === 0) return;
+  
+  await MlmMembership.updateMany(
+    { userId: { $in: sponsorChain } },
+    { $inc: { activeDownlineCount: 1, inactiveDownlineCount: -1 } },
     session ? { session } : {},
   );
 }
@@ -539,8 +569,8 @@ export async function assignSponsor({
 
   await membership.save({ session });
 
-  await incrementDirectReferralCount(sponsorMembership.userId, { session });
-  await incrementUplineDownlineCounts(membership.sponsorChain, { session });
+  await incrementDirectReferralCount(sponsorMembership.userId, { session, status: membership.status });
+  await incrementUplineDownlineCounts(membership.sponsorChain, { session, status: membership.status });
 
   // Plan A binary pair bonus: bump the sponsor's leg-direct counter
   // for whichever subtree of the sponsor the new member landed in.

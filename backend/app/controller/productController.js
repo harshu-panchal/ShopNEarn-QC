@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import Product from "../models/product.js";
 import { handleResponse } from "../utils/helper.js";
 import { slugify } from "../utils/slugify.js";
@@ -73,7 +74,8 @@ function makeProductSku(name, index = 1) {
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "")
     .slice(0, 5) || "item";
-  return `${prefix}-${String(index).padStart(3, "0")}`;
+  const randomSuffix = crypto.randomBytes(2).toString("hex");
+  return `${prefix}-${String(index).padStart(3, "0")}-${randomSuffix}`;
 }
 
 function parseJsonIfString(value) {
@@ -473,6 +475,7 @@ export const getSellerProducts = async (req, res) => {
       pendingCount,
       approvedCount,
       rejectedCount,
+      draftCount,
     ] = await Promise.all([
       Product.find(query)
         .select(
@@ -554,6 +557,7 @@ export const getSellerProducts = async (req, res) => {
         ...baseSellerQuery,
         approvalStatus: PRODUCT_APPROVAL_STATUS.REJECTED,
       }),
+      Product.countDocuments({ ...baseSellerQuery, status: "inactive" }),
     ]);
 
     return handleResponse(res, 200, "Seller products fetched", {
@@ -570,6 +574,7 @@ export const getSellerProducts = async (req, res) => {
         pending: pendingCount,
         approved: approvedCount,
         rejected: rejectedCount,
+        draft: draftCount,
       },
     });
   } catch (error) {
@@ -650,7 +655,8 @@ export const createProduct = async (req, res) => {
     
     // Auto-generate slug
     if (!productData.slug || productData.slug.trim() === "") {
-      productData.slug = slugify(productData.name);
+      const randomSuffix = crypto.randomBytes(3).toString("hex");
+      productData.slug = slugify(productData.name) + "-" + randomSuffix;
     } else {
       productData.slug = slugify(productData.slug);
     }

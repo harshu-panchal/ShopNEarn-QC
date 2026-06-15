@@ -16,6 +16,7 @@ import {
   assignSponsor,
   createOrGetMembership,
   syncCustomerMlmProjection,
+  transitionUplineDownlineStatus,
 } from "./mlmMembershipService.js";
 import {
   computeAndCreditBinaryPairBonus,
@@ -145,6 +146,8 @@ export async function activateMembershipFromJoiningPayment(
       membership.status = MLM_MEMBERSHIP_STATUS.ACTIVE;
       membership.planAJoinedAt = membership.planAJoinedAt || new Date();
       await membership.save({ session });
+
+      await transitionUplineDownlineStatus(membership.sponsorChain, { session });
     }
 
     // Prefer the snapshot taken at intent time; fall back to the live
@@ -388,6 +391,8 @@ export async function adminActivateMembership({
     membership.markModified("meta");
 
     await membership.save({ session });
+
+    await transitionUplineDownlineStatus(membership.sponsorChain, { session });
 
     // Release any held pair-bonuses for this member's sponsor — same
     // path the paid activation takes. Idempotent: re-running emits

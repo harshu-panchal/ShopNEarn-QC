@@ -46,7 +46,7 @@ import mongoose from "mongoose";
 import MlmMembership from "../../models/mlmMembership.js";
 import MlmWithdrawalRequest from "../../models/mlmWithdrawalRequest.js";
 import Customer from "../../models/customer.js";
-import { MLM_WITHDRAWAL_STATUS } from "../../constants/mlm.js";
+import { MLM_WITHDRAWAL_STATUS, MLM_MEMBERSHIP_STATUS } from "../../constants/mlm.js";
 
 import { rejectWithdrawalRequest } from "./mlmWithdrawalService.js";
 import { syncCustomerMlmProjection } from "./mlmMembershipService.js";
@@ -364,6 +364,11 @@ export async function softDeleteMlmMember({
           // dropped out → -1 to total downline.
           totalDownlineCount: -1,
         };
+        if (target.status === MLM_MEMBERSHIP_STATUS.ACTIVE) {
+          inc.activeDownlineCount = -1;
+        } else if (target.status === MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID) {
+          inc.inactiveDownlineCount = -1;
+        }
         // Old leg counter (member's slot under sponsor).
         if (target.binaryPosition === "L") inc.leftLegDirectCount = -1;
         else if (target.binaryPosition === "R") inc.rightLegDirectCount = -1;
@@ -384,9 +389,15 @@ export async function softDeleteMlmMember({
       // member from their downline count.
       const tailAncestors = targetSponsorChain.slice(1);
       if (tailAncestors.length > 0) {
+        const tailInc = { totalDownlineCount: -1 };
+        if (target.status === MLM_MEMBERSHIP_STATUS.ACTIVE) {
+          tailInc.activeDownlineCount = -1;
+        } else if (target.status === MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID) {
+          tailInc.inactiveDownlineCount = -1;
+        }
         await MlmMembership.updateMany(
           { userId: { $in: tailAncestors } },
-          { $inc: { totalDownlineCount: -1 } },
+          { $inc: tailInc },
           { session },
         );
       }
