@@ -47,15 +47,15 @@ const CategoryProductsPage = () => {
                 Number.isFinite(currentLocation?.latitude) &&
                 Number.isFinite(currentLocation?.longitude);
 
+            const params = { categoryId: catId };
+            if (hasValidLocation) {
+                params.lat = currentLocation.latitude;
+                params.lng = currentLocation.longitude;
+            }
+
             // Fetch products and categories in parallel instead of sequentially
             const [prodRes, catRes] = await Promise.all([
-                hasValidLocation
-                    ? customerApi.getProducts({
-                        categoryId: catId,
-                        lat: currentLocation.latitude,
-                        lng: currentLocation.longitude,
-                    })
-                    : Promise.resolve({ data: { success: true, result: { items: [] } } }),
+                customerApi.getProducts(params),
                 customerApi.getCategories({ tree: true }),
             ]);
 

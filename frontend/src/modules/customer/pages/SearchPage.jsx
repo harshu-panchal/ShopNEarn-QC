@@ -108,21 +108,17 @@ const SearchPage = () => {
     // Fetch products
     useEffect(() => {
         const fetchProducts = async () => {
-            const hasValidLocation =
-                Number.isFinite(currentLocation?.latitude) &&
-                Number.isFinite(currentLocation?.longitude);
-            if (!hasValidLocation) {
-                setAllProducts([]);
-                setIsLoading(false);
-                return;
-            }
             setIsLoading(true);
             try {
-                const response = await customerApi.getProducts({
-                    limit: 100,
-                    lat: currentLocation.latitude,
-                    lng: currentLocation.longitude,
-                });
+                const hasValidLocation =
+                    Number.isFinite(currentLocation?.latitude) &&
+                    Number.isFinite(currentLocation?.longitude);
+                const params = { limit: 100 };
+                if (hasValidLocation) {
+                    params.lat = currentLocation.latitude;
+                    params.lng = currentLocation.longitude;
+                }
+                const response = await customerApi.getProducts(params);
                 if (response.data.success) {
                     const rawResult = response.data.result;
                     const dbProds = Array.isArray(response.data.results)

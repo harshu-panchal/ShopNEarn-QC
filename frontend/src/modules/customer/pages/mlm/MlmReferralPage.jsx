@@ -12,6 +12,7 @@ const MlmReferralPage = () => {
     const [membership, setMembership] = useState(null);
     const [referrals, setReferrals] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [leg, setLeg] = useState('L');
 
     useEffect(() => {
         let mounted = true;
@@ -60,7 +61,7 @@ const MlmReferralPage = () => {
     // `/customer-auth?ref=…` path is also registered in `AppRouter.jsx`
     // so older links shared on WhatsApp / SMS keep working — but new
     // shares should use `/signup` for the cleanest UX.
-    const shareUrl = `${window.location.origin}/signup?ref=${encodeURIComponent(code)}`;
+    const shareUrl = `${window.location.origin}/signup?ref=${encodeURIComponent(code)}&leg=${leg}`;
     // `shareMessage` is the URL-free invite copy. The Web Share API
     // appends `url` to `text` on most platforms, so embedding the URL
     // here would produce a duplicate link. The clipboard fallback
@@ -133,13 +134,29 @@ const MlmReferralPage = () => {
                     <div className="lg:col-span-2 space-y-4">
                         <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
                             <h3 className="text-sm font-bold uppercase tracking-wide text-slate-600 mb-2">Your Code</h3>
-                            <div className="flex items-center justify-between gap-3 bg-slate-50 rounded-xl px-3 sm:px-4 py-4 border-2 border-dashed border-slate-300">
+                            <div className="flex items-center justify-between gap-3 bg-slate-50 rounded-xl px-3 sm:px-4 py-4 border-2 border-dashed border-slate-300 mb-4">
                                 <code className="text-xl sm:text-2xl font-black tracking-widest text-slate-900 break-all min-w-0">{code}</code>
                                 <button
                                     onClick={() => handleCopy(code)}
                                     className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 uppercase tracking-widest hover:underline shrink-0"
                                 >
                                     <Copy size={14} /> Copy
+                                </button>
+                            </div>
+
+                            {/* Leg Link Selector */}
+                            <div className="flex bg-slate-100 rounded-lg p-1 mb-2">
+                                <button
+                                    onClick={() => setLeg('L')}
+                                    className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors uppercase tracking-wider ${leg === 'L' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    Left Leg Link
+                                </button>
+                                <button
+                                    onClick={() => setLeg('R')}
+                                    className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors uppercase tracking-wider ${leg === 'R' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    Right Leg Link
                                 </button>
                             </div>
 

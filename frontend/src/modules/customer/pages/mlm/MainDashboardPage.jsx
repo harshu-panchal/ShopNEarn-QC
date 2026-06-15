@@ -36,6 +36,7 @@ import {
   ShieldAlert,
   X,
   Menu,
+  Edit2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../services/mlmApi";
@@ -62,7 +63,7 @@ const MainDashboardPage = () => {
   // Profile Card can render contact info (name, phone, email,
   // user id, member-since) without an extra round-trip — the
   // /customer/profile call already ran during AuthProvider mount.
-  const { user } = useAuth();
+  const { user, login } = useAuth();
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState(null);
   const [pendingJoining, setPendingJoining] = useState(null);
@@ -125,8 +126,7 @@ const MainDashboardPage = () => {
       />
     );
   }
-
-  return <MemberDashboard overview={overview} navigate={navigate} user={user} />;
+  return <MemberDashboard overview={overview} navigate={navigate} user={user} login={login} />;
 };
 
 // Page-level mobile header. Hidden on desktop (`md:hidden`) because
@@ -368,58 +368,9 @@ const PendingPaymentBanner = ({ pending, onResume, onRetry, retrying }) => {
      wallet balance, left/right leg counts, pending payout, today's
      earnings, next-pair preview.
    ================================================================ */
-const MemberDashboard = ({ overview, navigate, user }) => {
+const MemberDashboard = ({ overview, navigate, user, login }) => {
   const { membership, wallet, earnings, referrals, binary, payout, dailyCap, config } = overview;
   const isUnpaid = !!membership.isRegisteredUnpaid;
-
-  // Canonical share URL — every signup that lands on `/signup?ref=…`
-  // pre-fills the referral code, so this is the only link the
-  // customer ever needs to hand out.
-  const shareUrl = membership.referralCode
-    ? `${window.location.origin}/signup?ref=${membership.referralCode}`
-    : "";
-
-  const copyReferralCode = () => {
-    if (!membership.referralCode) return;
-    navigator.clipboard?.writeText(membership.referralCode);
-    toast.success("Referral code copied!");
-  };
-
-  const copyShareLink = () => {
-    if (!shareUrl) return;
-    navigator.clipboard?.writeText(shareUrl);
-    toast.success("Signup link copied!");
-  };
-
-  const shareReferral = async () => {
-    if (!membership.referralCode) return;
-    // The Web Share API on most platforms (Android, iOS, WhatsApp,
-    // Telegram, etc.) appends `url` to the end of `text` when both are
-    // supplied — so embedding the URL inside `text` AND passing `url`
-    // produces a duplicate link in the final share payload. We pass
-    // them separately so the platform composes the message cleanly:
-    //   - `text` = the human-readable invite (no URL)
-    //   - `url`  = the canonical signup link (added by the OS)
-    //
-    // The clipboard fallback joins them with a newline so the user
-    // still gets a single coherent message when navigator.share is
-    // unavailable.
-    const message = `Join me on the rewards program! Sign up with my referral code ${membership.referralCode}.`;
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: "Join the Rewards Program",
-          text: message,
-          url: shareUrl,
-        });
-        return;
-      }
-      navigator.clipboard?.writeText(`${message}\n${shareUrl}`);
-      toast.success("Share link copied!");
-    } catch {
-      /* ignore */
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24 md:pb-12">
@@ -460,10 +411,6 @@ const MemberDashboard = ({ overview, navigate, user }) => {
           <div className="md:col-span-5 lg:col-span-4">
             <ReferralCodeCard
               code={membership.referralCode}
-              shareUrl={shareUrl}
-              onCopyCode={copyReferralCode}
-              onCopyLink={copyShareLink}
-              onShare={shareReferral}
             />
           </div>
         </div>
@@ -475,7 +422,7 @@ const MemberDashboard = ({ overview, navigate, user }) => {
             on every breakpoint; the internal layout is the one that
             adapts (single column on mobile, avatar+name on the left
             with a 4-cell info grid on desktop). */}
-        <ProfileCard user={user} membership={membership} />
+        <ProfileCard user={user} membership={membership} login={login} />
 
         {/* Wallet snapshot — 2-up on every breakpoint. Pinned above
             the KPI strip so the customer always sees their available
@@ -894,13 +841,45 @@ const MyPlanCard = ({ membership, earnings, config }) => {
  * from `sm:` upwards. The signup link is shown read-only beneath
  * the code so users can see exactly what they're about to share.
  */
-const ReferralCodeCard = ({
-  code,
-  shareUrl,
-  onCopyCode,
-  onCopyLink,
-  onShare,
-}) => (
+const ReferralCodeCard = ({ code }) => {
+  const [leg, setLeg] = useState('L');
+  
+  const shareUrl = code
+    ? `${window.location.origin}/signup?ref=${code}&leg=${leg}`
+    : "";
+
+  const onCopyCode = () => {
+    if (!code) return;
+    navigator.clipboard?.writeText(code);
+    toast.success("Referral code copied!");
+  };
+
+  const onCopyLink = () => {
+    if (!shareUrl) return;
+    navigator.clipboard?.writeText(shareUrl);
+    toast.success(`${leg === 'L' ? 'Left' : 'Right'} leg link copied!`);
+  };
+
+  const onShare = async () => {
+    if (!code) return;
+    const message = `Join me on the rewards program! Sign up with my referral code ${code}.`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Join the Rewards Program",
+          text: message,
+          url: shareUrl,
+        });
+        return;
+      }
+      navigator.clipboard?.writeText(`${message}\n${shareUrl}`);
+      toast.success("Share link copied!");
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
   <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
     <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
       <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
@@ -911,7 +890,7 @@ const ReferralCodeCard = ({
       </span>
     </div>
 
-    <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-indigo-50 via-violet-50 to-purple-50 border-2 border-dashed border-indigo-200 rounded-xl px-3 sm:px-4 py-4">
+    <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-indigo-50 via-violet-50 to-purple-50 border-2 border-dashed border-indigo-200 rounded-xl px-3 sm:px-4 py-4 mb-4">
       <code className="text-xl sm:text-2xl font-black tracking-widest text-indigo-900 break-all min-w-0">
         {code || "—"}
       </code>
@@ -923,10 +902,26 @@ const ReferralCodeCard = ({
       </button>
     </div>
 
+    {/* Leg Link Selector */}
+    <div className="flex bg-slate-100 rounded-lg p-1 mb-2">
+      <button
+        onClick={() => setLeg('L')}
+        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors uppercase tracking-wider ${leg === 'L' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}
+      >
+        Left Leg Link
+      </button>
+      <button
+        onClick={() => setLeg('R')}
+        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors uppercase tracking-wider ${leg === 'R' ? 'bg-white shadow-sm text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}
+      >
+        Right Leg Link
+      </button>
+    </div>
+
     {/* Signup-link preview — read-only, single line, clipped so even
         very long origins (with port numbers) don't expand the card. */}
     {shareUrl && (
-      <div className="mt-3 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+      <div className="mt-2 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
         <LinkIcon size={14} className="text-slate-400 shrink-0" />
         <p
           className="text-[11px] text-slate-600 font-mono truncate flex-1 min-w-0"
@@ -937,13 +932,7 @@ const ReferralCodeCard = ({
       </div>
     )}
 
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
-      <button
-        onClick={onCopyCode}
-        className="bg-slate-100 hover:bg-slate-200 transition-colors px-3 py-2 rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold text-slate-700"
-      >
-        <Copy size={14} /> Copy Code
-      </button>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
       <button
         onClick={onCopyLink}
         disabled={!shareUrl}
@@ -963,7 +952,8 @@ const ReferralCodeCard = ({
       Share this code — every signup grows your team and unlocks new bonuses.
     </p>
   </div>
-);
+  );
+};
 
 /**
  * ProfileCard
@@ -988,7 +978,7 @@ const ReferralCodeCard = ({
  * stale cache) by rendering placeholder "—" cells instead of
  * blank space, so the card never collapses to zero height.
  */
-const ProfileCard = ({ user, membership }) => {
+const ProfileCard = ({ user, membership, login }) => {
   const initial = (user?.name || "U").trim().charAt(0).toUpperCase();
   const handle = user?.userId || null;
   const memberSince = membership?.joinedAt
@@ -1011,6 +1001,7 @@ const ProfileCard = ({ user, membership }) => {
   // pattern; we reuse the same endpoint here so the two surfaces
   // can never drift in what they expose.
   const [credsOpen, setCredsOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const copyHandle = () => {
     if (!handle) return;
@@ -1060,21 +1051,28 @@ const ProfileCard = ({ user, membership }) => {
               </p>
             )}
           </div>
-          {/* Show-credentials action — pinned right on mobile (next
-              to the name) and reappears as a full-width pill in the
-              desktop info grid below. Mobile keeps it as a compact
-              icon button so it doesn't crowd the avatar row; the
-              `key` icon signals "view login info" without needing a
-              text label at that size. */}
-          <button
-            type="button"
-            onClick={() => setCredsOpen(true)}
-            className="md:hidden shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors"
-            aria-label="Show credentials"
-            title="Show credentials"
-          >
-            <KeyRound size={16} />
-          </button>
+          {/* Actions row — pinned right on mobile (next to the name).
+              We wrap both Edit and Show-credentials in a flex box. */}
+          <div className="md:hidden flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setEditOpen(true)}
+              className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors"
+              aria-label="Edit profile"
+              title="Edit profile"
+            >
+              <Edit2 size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setCredsOpen(true)}
+              className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors"
+              aria-label="Show credentials"
+              title="Show credentials"
+            >
+              <KeyRound size={16} />
+            </button>
+          </div>
         </div>
 
         {/* Info grid — Phone / Email / Member since / Show
@@ -1098,16 +1096,26 @@ const ProfileCard = ({ user, membership }) => {
             label="Member since"
             value={memberSince || "—"}
           />
-          <button
-            type="button"
-            onClick={() => setCredsOpen(true)}
-            className="hidden md:flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs uppercase tracking-wider rounded-xl py-2.5 transition-colors"
-          >
-            <KeyRound size={14} /> Show credentials
-          </button>
+          <div className="hidden md:grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setEditOpen(true)}
+              className="flex items-center justify-center gap-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl py-2.5 transition-colors"
+            >
+              <Edit2 size={14} /> Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => setCredsOpen(true)}
+              className="flex items-center justify-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs uppercase tracking-wider rounded-xl py-2.5 transition-colors"
+            >
+              <KeyRound size={14} /> Creds
+            </button>
+          </div>
         </div>
       </div>
       {credsOpen && <CredentialsModal onClose={() => setCredsOpen(false)} />}
+      {editOpen && <EditProfileModal onClose={() => setEditOpen(false)} user={user} login={login} />}
     </div>
   );
 };
@@ -1532,6 +1540,155 @@ const DailyCapMeter = ({ cap, used }) => {
       <p className="mt-2 text-[10px] text-slate-500">
         Earnings beyond the daily cap roll over to the next IST day automatically.
       </p>
+    </div>
+  );
+};
+
+/**
+ * EditProfileModal
+ *
+ * Lightweight modal to edit user's name, email, and password.
+ */
+const EditProfileModal = ({ onClose, user, login }) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: user?.name || '',
+    email: user?.email || '',
+    password: ''
+  });
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      const response = await customerApi.updateProfile(formData);
+      const updatedUser = response.data.result;
+
+      // Update local auth state
+      login({ ...user, ...updatedUser });
+
+      toast.success('Profile updated successfully!');
+      onClose();
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update profile');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-100 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-profile-modal-title"
+    >
+      <div
+        className="bg-white rounded-3xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+              <Edit2 size={18} />
+            </div>
+            <div className="min-w-0">
+              <h2
+                id="edit-profile-modal-title"
+                className="text-base font-bold text-slate-900 truncate"
+              >
+                Edit Profile
+              </h2>
+              <p className="text-[11px] text-slate-500 truncate">
+                Update your account details
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 -mr-1.5 rounded-full text-slate-500 hover:bg-slate-100 transition-colors shrink-0"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-5 py-5">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Full Name</label>
+              <div className="flex items-center gap-3 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-500/10 transition-all">
+                <UserCircle2 size={20} className="text-slate-400" />
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  className="bg-transparent w-full text-slate-800 font-bold outline-none placeholder:font-medium"
+                  placeholder="Enter your name"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email Address</label>
+              <div className="flex items-center gap-3 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-500/10 transition-all">
+                <Mail size={20} className="text-slate-400" />
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  className="bg-transparent w-full text-slate-800 font-bold outline-none placeholder:font-medium"
+                  placeholder="Enter email address"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">New Password (optional)</label>
+              <div className="flex items-center gap-3 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-500/10 transition-all">
+                <KeyRound size={20} className="text-slate-400" />
+                <input
+                  type="text"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  className="bg-transparent w-full text-slate-800 font-bold outline-none placeholder:font-medium"
+                  placeholder="Leave blank to keep current"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="mt-2 w-full py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isLoading ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : (
+                <Edit2 size={20} />
+              )}
+              {isLoading ? 'Saving...' : 'Save Changes'}
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 };

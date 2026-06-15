@@ -33,32 +33,15 @@ export async function getNearbySellerIdsForCustomer(lat, lng) {
   const fetchFn = async () => {
     const sellers = await Seller.find({
       isActive: true,
-      location: {
-        $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [lng, lat],
-          },
-          $maxDistance: MAX_SELLER_SEARCH_DISTANCE_M,
-        },
-      },
     })
-      .select("_id location serviceRadius")
+      .select("_id")
       .lean();
 
-    return sellers
-      .filter((seller) => {
-        const coords = seller?.location?.coordinates;
-        if (!Array.isArray(coords) || coords.length < 2) return false;
-        const [sellerLng, sellerLat] = coords;
-        if (!Number.isFinite(sellerLat) || !Number.isFinite(sellerLng)) {
-          return false;
-        }
-        const distanceKm = calculateDistance(lat, lng, sellerLat, sellerLng);
-        return distanceKm <= (seller.serviceRadius || 5);
-      })
-      .map((seller) => String(seller._id));
+    return sellers.map((seller) => String(seller._id));
   };
 
-  return getOrSet(buildNearbySellersKey(lat, lng), fetchFn, getTTL("nearbySellers"));
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+  const cacheKey = hasCoords ? buildNearbySellersKey(lat, lng) : buildKey("sellers", "nearby", "global");
+
+  return getOrSet(cacheKey, fetchFn, getTTL("nearbySellers"));
 }

@@ -15,52 +15,51 @@ import { creditWallet } from "../finance/walletService.js";
 import { getSignupBonusConfig } from "./mlmConfigService.js";
 
 /**
- * mlmSignupBonusService — flat shopping-wallet credit fired when a
- * Customer's MlmMembership is minted (state = REGISTERED_UNPAID).
+ * mlmSignupBonusService — signup bonus credits for the MLM program.
  *
- * Two credits per call, both in the SAME caller-owned session:
+ * Two distinct credit moments, each with its own entry point:
  *
- *   1. New customer (self)   →   `signupBonusSelfAmount`     to their
- *      `shopping` wallet bucket.
- *   2. Sponsor               →   `signupBonusSponsorAmount`  to their
- *      `shopping` wallet bucket.
+ *   1. `applyRegistrationBonusInSession` — fires the moment a new
+ *      MlmMembership is minted (status = REGISTERED_UNPAID). Only
+ *      credits the SPONSOR (₹50 by default) to their shopping wallet.
+ *      The new customer does NOT receive a self-bonus at this stage —
+ *      it is deferred to activation so the money is only granted once
+ *      the customer has confirmed intent by paying the joining fee.
  *
- * Both go to `shopping` (per the PO clarification on the redesign
- * thread) so the money is checkout-spendable but NOT withdrawable as
- * cash. Sponsor's bonus fires regardless of the sponsor's lifecycle
- * status (ACTIVE / REGISTERED_UNPAID) — this is marketing acquisition
- * spend, not earned commission, so the standard "recipient must be
- * ACTIVE" rule of `creditBonusToEarningsWallet` does not apply.
+ *   2. `applySelfSignupBonusAtActivation` — fires inside
+ *      `mlmActivationService.activateMembershipFromJoiningPayment`
+ *      after the joining payment is CAPTURED. Credits ₹100 (default)
+ *      to the NEW CUSTOMER's shopping wallet as a welcome bonus.
  *
- * Atomicity contract:
- *   - REQUIRES the caller's open mongoose `session`. Wallet credits +
- *     ledger entries + commission events + the membership flag bump
- *     all commit/rollback as one unit with the signup transaction.
- *   - REQUIRES a fresh `MlmMembership` instance (already persisted in
- *     the session) so the flag bump can save inside the same txn.
+ * Both go to the `shopping` wallet bucket — usable at checkout but
+ * NOT withdrawable as cash (per PO decision).
  *
- * Idempotency contract:
+ * Idempotency contract (same for both entry points):
  *   - `LedgerEntry.idempotencyKey` (partial unique index) is the real
  *     backstop — duplicate inserts collapse to no-ops at the DB.
  *   - `MlmCommissionEvent.idempotencyKey` (partial unique index) does
  *     the same for the audit row.
  *   - The membership-level `signupBonusCreditedAt` flag is the fast-
  *     path: when set we exit early without touching wallets.
- *   - Result: re-running the helper for an already-credited member
- *     returns `{ skipped: "ALREADY_CREDITED" }` and writes nothing.
+ */
+
+/**
+ * Credit the SPONSOR's signup acquisition bonus (₹50 by default) to
+ * their shopping wallet. Called inside the membership-creation
+ * transaction when a new customer registers with a referral code.
  *
- * Disabled / zero-amount short-circuit:
- *   - When `signupBonusEnabled === false`, returns `{ skipped: "DISABLED" }`
- *     immediately. Wallets/ledger untouched.
- *   - When BOTH amounts are 0, returns `{ skipped: "ZERO_AMOUNT" }`.
+ * The self-bonus (₹100) is NOT credited here — it fires later at
+ * activation via `applySelfSignupBonusAtActivation`.
  *
- * Sponsor handling:
- *   - When `sponsorUserId` is null/undefined (legacy data — current
- *     product rules require a sponsor), the self-credit still fires
- *     but the sponsor-credit is silently skipped.
- *   - When the new customer IS their own sponsor (defensive — should
- *     never happen in practice), the sponsor-credit is skipped to
- *     avoid double-paying the same wallet.
+ * @param {object} opts
+ * @param {mongoose.Types.ObjectId} opts.newCustomerId
+ * @param {MlmMembership}           opts.newMembership   - already saved, status REGISTERED_UNPAID
+ * @param {mongoose.Types.ObjectId} [opts.sponsorUserId]
+ * @param {MlmMembership}           [opts.sponsorMembership]
+ * @param {mongoose.ClientSession}  opts.session
+ * @param {string|null}             [opts.correlationId]
+ *
+ * @returns {Promise<{skipped: string|null, sponsorCredit: object|null}>}
  */
 export async function applyRegistrationBonusInSession({
   newCustomerId,
@@ -81,13 +80,9 @@ export async function applyRegistrationBonusInSession({
     );
   }
 
-  // Fast-path: already credited for this member.
+  // Fast-path: already credited for this member (idempotency guard).
   if (newMembership.signupBonusCreditedAt) {
-    return {
-      skipped: "ALREADY_CREDITED",
-      selfCredit: null,
-      sponsorCredit: null,
-    };
+    return { skipped: "ALREADY_CREDITED", selfCredit: null, sponsorCredit: null };
   }
 
   const cfg = await getSignupBonusConfig();
@@ -98,11 +93,14 @@ export async function applyRegistrationBonusInSession({
     return { skipped: "ZERO_AMOUNT", selfCredit: null, sponsorCredit: null };
   }
 
-  const selfIdempotencyKey =
-    `${MLM_IDEMPOTENCY_PREFIX.SIGNUP_BONUS_SELF}-${String(newCustomerId)}`;
-
+  // ── Self credit ────────────────────────────────────────────────────
+  // Credit ₹100 (or configured amount) to the NEW USER's shopping
+  // wallet immediately at account creation so they see a non-zero
+  // balance before paying the joining fee.
   let selfCredit = null;
   if (cfg.selfAmount > 0) {
+    const selfIdempotencyKey =
+      `${MLM_IDEMPOTENCY_PREFIX.SIGNUP_BONUS_SELF}-${String(newCustomerId)}`;
     selfCredit = await creditMemberSignupBonus({
       recipientUserId: newCustomerId,
       recipientMembership: newMembership,
@@ -110,7 +108,7 @@ export async function applyRegistrationBonusInSession({
       bonusType: MLM_BONUS_TYPE.SIGNUP_BONUS_SELF,
       ledgerType: LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SELF,
       ledgerReference: selfIdempotencyKey,
-      ledgerDescription: "MLM signup bonus (new member)",
+      ledgerDescription: "MLM signup bonus — welcome credit",
       idempotencyKey: selfIdempotencyKey,
       correlationId,
       meta: {
@@ -123,32 +121,33 @@ export async function applyRegistrationBonusInSession({
     });
   }
 
-  // Sponsor credit — skip silently when there's no sponsor or when
-  // the new customer is somehow their own sponsor.
+  // ── Sponsor credit ─────────────────────────────────────────────────
+  // Credit ₹50 (or configured amount) to the SPONSOR's shopping wallet.
+  // Skip silently when there's no sponsor or the new customer is
+  // somehow their own sponsor.
   let sponsorCredit = null;
   const sameAsSelf =
     sponsorUserId && String(sponsorUserId) === String(newCustomerId);
+
   if (cfg.sponsorAmount > 0 && sponsorUserId && !sameAsSelf) {
     const sponsorIdempotencyKey =
       `${MLM_IDEMPOTENCY_PREFIX.SIGNUP_BONUS_SPONSOR}-${String(sponsorUserId)}-${String(newCustomerId)}`;
-    // Look up the sponsor's membership for the commission-event row's
-    // `recipientMembershipId` field. If the caller already has it
-    // (`sponsorMembership`), reuse to save a roundtrip. Falling back
-    // to `findOne` keeps the call site optional.
+
     let sponsorMemDoc = sponsorMembership || null;
     if (!sponsorMemDoc) {
       sponsorMemDoc = await MlmMembership.findOne({
         userId: sponsorUserId,
       }).session(session);
     }
+
     sponsorCredit = await creditMemberSignupBonus({
       recipientUserId: sponsorUserId,
-      recipientMembership: sponsorMemDoc, // may be null — handled below
+      recipientMembership: sponsorMemDoc,
       amount: cfg.sponsorAmount,
       bonusType: MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR,
       ledgerType: LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SPONSOR,
       ledgerReference: sponsorIdempotencyKey,
-      ledgerDescription: "MLM signup bonus (referral acquisition)",
+      ledgerDescription: "MLM signup bonus — referral acquired",
       idempotencyKey: sponsorIdempotencyKey,
       correlationId,
       meta: {
@@ -161,10 +160,7 @@ export async function applyRegistrationBonusInSession({
     });
   }
 
-  // Flip the membership flag inside the same session so the next
-  // re-entry short-circuits at the top of this function. Done last
-  // so an error in the credit path leaves the flag null and the
-  // signup transaction rolls back cleanly.
+  // Stamp the flag so re-runs short-circuit at the top of this function.
   newMembership.signupBonusCreditedAt = new Date();
   await newMembership.save({ session });
 
@@ -176,19 +172,95 @@ export async function applyRegistrationBonusInSession({
 }
 
 /**
+ * Credit the NEW CUSTOMER's self signup bonus (₹100 by default) to
+ * their shopping wallet. Must be called AFTER the joining payment is
+ * CAPTURED (inside `mlmActivationService.activateMembershipFromJoiningPayment`).
+ *
+ * This is intentionally separate from `applyRegistrationBonusInSession`
+ * so the customer only receives the bonus once they've confirmed intent
+ * by paying the joining fee — preventing abuse where someone registers
+ * under a sponsor code just to grab the ₹100 without ever paying.
+ *
+ * Idempotent: re-running after `signupBonusCreditedAt` is set returns
+ * `{ skipped: "ALREADY_CREDITED" }` without touching the wallet.
+ *
+ * @param {object} opts
+ * @param {mongoose.Types.ObjectId} opts.newCustomerId
+ * @param {MlmMembership}           opts.newMembership   - status ACTIVE at this point
+ * @param {mongoose.ClientSession}  opts.session
+ * @param {string|null}             [opts.correlationId]
+ *
+ * @returns {Promise<{skipped: string|null, selfCredit: object|null}>}
+ */
+export async function applySelfSignupBonusAtActivation({
+  newCustomerId,
+  newMembership,
+  session,
+  correlationId = null,
+}) {
+  if (!session) {
+    throw new Error(
+      "applySelfSignupBonusAtActivation requires an open mongoose session.",
+    );
+  }
+  if (!newCustomerId || !newMembership) {
+    throw new Error(
+      "applySelfSignupBonusAtActivation requires `newCustomerId` and `newMembership`.",
+    );
+  }
+
+  // Fast-path: already credited for this member (idempotency guard).
+  if (newMembership.signupBonusCreditedAt) {
+    return { skipped: "ALREADY_CREDITED", selfCredit: null };
+  }
+
+  const cfg = await getSignupBonusConfig();
+  if (!cfg.enabled) {
+    return { skipped: "DISABLED", selfCredit: null };
+  }
+  if (cfg.selfAmount <= 0) {
+    return { skipped: "ZERO_SELF_AMOUNT", selfCredit: null };
+  }
+
+  const selfIdempotencyKey =
+    `${MLM_IDEMPOTENCY_PREFIX.SIGNUP_BONUS_SELF}-${String(newCustomerId)}`;
+
+  // Credit ₹100 (or configured amount) to the NEW USER's shopping wallet.
+  const selfCredit = await creditMemberSignupBonus({
+    recipientUserId: newCustomerId,
+    recipientMembership: newMembership,
+    amount: cfg.selfAmount,
+    bonusType: MLM_BONUS_TYPE.SIGNUP_BONUS_SELF,
+    ledgerType: LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SELF,
+    ledgerReference: selfIdempotencyKey,
+    ledgerDescription: "MLM signup bonus — welcome credit on plan activation",
+    idempotencyKey: selfIdempotencyKey,
+    correlationId,
+    meta: {
+      mlmEvent: "SIGNUP_BONUS_SELF",
+      newCustomerId: String(newCustomerId),
+    },
+    sourceUserId: null,
+    session,
+  });
+
+  // Stamp the flag so re-runs short-circuit at the top of this function.
+  // Done last so an error in the credit path leaves the flag null and
+  // the transaction rolls back cleanly.
+  newMembership.signupBonusCreditedAt = new Date();
+  await newMembership.save({ session });
+
+  return {
+    skipped: null,
+    selfCredit,
+  };
+}
+
+/**
  * Internal helper — one wallet credit + matching commission event.
  *
- * Mirrors the wallet+ledger+event triplet that
- * `mlmBonusEngineService.creditBonusToEarningsWallet` writes for
- * commission credits, minus the daily-cap, lifetime-earnings,
- * plan-B-auto-upgrade and mentor-royalty cascades. Those don't apply
- * to a flat marketing acquisition credit.
- *
- * `recipientMembership` is optional — the commission event will
- * carry `recipientMembershipId: null` when the sponsor row could not
- * be located (e.g. orphan sponsor reference). The wallet credit still
- * fires because the recipient's `User._id` is enough to mint a Wallet
- * via `getOrCreateWallet`.
+ * Credits to the `shopping` bucket so the amount is spendable at
+ * checkout but NOT withdrawable as cash.
  */
 async function creditMemberSignupBonus({
   recipientUserId,
@@ -208,6 +280,7 @@ async function creditMemberSignupBonus({
     ownerType: OWNER_TYPE.CUSTOMER,
     ownerId: recipientUserId,
     amount,
+    // Shopping bucket: spendable at checkout, NOT withdrawable.
     bucket: "shopping",
     session,
     ledgerType,
@@ -216,9 +289,6 @@ async function creditMemberSignupBonus({
     metadata: meta,
     idempotencyKey,
     correlationId,
-    // Shopping bucket is intentionally separate from the legacy
-    // `User.walletBalance` mirror (which only ever tracked the
-    // `available` bucket). Mirror would double-count here.
     syncUserWalletBalance: false,
   });
 
@@ -229,15 +299,12 @@ async function creditMemberSignupBonus({
         recipientMembershipId: recipientMembership?._id || null,
         sourceUserId,
         bonusType,
-        // Signup is a Plan A surface event (Plan A is the universal
-        // entry state for every member; Plan B is an upgrade). Tagged
-        // here so admin filters / lifetime-earnings reporting groups
-        // it under the same plan tier as the joining bonuses.
         planType: MLM_PLAN_TYPE.A,
         baseAmount: amount,
         bonusAmount: amount,
         cappedAmount: amount,
         rolloverAmount: 0,
+        // Matches the actual bucket used above.
         walletBucket: "shopping",
         ledgerEntryId: creditResult?.ledgerEntry?._id || null,
         status: MLM_COMMISSION_EVENT_STATUS.CREDITED,

@@ -14,6 +14,7 @@ const longitude = Joi.number().min(-180).max(180);
 export const updateProfileSchema = Joi.object({
   name: trimmedString.min(2).max(80).optional(),
   email: trimmedString.email().lowercase().max(200).optional(),
+  password: Joi.string().min(6).max(128).allow("", null).optional(),
   avatarUrl: trimmedString.uri().max(2048).optional(),
   dateOfBirth: Joi.date().optional(),
   gender: trimmedString.valid("male", "female", "other", "prefer_not_say").optional(),

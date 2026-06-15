@@ -31,23 +31,19 @@ const ShopByStorePage = () => {
 
   useEffect(() => {
     const load = async () => {
-      const hasValidLocation =
-        Number.isFinite(currentLocation?.latitude) &&
-        Number.isFinite(currentLocation?.longitude);
-      if (!hasValidLocation) {
-        setIsLoading(false);
-        setSections([]);
-        setActiveStoreId(null);
-        return;
-      }
-
       setIsLoading(true);
       try {
+        const hasValidLocation =
+          Number.isFinite(currentLocation?.latitude) &&
+          Number.isFinite(currentLocation?.longitude);
+        const params = {};
+        if (hasValidLocation) {
+          params.lat = currentLocation.latitude;
+          params.lng = currentLocation.longitude;
+        }
+
         const res = await customerApi
-          .getOfferSections({
-            lat: currentLocation.latitude,
-            lng: currentLocation.longitude,
-          })
+          .getOfferSections(params)
           .catch(() => ({ data: {} }));
         const list =
           res.data?.results || res.data?.result || res.data || [];

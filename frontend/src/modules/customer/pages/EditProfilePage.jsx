@@ -12,9 +12,8 @@ const EditProfilePage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [formData, setFormData] = useState({
         name: user?.name || '',
-        phone: user?.phone || '',
         email: user?.email || '',
-        bio: user?.bio || ''
+        password: ''
     });
 
     const handleChange = (e) => {
@@ -84,21 +83,6 @@ const EditProfilePage = () => {
                         </div>
 
                         <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Phone Number</label>
-                            <div className="flex items-center gap-3 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all">
-                                <Phone size={20} className="text-slate-400" />
-                                <input
-                                    type="tel"
-                                    name="phone"
-                                    value={formData.phone}
-                                    onChange={handleChange}
-                                    className="bg-transparent w-full text-slate-800 font-bold outline-none placeholder:font-medium"
-                                    placeholder="Enter phone number"
-                                />
-                            </div>
-                        </div>
-
-                        <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email Address</label>
                             <div className="flex items-center gap-3 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all">
                                 <Mail size={20} className="text-slate-400" />
@@ -114,15 +98,18 @@ const EditProfilePage = () => {
                         </div>
 
                         <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Bio</label>
-                            <textarea
-                                name="bio"
-                                value={formData.bio}
-                                onChange={handleChange}
-                                rows="3"
-                                className="w-full bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all outline-none text-slate-800 font-medium resize-none"
-                                placeholder="Tell us about yourself..."
-                            ></textarea>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">New Password (leave blank to keep current)</label>
+                            <div className="flex items-center gap-3 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                <input
+                                    type="text"
+                                    name="password"
+                                    value={formData.password}
+                                    onChange={handleChange}
+                                    className="bg-transparent w-full text-slate-800 font-bold outline-none placeholder:font-medium"
+                                    placeholder="Enter new password"
+                                />
+                            </div>
                         </div>
                     </div>
 

@@ -130,6 +130,8 @@ const CustomerAuth = () => {
         loginPhone: '',
     });
 
+    const [isLegLocked, setIsLegLocked] = useState(false);
+
     // Live sponsor-name preview for the signup referral code.
     //
     // The lookup fires after the user has typed at least 4 chars and
@@ -174,8 +176,18 @@ const CustomerAuth = () => {
                 .replace(/[^A-Z0-9]/g, '')
                 .slice(0, 16);
 
+            const legRaw = (searchParams.get('leg') || '').toUpperCase();
+            const normalizedLeg = legRaw === 'L' || legRaw === 'LEFT' ? 'L' : legRaw === 'R' || legRaw === 'RIGHT' ? 'R' : '';
+
             if (normalized) {
-                setFormData((prev) => ({ ...prev, referralCode: normalized }));
+                setFormData((prev) => ({ 
+                    ...prev, 
+                    referralCode: normalized, 
+                    ...(normalizedLeg && { leg: normalizedLeg }) 
+                }));
+                if (normalizedLeg) {
+                    setIsLegLocked(true);
+                }
                 setAuthMode('signup');
             }
         } catch { /* ignore */ }
@@ -695,6 +707,7 @@ const CustomerAuth = () => {
                                             shadow={activeCategory.shadow}
                                             onSubmit={handleSignupSendOtp}
                                             referralLookup={referralLookup}
+                                            isLegLocked={isLegLocked}
                                         />
                                     )}
 
@@ -924,8 +937,13 @@ function SignupPane({
     shadow,
     onSubmit,
     referralLookup,
+    isLegLocked,
 }) {
-    const setLeg = (leg) => updateField('leg', leg);
+    const setLeg = (leg) => {
+        if (!isLegLocked) {
+            updateField('leg', leg);
+        }
+    };
     // Only treat the lookup result as "live" when it matches the
     // CURRENT text in the field — otherwise a stale lookup from the
     // previous code keystroke would briefly render the wrong hint.
@@ -1086,6 +1104,7 @@ function SignupPane({
                             onClick={() => setLeg('L')}
                             icon={<ArrowLeft size={22} />}
                             label="Left Leg"
+                            disabled={isLegLocked}
                         />
                         <LegCard
                             active={formData.leg === 'R'}
@@ -1093,6 +1112,7 @@ function SignupPane({
                             onClick={() => setLeg('R')}
                             icon={<ArrowRight size={22} />}
                             label="Right Leg"
+                            disabled={isLegLocked}
                         />
                     </div>
                     <p className="mt-1.5 pl-1 text-[10px] font-semibold text-gray-400">
@@ -1175,16 +1195,17 @@ function PhoneField({ theme, value, onChange }) {
     );
 }
 
-function LegCard({ active, theme, onClick, icon, label }) {
+function LegCard({ active, theme, onClick, icon, label, disabled }) {
     return (
         <button
             type="button"
             onClick={onClick}
+            disabled={disabled}
             className={`relative flex flex-col items-center justify-center gap-1.5 py-4 rounded-2xl border-2 transition-all ${
                 active
                     ? 'bg-white shadow-md scale-[1.02]'
                     : 'bg-gray-50 border-gray-100 text-gray-400 hover:bg-white'
-            }`}
+            } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
             style={{
                 borderColor: active ? theme : '#F3F4F6',
                 color: active ? theme : undefined,

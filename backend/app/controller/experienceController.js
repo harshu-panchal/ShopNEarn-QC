@@ -405,28 +405,13 @@ async function hydrateMatchedProductsForSections(sections, req) {
   );
   if (!productSections.length) return sections;
 
-  // Resolve the seller location filter once and share it across all sections
-  // on this request. Customer-visibility requests REQUIRE lat/lng; for those
-  // we silently degrade to no matched products if coords are missing instead
-  // of failing the whole sections call.
-  const coords = parseCustomerCoordinates(req.query || {});
   const role = String(req.user?.role || "").toLowerCase();
   const isCustomer = !role || (role !== "admin" && role !== "seller" && role !== "delivery");
 
   let allowedSellerIds = null; // null = no seller restriction (admin/seller/delivery)
   if (isCustomer) {
-    if (!coords.valid) {
-      // No location => we cannot scope to nearby sellers; return sections
-      // unchanged (frontend will fall back to its existing product pool).
-      return sections;
-    }
-    const nearby = await getNearbySellerIdsForCustomer(coords.lat, coords.lng);
+    const nearby = await getNearbySellerIdsForCustomer();
     allowedSellerIds = Array.isArray(nearby) ? nearby.map(String) : [];
-    if (!allowedSellerIds.length) {
-      return sections.map((s) =>
-        s?.displayType === "products" ? { ...s, matchedProducts: [] } : s,
-      );
-    }
   }
 
   const enrichedSections = await Promise.all(

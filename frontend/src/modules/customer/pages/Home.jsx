@@ -307,11 +307,16 @@ const Home = () => {
         expParams.lat = currentLocation.latitude;
         expParams.lng = currentLocation.longitude;
       }
+      const offerParams = {};
+      if (hasValidLocation) {
+        offerParams.lat = currentLocation.latitude;
+        offerParams.lng = currentLocation.longitude;
+      }
       const [catRes, prodRes, expRes, sectionsRes] = await Promise.all([
         customerApi.getCategories(),
-        hasValidLocation ? customerApi.getProducts(productParams) : Promise.resolve({ data: { success: true, result: { items: [] } } }),
+        customerApi.getProducts(productParams),
         customerApi.getExperienceSections(expParams).catch(() => null),
-        hasValidLocation ? customerApi.getOfferSections({ lat: currentLocation.latitude, lng: currentLocation.longitude }).catch(() => ({ data: {} })) : Promise.resolve({ data: { results: [] } }),
+        customerApi.getOfferSections(offerParams).catch(() => ({ data: {} })),
       ]);
       const nextHomeData = {
         categories: [ALL_CATEGORY],
