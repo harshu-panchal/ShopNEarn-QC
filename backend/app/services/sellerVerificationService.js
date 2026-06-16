@@ -5,9 +5,10 @@ import OtpVerification from "../models/otpVerification.js";
 import { getRedisClient } from "../config/redis.js";
 import { sendSmsIndiaHubOtp } from "./smsIndiaHubService.js";
 import { MOCK_OTP, useRealSMS } from "../utils/otp.js";
-import { sendSellerVerificationOtpEmail, useRealEmailOTP } from "./emailService.js";
+import { sendSellerVerificationOtpEmail, sendSellerForgotPasswordOtpEmail, useRealEmailOTP } from "./emailService.js";
 
 const SELLER_SIGNUP_PURPOSE = "seller_signup";
+const SELLER_FORGOT_PASSWORD_PURPOSE = "seller_forgot_password";
 const OTP_EXPIRY_MINUTES = () =>
   parseInt(process.env.SELLER_OTP_EXPIRY_MINUTES || process.env.OTP_EXPIRY_MINUTES || "5", 10);
 const OTP_RESEND_COOLDOWN_SECONDS = () =>
@@ -67,10 +68,10 @@ function generateSellerOtp(channel) {
   return useRealDelivery ? randomOtp(OTP_LENGTH()) : MOCK_OTP;
 }
 
-function hashOtp(channel, target, otp) {
+function hashOtp(channel, target, otp, purpose = SELLER_SIGNUP_PURPOSE) {
   return crypto
     .createHmac("sha256", verificationSecret())
-    .update(`${SELLER_SIGNUP_PURPOSE}:${channel}:${target}:${otp}`)
+    .update(`${purpose}:${channel}:${target}:${otp}`)
     .digest("hex");
 }
 
@@ -437,3 +438,238 @@ export async function verifySellerOtpCode({
     }),
   };
 }
+
+export function signForgotPasswordToken({ channel, target }) {
+  return jwt.sign(
+    {
+      purpose: SELLER_FORGOT_PASSWORD_PURPOSE,
+      channel,
+      target,
+      verified: true,
+    },
+    verificationSecret(),
+    {
+      expiresIn: "15m",
+    },
+  );
+}
+
+export function verifyForgotPasswordToken({ channel, rawValue, token }) {
+  const normalizedChannel = String(channel || "").trim().toLowerCase();
+  const normalizedTarget = normalizeTarget(normalizedChannel, rawValue);
+
+  if (!token) {
+    const error = new Error("Reset token is required");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  try {
+    const decoded = jwt.verify(token, verificationSecret());
+    if (
+      decoded.purpose !== SELLER_FORGOT_PASSWORD_PURPOSE ||
+      decoded.channel !== normalizedChannel ||
+      decoded.target !== normalizedTarget ||
+      decoded.verified !== true
+    ) {
+      const error = new Error("Invalid or expired reset token");
+      error.statusCode = 400;
+      throw error;
+    }
+    return decoded;
+  } catch (err) {
+    const error = new Error("Invalid or expired reset token");
+    error.statusCode = 401;
+    throw error;
+  }
+}
+
+export async function issueSellerForgotPasswordOtp({
+  channel,
+  rawValue,
+  ipAddress = "unknown",
+}) {
+  const normalizedChannel = String(channel || "").trim().toLowerCase();
+  const target = normalizeTarget(normalizedChannel, rawValue);
+
+  // Verify that the seller account exists
+  const query = normalizedChannel === "email" ? { email: target } : { phone: target };
+  const seller = await Seller.findOne(query).select("_id").lean();
+  if (!seller) {
+    const error = new Error("Seller account not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const sendAllowed = await incrementWindowCounter(
+    `seller:forgot:send:${normalizedChannel}:${target}`,
+    {
+      limit: OTP_SEND_LIMIT_PER_WINDOW(),
+      windowSeconds: OTP_SEND_LIMIT_WINDOW_SECONDS(),
+    },
+  );
+  if (!sendAllowed) {
+    const error = new Error("Too many OTP requests. Please try again later.");
+    error.statusCode = 429;
+    throw error;
+  }
+
+  const now = new Date();
+  let session = await OtpVerification.findOne({
+    purpose: SELLER_FORGOT_PASSWORD_PURPOSE,
+    channel: normalizedChannel,
+    target,
+  }).select("+otpHash +expiresAt");
+
+  if (session?.lastSentAt) {
+    const elapsedMs = now.getTime() - new Date(session.lastSentAt).getTime();
+    const cooldownMs = OTP_RESEND_COOLDOWN_SECONDS() * 1000;
+    if (elapsedMs < cooldownMs) {
+      const waitSeconds = Math.ceil((cooldownMs - elapsedMs) / 1000);
+      const error = new Error(`Please wait ${waitSeconds}s before requesting another OTP`);
+      error.statusCode = 429;
+      throw error;
+    }
+  }
+
+  let otp = generateSellerOtp(normalizedChannel);
+  const expiresAt = new Date(now.getTime() + OTP_EXPIRY_MINUTES() * 60 * 1000);
+
+  if (!session) {
+    session = new OtpVerification({
+      purpose: SELLER_FORGOT_PASSWORD_PURPOSE,
+      channel: normalizedChannel,
+      target,
+      otpHash: hashOtp(normalizedChannel, target, otp, SELLER_FORGOT_PASSWORD_PURPOSE),
+      expiresAt,
+      verifiedAt: null,
+      failedAttempts: 0,
+      lastSentAt: now,
+    });
+  } else {
+    session.otpHash = hashOtp(normalizedChannel, target, otp, SELLER_FORGOT_PASSWORD_PURPOSE);
+    session.expiresAt = expiresAt;
+    session.verifiedAt = null;
+    session.failedAttempts = 0;
+    session.lastSentAt = now;
+  }
+
+  await session.save();
+
+  if (normalizedChannel === "email") {
+    await sendSellerForgotPasswordOtpEmail({
+      email: target,
+      otp,
+      expiresInMinutes: OTP_EXPIRY_MINUTES(),
+    });
+  } else {
+    await dispatchPhoneOtp({ phone: target, otp });
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      ts: new Date().toISOString(),
+      event: "seller_forgot_password_otp_issued",
+      channel: normalizedChannel,
+      target: normalizedChannel === "email" ? maskEmail(target) : maskPhone(target),
+      ipAddress,
+      mode:
+        normalizedChannel === "email"
+          ? useRealEmailOTP()
+            ? "real"
+            : "mock"
+          : useRealSMS()
+            ? "real"
+            : "mock",
+    }),
+  );
+
+  return {
+    sent: true,
+    channel: normalizedChannel,
+    maskedTarget:
+      normalizedChannel === "email" ? maskEmail(target) : maskPhone(target),
+    expiresInSeconds: OTP_EXPIRY_MINUTES() * 60,
+  };
+}
+
+export async function verifySellerForgotPasswordOtpCode({
+  channel,
+  rawValue,
+  otp,
+  ipAddress = "unknown",
+}) {
+  const normalizedChannel = String(channel || "").trim().toLowerCase();
+  const target = normalizeTarget(normalizedChannel, rawValue);
+  const code = String(otp || "").trim();
+
+  if (!/^\d{4}$/.test(code)) {
+    const error = new Error("Please enter a valid OTP");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const verifyAllowed = await incrementWindowCounter(
+    `seller:forgot:verify:${normalizedChannel}:${target}`,
+    {
+      limit: OTP_VERIFY_LIMIT_PER_WINDOW(),
+      windowSeconds: OTP_VERIFY_LIMIT_WINDOW_SECONDS(),
+    },
+  );
+  if (!verifyAllowed) {
+    const error = new Error("Too many verification attempts. Please try again later.");
+    error.statusCode = 429;
+    throw error;
+  }
+
+  const session = await OtpVerification.findOne({
+    purpose: SELLER_FORGOT_PASSWORD_PURPOSE,
+    channel: normalizedChannel,
+    target,
+  }).select("+otpHash +expiresAt");
+
+  if (!session || !session.otpHash || !session.expiresAt || session.expiresAt <= new Date()) {
+    const error = new Error("Invalid or expired OTP");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const isValid = hashOtp(normalizedChannel, target, code, SELLER_FORGOT_PASSWORD_PURPOSE) === session.otpHash;
+  if (!isValid) {
+    session.failedAttempts = (session.failedAttempts || 0) + 1;
+    await session.save();
+
+    if (session.failedAttempts >= OTP_MAX_FAILED_ATTEMPTS()) {
+      await OtpVerification.deleteOne({ _id: session._id });
+    }
+
+    const error = new Error("Invalid or expired OTP");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Clear/delete OTP session on successful validation to prevent reuse
+  await OtpVerification.deleteOne({ _id: session._id });
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      ts: new Date().toISOString(),
+      event: "seller_forgot_password_otp_verified",
+      channel: normalizedChannel,
+      target: normalizedChannel === "email" ? maskEmail(target) : maskPhone(target),
+      ipAddress,
+    }),
+  );
+
+  return {
+    verified: true,
+    channel: normalizedChannel,
+    resetToken: signForgotPasswordToken({
+      channel: normalizedChannel,
+      target,
+    }),
+  };
+}
+

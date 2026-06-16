@@ -10,6 +10,10 @@ import {
     approveProduct,
     rejectProduct,
 } from "../controller/productController.js";
+import {
+    getBulkUploadTemplate,
+    bulkUploadProducts,
+} from "../controller/productBulkController.js";
 import { adjustStock, getStockHistory } from "../controller/stockController.js";
 import {
     verifyToken,
@@ -29,6 +33,8 @@ router.get("/", optionalVerifyToken, getProducts);
 
 // Seller protected routes
 router.get("/seller/me", verifyToken, allowRoles("seller"), requireApprovedSeller, getSellerProducts);
+router.get("/seller/bulk-template", verifyToken, allowRoles("seller"), getBulkUploadTemplate);
+router.post("/seller/bulk-upload", verifyToken, allowRoles("seller"), requireApprovedSeller, upload.single("file"), bulkUploadProducts);
 router.get("/stock-history", verifyToken, allowRoles("seller"), requireApprovedSeller, getStockHistory);
 router.post("/adjust-stock", verifyToken, allowRoles("seller"), requireApprovedSeller, adjustStock);
 router.get("/moderation", verifyToken, allowRoles("admin"), getModerationProducts);

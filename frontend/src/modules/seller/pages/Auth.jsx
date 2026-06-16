@@ -63,6 +63,17 @@ const Auth = () => {
     phone: createInitialVerificationState(),
   });
 
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [forgotStep, setForgotStep] = useState(1);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotOtp, setForgotOtp] = useState("");
+  const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
+  const [forgotResetToken, setForgotResetToken] = useState("");
+  const [forgotOtpSent, setForgotOtpSent] = useState(false);
+  const [forgotOtpSending, setForgotOtpSending] = useState(false);
+  const [forgotVerifyingOtp, setForgotVerifyingOtp] = useState(false);
+
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -261,6 +272,81 @@ const Auth = () => {
 
     e.preventDefault();
     panel.scrollTop += e.deltaY;
+  };
+
+  const handleSendForgotPasswordOtp = async () => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)) {
+      toast.error("Please enter a valid email address.");
+      return;
+    }
+    setForgotOtpSending(true);
+    try {
+      await sellerApi.sendForgotPasswordOtp({ email: forgotEmail });
+      setForgotOtpSent(true);
+      toast.success("Password reset OTP sent to your email.");
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to send OTP");
+    } finally {
+      setForgotOtpSending(false);
+    }
+  };
+
+  const handleVerifyForgotPasswordOtp = async () => {
+    if (forgotOtp.length !== 4) {
+      toast.error("Please enter a valid 4-digit OTP.");
+      return;
+    }
+    setForgotVerifyingOtp(true);
+    try {
+      const res = await sellerApi.verifyForgotPasswordOtp({
+        email: forgotEmail,
+        otp: forgotOtp,
+      });
+      if (res.data.success) {
+        setForgotResetToken(res.data.result?.resetToken);
+        setForgotStep(2);
+        toast.success("OTP verified. Please enter your new password.");
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Invalid or expired OTP");
+    } finally {
+      setForgotVerifyingOtp(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (forgotNewPassword.length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await sellerApi.resetForgotPassword({
+        email: forgotEmail,
+        resetToken: forgotResetToken,
+        newPassword: forgotNewPassword,
+      });
+      toast.success("Password reset successfully. Please login with your new password.");
+      // Reset all forgot password states
+      setIsForgotPassword(false);
+      setForgotStep(1);
+      setForgotEmail("");
+      setForgotOtp("");
+      setForgotNewPassword("");
+      setForgotConfirmPassword("");
+      setForgotResetToken("");
+      setForgotOtpSent(false);
+      setIsLogin(true);
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to reset password");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -495,7 +581,7 @@ const Auth = () => {
           </div>
           <AnimatePresence mode="wait">
             <motion.div
-              key={isLogin ? "login" : `signup-step-${signupStep}`}
+              key={isForgotPassword ? `forgot-password-step-${forgotStep}` : isLogin ? "login" : `signup-step-${signupStep}`}
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
@@ -503,28 +589,149 @@ const Auth = () => {
               className="space-y-8 py-4 md:py-6">
               <div className="space-y-4">
                 <span className="inline-block px-4 py-1 bg-slate-100 text-slate-800 rounded-full text-[10px] font-black uppercase tracking-widest border border-slate-200">
-                  {isLogin
-                    ? "Welcome Back"
-                    : `New Partnership - Step ${signupStep} of 3`}
+                  {isForgotPassword
+                    ? `Reset Password - Step ${forgotStep} of 2`
+                    : isLogin
+                      ? "Welcome Back"
+                      : `New Partnership - Step ${signupStep} of 3`}
                 </span>
                 <h1 className="text-3xl font-black text-slate-900 tracking-tighter">
-                  Seller{" "}
+                  {isForgotPassword ? "Reset" : "Seller"}{" "}
                   <span className="text-slate-900">
-                    {isLogin ? "Login" : "Signup"}
+                    {isForgotPassword ? "Password" : isLogin ? "Login" : "Signup"}
                   </span>
                 </h1>
                 <p className="text-slate-600 font-medium text-base leading-relaxed">
-                  {isLogin
-                    ? "Access your unified seller dashboard and manage orders."
-                    : signupStep === 1
-                      ? "Register your store and start selling instantly."
-                      : signupStep === 2
-                        ? "Set your shop address and service area precisely."
-                        : "Upload verification documents to complete your application."}
+                  {isForgotPassword
+                    ? forgotStep === 1
+                      ? "Enter your registered business email to verify your identity."
+                      : "Create a strong new password for your account."
+                    : isLogin
+                      ? "Access your unified seller dashboard and manage orders."
+                      : signupStep === 1
+                        ? "Register your store and start selling instantly."
+                        : signupStep === 2
+                          ? "Set your shop address and service area precisely."
+                          : "Upload verification documents to complete your application."}
                 </p>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-4">
+              {isForgotPassword ? (
+                forgotStep === 1 ? (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (forgotOtpSent) {
+                        handleVerifyForgotPasswordOtp();
+                      } else {
+                        handleSendForgotPasswordOtp();
+                      }
+                    }}
+                    className="space-y-4"
+                  >
+                    <div className="relative group">
+                      <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-violet-600 transition-colors">
+                        <Mail size={18} />
+                      </div>
+                      <input
+                        type="email"
+                        required
+                        placeholder="Business Email"
+                        className="w-full pl-12 pr-28 py-4 bg-slate-50 border-2 border-transparent rounded-lg text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-200 transition-all placeholder:text-slate-300"
+                        value={forgotEmail}
+                        onChange={(e) => setForgotEmail(e.target.value)}
+                        disabled={forgotOtpSent}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSendForgotPasswordOtp}
+                        disabled={forgotOtpSending || forgotOtpSent || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all bg-slate-900 text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {forgotOtpSending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : forgotOtpSent ? (
+                          "Sent"
+                        ) : (
+                          "Send OTP"
+                        )}
+                      </button>
+                    </div>
+
+                    {forgotOtpSent && (
+                      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={4}
+                          placeholder="Enter email OTP"
+                          value={forgotOtp}
+                          onChange={(e) => setForgotOtp(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                          className="flex-1 bg-transparent text-sm font-bold text-slate-700 outline-none placeholder:text-slate-400"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleVerifyForgotPasswordOtp}
+                          disabled={forgotVerifyingOtp || forgotOtp.length !== 4}
+                          className="rounded-md bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-100 disabled:opacity-50"
+                        >
+                          {forgotVerifyingOtp ? "Checking..." : "Confirm OTP"}
+                        </button>
+                      </div>
+                    )}
+                  </form>
+                ) : (
+                  <form onSubmit={handleResetPassword} className="space-y-4">
+                    <div className="relative group">
+                      <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-violet-600 transition-colors">
+                        <Lock size={18} />
+                      </div>
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        required
+                        minLength={6}
+                        placeholder="Enter new password"
+                        className="w-full pl-12 pr-14 py-4 bg-slate-50 border-2 border-transparent rounded-lg text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-200 transition-all placeholder:text-slate-300"
+                        value={forgotNewPassword}
+                        onChange={(e) => setForgotNewPassword(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-600 transition-colors px-2"
+                        tabIndex="-1"
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+
+                    <div className="relative group">
+                      <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-violet-600 transition-colors">
+                        <Lock size={18} />
+                      </div>
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        required
+                        minLength={6}
+                        placeholder="Confirm new password"
+                        className="w-full pl-12 pr-14 py-4 bg-slate-50 border-2 border-transparent rounded-lg text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-200 transition-all placeholder:text-slate-300"
+                        value={forgotConfirmPassword}
+                        onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full bg-slate-900 text-white rounded-lg py-4 text-sm font-black tracking-[2px] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.3)] hover:bg-black transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3 group"
+                    >
+                      {isLoading ? "RESETTING..." : "RESET PASSWORD"}
+                      <ArrowRight className="group-hover:translate-x-2 transition-transform" size={20} />
+                    </button>
+                  </form>
+                )
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-4">
                 {/* LOGIN OR SIGNUP STEP 1 */}
                 {(isLogin || signupStep === 1) && (
                   <>
@@ -728,6 +935,23 @@ const Auth = () => {
                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
+                    {isLogin && (
+                      <div className="flex justify-end pr-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsForgotPassword(true);
+                            setForgotStep(1);
+                            setForgotEmail("");
+                            setForgotOtp("");
+                            setForgotOtpSent(false);
+                          }}
+                          className="text-xs font-bold text-slate-600 hover:text-black transition-colors"
+                        >
+                          Forgot Password?
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -931,23 +1155,45 @@ const Auth = () => {
                   </button>
                 </div>
               </form>
+            )}
 
               <div className="pt-1 border-t border-slate-50 flex flex-col items-center gap-1">
-                <p className="text-slate-600 font-bold text-sm">
-                  {isLogin ? "New to the platform?" : "Already part of us?"}{" "}
-                  <button
-                    onClick={() => {
-                      setIsLogin(!isLogin);
-                      setSignupStep(1);
-                      setVerifications({
-                        email: createInitialVerificationState(),
-                        phone: createInitialVerificationState(),
-                      });
-                    }}
-                    className="text-slate-900 hover:text-black transition-colors px-2">
-                    {isLogin ? "Register Store" : "Sign In"}
-                  </button>
-                </p>
+                {isForgotPassword ? (
+                  <p className="text-slate-600 font-bold text-sm">
+                    Remembered your password?{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsForgotPassword(false);
+                        setForgotStep(1);
+                        setForgotEmail("");
+                        setForgotOtp("");
+                        setForgotOtpSent(false);
+                      }}
+                      className="text-slate-900 hover:text-black transition-colors px-2"
+                    >
+                      Back to Sign In
+                    </button>
+                  </p>
+                ) : (
+                  <p className="text-slate-600 font-bold text-sm">
+                    {isLogin ? "New to the platform?" : "Already part of us?"}{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsLogin(!isLogin);
+                        setSignupStep(1);
+                        setVerifications({
+                          email: createInitialVerificationState(),
+                          phone: createInitialVerificationState(),
+                        });
+                      }}
+                      className="text-slate-900 hover:text-black transition-colors px-2"
+                    >
+                      {isLogin ? "Register Store" : "Sign In"}
+                    </button>
+                  </p>
+                )}
               </div>
             </motion.div>
           </AnimatePresence>

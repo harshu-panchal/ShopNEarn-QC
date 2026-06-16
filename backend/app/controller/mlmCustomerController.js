@@ -1053,7 +1053,7 @@ export const getMyBinaryGenealogy = async (req, res) => {
         status: m.status,
         // `position` here is leg-of-root (matches the tree view).
         position: actualLeg || null,
-        joinedAt: m.joinedAt,
+        joinedAt: m.joinedAt || m.createdAt || null,
         subtreeCount: m.totalDownlineCount || 0,
         activeDownlineCount: m.activeDownlineCount || 0,
         inactiveDownlineCount: m.inactiveDownlineCount || 0,
@@ -1103,8 +1103,8 @@ export const getMyBinaryGenealogy = async (req, res) => {
       }
     }
 
-    leftLeg.sort((a, b) => a.depth - b.depth);
-    rightLeg.sort((a, b) => a.depth - b.depth);
+    leftLeg.sort((a, b) => new Date(a.joinedAt || 0) - new Date(b.joinedAt || 0));
+    rightLeg.sort((a, b) => new Date(a.joinedAt || 0) - new Date(b.joinedAt || 0));
 
     return handleResponse(res, 200, "Binary genealogy", {
       isMember: true,

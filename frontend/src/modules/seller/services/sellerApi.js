@@ -5,12 +5,17 @@ export const sellerApi = {
     signup: (data) => axiosInstance.post('/seller/signup', data),
     sendVerificationOtp: (data) => axiosInstance.post('/seller/verification/send-otp', data),
     verifyVerificationOtp: (data) => axiosInstance.post('/seller/verification/verify-otp', data),
+    sendForgotPasswordOtp: (data) => axiosInstance.post('/seller/forgot-password/send-otp', data),
+    verifyForgotPasswordOtp: (data) => axiosInstance.post('/seller/forgot-password/verify-otp', data),
+    resetForgotPassword: (data) => axiosInstance.post('/seller/forgot-password/reset', data),
     // Products
     getProducts: (params) => axiosInstance.get('/products/seller/me', { params }),
     getProductById: (id) => axiosInstance.get(`/products/${id}`),
     createProduct: (data) => axiosInstance.post('/products', data),
     updateProduct: (id, data) => axiosInstance.put(`/products/${id}`, data),
     deleteProduct: (id) => axiosInstance.delete(`/products/${id}`),
+    downloadBulkTemplate: () => axiosInstance.get('/products/seller/bulk-template', { responseType: 'blob' }),
+    bulkUploadProducts: (data) => axiosInstance.post('/products/seller/bulk-upload', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
 
     // Categories (Public)
     getCategories: () => axiosInstance.get('/admin/categories'),

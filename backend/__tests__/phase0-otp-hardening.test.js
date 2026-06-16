@@ -3,12 +3,14 @@ import { jest } from "@jest/globals";
 const mockCustomerFindOne = jest.fn();
 const mockCustomerCreate = jest.fn();
 const mockCustomerFindById = jest.fn();
+const mockCustomerExists = jest.fn().mockResolvedValue(false);
 
 jest.unstable_mockModule("../app/models/customer.js", () => ({
   default: {
     findOne: mockCustomerFindOne,
     create: mockCustomerCreate,
     findById: mockCustomerFindById,
+    exists: mockCustomerExists,
   },
 }));
 
@@ -26,6 +28,7 @@ function buildCustomer(overrides = {}) {
     _id: "customer-1",
     name: "Test User",
     phone: "+919876543210",
+    userId: "SE12345678",
     isVerified: false,
     otpHash: null,
     otpExpiresAt: null,

@@ -340,7 +340,7 @@ const GenealogyTreeCanvas = ({
   const stageRef = useRef(null);
 
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(0.85);
+  const [zoom, setZoom] = useState(0.75);
 
   // Member-details modal state. `selectedFilledNode` is the node
   // the user most recently CLICKED on (filled members only —
@@ -603,7 +603,7 @@ const GenealogyTreeCanvas = ({
     if (treeWidth > 0 && treeHeight > 0) {
       const scaleX = (rect.width - 40) / treeWidth;
       const scaleY = (rect.height - 40) / treeHeight;
-      newZoom = Math.min(0.5, Math.min(scaleX, scaleY)); // 0.5 will show as 100%
+      newZoom = Math.min(0.75, Math.min(scaleX, scaleY)); // 0.75 will show as 150%
       newZoom = Math.max(0.1, newZoom);
       setZoom(newZoom);
     }

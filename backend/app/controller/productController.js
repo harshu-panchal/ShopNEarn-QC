@@ -401,26 +401,153 @@ export const getProducts = async (req, res) => {
 export const getSellerProducts = async (req, res) => {
   try {
     const sellerId = req.user.id;
-    const { stockStatus, sort, approvalStatus } = req.query;
+    const { stockStatus, sort, approvalStatus, search, category, status, priceMin, priceMax } = req.query;
     const { page, limit, skip } = getPagination(req, {
       defaultLimit: 20,
       maxLimit: 100,
     });
 
     const baseSellerQuery = { sellerId };
-    const query = { ...baseSellerQuery };
+    const andFilters = [{ sellerId }];
+
     if (stockStatus === "in") {
-      query.stock = { $gt: 0 };
+      andFilters.push({ stock: { $gt: 0 } });
     } else if (stockStatus === "out") {
-      query.stock = 0;
+      andFilters.push({ stock: 0 });
     }
 
     if (approvalStatus && String(approvalStatus).trim().toLowerCase() !== "all") {
       const approvalFilter = buildApprovalStatusFilter(approvalStatus);
       if (Object.keys(approvalFilter).length > 0) {
-        Object.assign(query, approvalFilter);
+        andFilters.push(approvalFilter);
       }
     }
+
+    if (search && String(search).trim()) {
+      const term = String(search).trim();
+      const safe = buildSearchRegex(term, { anchored: false });
+      andFilters.push({
+        $or: [
+          { name: safe },
+          { slug: safe },
+          { sku: safe },
+          { "variants.sku": safe }
+        ]
+      });
+    }
+
+    if (category && category !== "all") {
+      andFilters.push({
+        $or: [
+          { headerId: category },
+          { categoryId: category },
+          { subcategoryId: category }
+        ]
+      });
+    }
+
+    if (status && status !== "All") {
+      const normalizedStatus = String(status).toLowerCase();
+      if (normalizedStatus === "active") {
+        andFilters.push({ status: "active" });
+      } else if (normalizedStatus === "draft" || normalizedStatus === "inactive") {
+        andFilters.push({ status: "inactive" });
+      } else if (normalizedStatus === "low stock" || normalizedStatus === "low_stock") {
+        andFilters.push({
+          $expr: {
+            $and: [
+              {
+                $gt: [
+                  {
+                    $convert: {
+                      input: "$stock",
+                      to: "double",
+                      onError: 0,
+                      onNull: 0,
+                    },
+                  },
+                  0,
+                ],
+              },
+              {
+                $lte: [
+                  {
+                    $convert: {
+                      input: "$stock",
+                      to: "double",
+                      onError: 0,
+                      onNull: 0,
+                    },
+                  },
+                  {
+                    $let: {
+                      vars: {
+                        rawThreshold: {
+                          $convert: {
+                            input: "$lowStockAlert",
+                            to: "double",
+                            onError: 0,
+                            onNull: 0,
+                          },
+                        },
+                      },
+                      in: {
+                        $cond: [{ $gt: ["$$rawThreshold", 0] }, "$$rawThreshold", 5],
+                      },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        });
+      } else if (normalizedStatus === "out of stock" || normalizedStatus === "out_of_stock") {
+        andFilters.push({ stock: 0 });
+      }
+    }
+
+    if (priceMin !== undefined && priceMin !== "") {
+      const minVal = Number(priceMin);
+      if (!isNaN(minVal)) {
+        andFilters.push({
+          $expr: {
+            $gte: [
+              {
+                $cond: [
+                  { $and: [{ $gt: ["$salePrice", 0] }, { $ne: ["$salePrice", null] }] },
+                  "$salePrice",
+                  "$price"
+                ]
+              },
+              minVal
+            ]
+          }
+        });
+      }
+    }
+
+    if (priceMax !== undefined && priceMax !== "") {
+      const maxVal = Number(priceMax);
+      if (!isNaN(maxVal)) {
+        andFilters.push({
+          $expr: {
+            $lte: [
+              {
+                $cond: [
+                  { $and: [{ $gt: ["$salePrice", 0] }, { $ne: ["$salePrice", null] }] },
+                  "$salePrice",
+                  "$price"
+                ]
+              },
+              maxVal
+            ]
+          }
+        });
+      }
+    }
+
+    const query = andFilters.length > 1 ? { $and: andFilters } : andFilters[0];
+
 
     const sortMap = {
       newest: { createdAt: -1 },

@@ -22,6 +22,7 @@ import {
   HiOutlineSwatch,
   HiOutlineSquaresPlus,
   HiOutlineDocumentText,
+  HiOutlineArrowUpTray,
 } from "react-icons/hi2";
 import Modal from "@shared/components/ui/Modal";
 import { cn } from "@/lib/utils";
@@ -52,6 +53,11 @@ const ProductManagement = () => {
         limit: pageSize,
         sort: sortBy,
         approvalStatus: filterApproval,
+        search: searchTerm,
+        category: filterCategory,
+        status: filterStatus,
+        priceMin: priceMin,
+        priceMax: priceMax,
       });
       if (res.data.success) {
         // Backend returns handleResponse(..., { items, page, limit, total, totalPages })
@@ -72,6 +78,7 @@ const ProductManagement = () => {
             active: Number(payload.summary.active) || 0,
             lowStock: Number(payload.summary.lowStock) || 0,
             outOfStock: Number(payload.summary.outOfStock) || 0,
+            draft: Number(payload.summary.draft) || 0,
           });
         } else {
           setSummaryStats(null);
@@ -127,6 +134,12 @@ const ProductManagement = () => {
   const [isVariantsViewModalOpen, setIsVariantsViewModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [modalTab, setModalTab] = useState("general");
+
+  const [isBulkUploadModalOpen, setIsBulkUploadModalOpen] = useState(false);
+  const [bulkFile, setBulkFile] = useState(null);
+  const [isBulkUploading, setIsBulkUploading] = useState(false);
+  const [bulkUploadResult, setBulkUploadResult] = useState(null);
+  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
 
   const makeSku = (name, index = 1) => {
     const prefix = String(name || "")
@@ -184,8 +197,11 @@ const ProductManagement = () => {
   }, [isFilterOpen]);
 
   React.useEffect(() => {
-    fetchProducts(1);
-  }, [searchTerm, filterCategory, filterStatus, filterApproval, sortBy, pageSize]);
+    const timer = setTimeout(() => {
+      fetchProducts(1);
+    }, 400); // Debounce search and filter updates
+    return () => clearTimeout(timer);
+  }, [searchTerm, filterCategory, filterStatus, filterApproval, priceMin, priceMax, sortBy, pageSize]);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -215,70 +231,7 @@ const ProductManagement = () => {
     [products]
   );
 
-  const filteredProducts = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    const min = priceMin ? Number(priceMin) : null;
-    const max = priceMax ? Number(priceMax) : null;
-
-    return safeProducts.filter((p) => {
-      const variantSkus = Array.isArray(p.variants)
-        ? p.variants
-          .map((v) => (v?.sku || "").toString().toLowerCase())
-          .filter(Boolean)
-        : [];
-      const skuCandidate =
-        (p.sku || "").toString().toLowerCase() ||
-        (variantSkus.length > 0 ? variantSkus[0] : "");
-
-      const matchesSearch =
-        !term ||
-        p.name.toLowerCase().includes(term) ||
-        (!!skuCandidate && skuCandidate.includes(term));
-      const matchesCategory =
-        filterCategory === "all" ||
-        (p.categoryId?._id || p.categoryId) === filterCategory ||
-        (p.headerId?._id || p.headerId) === filterCategory;
-
-      let matchesStatus = filterStatus === "All";
-      if (filterStatus === "Active") matchesStatus = p.status === "active";
-      if (filterStatus === "Draft") matchesStatus = p.status === "inactive";
-      if (filterStatus === "Low Stock")
-        matchesStatus = p.stock > 0 && p.stock <= resolveLowStockThreshold(p);
-      if (filterStatus === "Out of Stock") matchesStatus = p.stock === 0;
-
-      let matchesPrice = true;
-      const effectivePrice = Number(p.salePrice ?? p.price ?? 0);
-      if (min !== null && !Number.isNaN(min)) {
-        matchesPrice = matchesPrice && effectivePrice >= min;
-      }
-      if (max !== null && !Number.isNaN(max)) {
-        matchesPrice = matchesPrice && effectivePrice <= max;
-      }
-
-      const rawApproval = String(p.approvalStatus || "").trim().toLowerCase();
-      const normalizedApproval = rawApproval || "approved"; // legacy products without moderation fields are treated as approved
-      let matchesApproval = true;
-      if (filterApproval !== "all") {
-        matchesApproval = normalizedApproval === filterApproval;
-      }
-
-      return (
-        matchesSearch &&
-        matchesCategory &&
-        matchesStatus &&
-        matchesApproval &&
-        matchesPrice
-      );
-    });
-  }, [
-    safeProducts,
-    searchTerm,
-    filterCategory,
-    filterStatus,
-    filterApproval,
-    priceMin,
-    priceMax,
-  ]);
+  const filteredProducts = safeProducts;
 
   const stats = useMemo(
     () => ({
@@ -512,12 +465,22 @@ const ProductManagement = () => {
             Track your items, prices, and how many are left in stock.
           </p>
         </div>
-        <button
-          onClick={() => navigate("/seller/products/add")}
-          className="flex items-center gap-2 bg-black  text-primary-foreground px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors">
-          <HiOutlinePlus className="h-5 w-5" />
-          Add New Product
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsBulkUploadModalOpen(true)}
+            className="flex items-center gap-2 bg-white text-slate-800 border border-slate-200 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors shadow-sm font-semibold text-sm"
+          >
+            <HiOutlineArrowUpTray className="h-5 w-5 text-slate-500" />
+            Bulk Upload
+          </button>
+          <button
+            onClick={() => navigate("/seller/products/add")}
+            className="flex items-center gap-2 bg-black text-primary-foreground px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors font-semibold text-sm"
+          >
+            <HiOutlinePlus className="h-5 w-5" />
+            Add New Product
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -1473,6 +1436,269 @@ const ProductManagement = () => {
               CLOSE VIEWER
             </button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Upload Modal */}
+      <Modal
+        isOpen={isBulkUploadModalOpen}
+        onClose={() => {
+          if (!isBulkUploading) {
+            setIsBulkUploadModalOpen(false);
+            setBulkFile(null);
+            setBulkUploadResult(null);
+          }
+        }}
+        title="Bulk Product Upload"
+        size="lg"
+      >
+        <div className="space-y-6 p-4">
+          {!bulkUploadResult ? (
+            <>
+              {/* Step 1: Download Template */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                    <HiOutlineDocumentText className="h-5 w-5 text-indigo-500" />
+                    Step 1: Download Excel Template
+                  </h4>
+                  <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                    Download the customized Excel template preloaded with your store's live categories and structure.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={isDownloadingTemplate}
+                  onClick={async () => {
+                    setIsDownloadingTemplate(true);
+                    try {
+                      const response = await sellerApi.downloadBulkTemplate();
+                      const blob = new Blob([response.data], {
+                        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                      });
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = "products_bulk_upload_template.xlsx";
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      window.URL.revokeObjectURL(url);
+                      toast.success("Template downloaded successfully!");
+                    } catch (err) {
+                      toast.error("Failed to download template. Please try again.");
+                    } finally {
+                      setIsDownloadingTemplate(false);
+                    }
+                  }}
+                  className="w-full sm:w-auto px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isDownloadingTemplate ? (
+                    <>
+                      <HiOutlineArrowPath className="h-4 w-4 animate-spin" />
+                      Downloading...
+                    </>
+                  ) : (
+                    "Download Template"
+                  )}
+                </button>
+              </div>
+
+              {/* Step 2: Upload File */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                  <HiOutlineArrowUpTray className="h-5 w-5 text-emerald-500" />
+                  Step 2: Upload Excel File
+                </h4>
+                
+                <div 
+                  className={cn(
+                    "border-2 border-dashed rounded-xl p-8 text-center flex flex-col items-center justify-center cursor-pointer transition-all",
+                    bulkFile ? "border-emerald-500 bg-emerald-50/20" : "border-slate-200 bg-slate-50/50 hover:border-indigo-400 hover:bg-indigo-50/10"
+                  )}
+                  onClick={() => document.getElementById("bulk-excel-input").click()}
+                >
+                  <input
+                    type="file"
+                    id="bulk-excel-input"
+                    accept=".xlsx"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setBulkFile(e.target.files[0]);
+                      }
+                    }}
+                  />
+                  
+                  {bulkFile ? (
+                    <>
+                      <HiOutlineDocumentText className="h-12 w-12 text-emerald-500 animate-bounce mb-3" />
+                      <p className="text-sm font-bold text-slate-800">{bulkFile.name}</p>
+                      <p className="text-xs text-slate-500 mt-1 font-semibold">{(bulkFile.size / 1024).toFixed(1)} KB</p>
+                      <button 
+                        type="button" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBulkFile(null);
+                        }}
+                        className="text-rose-500 hover:text-rose-600 hover:underline text-xs font-bold mt-4 flex items-center gap-1"
+                      >
+                        <HiOutlineXMark className="h-4 w-4" /> Remove File
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <HiOutlineArrowUpTray className="h-10 w-10 text-slate-300 mb-3" />
+                      <p className="text-sm font-bold text-slate-800">Drag & drop your Excel template here, or browse files</p>
+                      <p className="text-xs text-slate-500 mt-1.5 font-medium">Supports .xlsx templates generated above</p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={isBulkUploading}
+                  onClick={() => {
+                    setIsBulkUploadModalOpen(false);
+                    setBulkFile(null);
+                  }}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isBulkUploading || !bulkFile}
+                  onClick={async () => {
+                    if (!bulkFile) return;
+                    setIsBulkUploading(true);
+                    try {
+                      const data = new FormData();
+                      data.append("file", bulkFile);
+                      const res = await sellerApi.bulkUploadProducts(data);
+                      if (res.data.success) {
+                        setBulkUploadResult(res.data.result);
+                        toast.success("Spreadsheet processed successfully!");
+                        fetchProducts(1);
+                      }
+                    } catch (err) {
+                      toast.error(err.response?.data?.message || "Failed to process bulk upload file.");
+                    } finally {
+                      setIsBulkUploading(false);
+                    }
+                  }}
+                  className="px-4 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isBulkUploading ? (
+                    <>
+                      <HiOutlineArrowPath className="h-4 w-4 animate-spin" />
+                      Uploading & Parsing...
+                    </>
+                  ) : (
+                    "Upload & Process"
+                  )}
+                </button>
+              </div>
+            </>
+          ) : (
+            /* Step 3: Result Summary */
+            <div className="space-y-6">
+              <div className="text-center p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-4">
+                <div className="flex justify-center">
+                  {bulkUploadResult.failureCount === 0 ? (
+                    <HiOutlineCheckCircle className="h-16 w-16 text-emerald-500" />
+                  ) : bulkUploadResult.successCount > 0 ? (
+                    <HiOutlineExclamationCircle className="h-16 w-16 text-amber-500" />
+                  ) : (
+                    <HiOutlineXMark className="h-16 w-16 text-rose-500 border border-rose-500 rounded-full p-2 bg-rose-50" />
+                  )}
+                </div>
+                
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800">
+                    {bulkUploadResult.failureCount === 0 
+                      ? "Bulk Upload Completed!" 
+                      : bulkUploadResult.successCount > 0 
+                        ? "Bulk Upload Completed with Warnings" 
+                        : "Bulk Upload Failed"}
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-1 font-semibold leading-relaxed">
+                    Here is the import summary from your file.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 max-w-xs mx-auto">
+                  <div className="bg-emerald-50 text-emerald-800 rounded-xl p-3 border border-emerald-100">
+                    <span className="text-2xl font-black">{bulkUploadResult.successCount}</span>
+                    <span className="block text-[9px] font-bold uppercase tracking-wider mt-0.5">Successful</span>
+                  </div>
+                  <div className="bg-rose-50 text-rose-800 rounded-xl p-3 border border-rose-100">
+                    <span className="text-2xl font-black">{bulkUploadResult.failureCount}</span>
+                    <span className="block text-[9px] font-bold uppercase tracking-wider mt-0.5">Failed Rows</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Warnings List */}
+              {bulkUploadResult.warnings && bulkUploadResult.warnings.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-amber-800 uppercase tracking-widest ml-1">Warnings ({bulkUploadResult.warnings.length})</h4>
+                  <div className="max-h-40 overflow-y-auto border border-amber-100 bg-amber-50/20 rounded-xl p-3 custom-scrollbar">
+                    <ul className="list-disc pl-4 space-y-1">
+                      {bulkUploadResult.warnings.map((warn, index) => (
+                        <li key={index} className="text-xs text-amber-700 font-semibold leading-relaxed">{warn}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {/* Error Details */}
+              {bulkUploadResult.errors && bulkUploadResult.errors.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-rose-800 uppercase tracking-widest ml-1">Failed Row Details ({bulkUploadResult.errors.length})</h4>
+                  <div className="max-h-56 overflow-y-auto border border-rose-100 rounded-xl overflow-hidden custom-scrollbar">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-rose-50/50 text-rose-900 border-b border-rose-100 font-bold">
+                          <th className="p-3 w-16 text-center">Row</th>
+                          <th className="p-3 w-48">Product Reference</th>
+                          <th className="p-3">Error Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-rose-50 font-medium">
+                        {bulkUploadResult.errors.map((err, index) => (
+                          <tr key={index} className="hover:bg-rose-50/10 text-rose-800">
+                            <td className="p-3 text-center font-bold text-rose-600 bg-rose-50/20">{err.row}</td>
+                            <td className="p-3 font-semibold truncate max-w-[12rem]">{err.productName}</td>
+                            <td className="p-3 text-slate-700 font-semibold">{err.message}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Close Button */}
+              <div className="flex justify-end pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsBulkUploadModalOpen(false);
+                    setBulkFile(null);
+                    setBulkUploadResult(null);
+                  }}
+                  className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition-colors shadow-sm"
+                >
+                  Close & Refresh list
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
     </div >

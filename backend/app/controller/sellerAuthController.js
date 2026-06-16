@@ -5,6 +5,9 @@ import {
     issueSellerVerificationOtp,
     verifySellerOtpCode,
     verifySellerVerificationToken,
+    issueSellerForgotPasswordOtp,
+    verifySellerForgotPasswordOtpCode,
+    verifyForgotPasswordToken,
 } from "../services/sellerVerificationService.js";
 import { uploadToCloudinary } from "../services/mediaService.js";
 
@@ -324,5 +327,79 @@ export const loginSeller = async (req, res) => {
         });
     } catch (error) {
         return handleResponse(res, 500, error.message);
+    }
+};
+
+/* ===============================
+   FORGOT PASSWORD
+================================ */
+export const sendForgotPasswordOtp = async (req, res) => {
+    try {
+        const { email } = req.body || {};
+        if (!email) {
+            return handleResponse(res, 400, "Email is required");
+        }
+
+        const result = await issueSellerForgotPasswordOtp({
+            channel: "email",
+            rawValue: email,
+            ipAddress: req.ip,
+        });
+
+        return handleResponse(res, 200, "Password reset OTP sent successfully", result);
+    } catch (error) {
+        return handleResponse(res, error.statusCode || 500, error.message);
+    }
+};
+
+export const verifyForgotPasswordOtp = async (req, res) => {
+    try {
+        const { email, otp } = req.body || {};
+        if (!email || !otp) {
+            return handleResponse(res, 400, "Email and OTP are required");
+        }
+
+        const result = await verifySellerForgotPasswordOtpCode({
+            channel: "email",
+            rawValue: email,
+            otp,
+            ipAddress: req.ip,
+        });
+
+        return handleResponse(res, 200, "OTP verified successfully", result);
+    } catch (error) {
+        return handleResponse(res, error.statusCode || 500, error.message);
+    }
+};
+
+export const resetForgotPassword = async (req, res) => {
+    try {
+        const { email, resetToken, newPassword } = req.body || {};
+        if (!email || !resetToken || !newPassword) {
+            return handleResponse(res, 400, "All fields (email, resetToken, newPassword) are required");
+        }
+
+        if (newPassword.length < 6) {
+            return handleResponse(res, 400, "Password must be at least 6 characters");
+        }
+
+        // Verify the reset token
+        verifyForgotPasswordToken({
+            channel: "email",
+            rawValue: email,
+            token: resetToken,
+        });
+
+        const seller = await Seller.findOne({ email });
+        if (!seller) {
+            return handleResponse(res, 404, "Seller account not found");
+        }
+
+        seller.password = newPassword;
+        await seller.save();
+
+        return handleResponse(res, 200, "Password reset successfully");
+    } catch (error) {
+        return handleResponse(res, error.statusCode || 500, error.message);
     }
 };

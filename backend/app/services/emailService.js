@@ -126,6 +126,44 @@ export async function sendSellerVerificationOtpEmail({
   };
 }
 
+export async function sendSellerForgotPasswordOtpEmail({
+  email,
+  otp,
+  expiresInMinutes,
+}) {
+  if (!useRealEmailOTP()) {
+    logger.info("Seller forgot password email OTP generated in mock mode", {
+      email,
+      otp,
+      mode: "mock",
+    });
+    return {
+      delivered: false,
+      mode: "mock",
+    };
+  }
+
+  const transporter = getTransporter();
+  await transporter.sendMail({
+    from: getMailFrom(),
+    to: email,
+    subject: "Reset your seller password",
+    text: `Your seller password reset code is ${otp}. This code expires in ${expiresInMinutes} minutes.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; color: #0f172a;">
+        <p>Your seller password reset code is:</p>
+        <p style="font-size: 28px; font-weight: 700; letter-spacing: 6px;">${otp}</p>
+        <p>This code expires in ${expiresInMinutes} minutes.</p>
+      </div>
+    `,
+  });
+
+  return {
+    delivered: true,
+    mode: "real",
+  };
+}
+
 /**
  * Customer-MLM-rebuild Phase 3: congratulations email fired exactly
  * once when a new customer completes the signup OTP verification. The

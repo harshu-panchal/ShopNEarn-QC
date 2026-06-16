@@ -85,7 +85,6 @@ const userSchema = new mongoose.Schema(
         phone: {
             type: String,
             required: true,
-            unique: true,
             trim: true,
         },
 
@@ -311,6 +310,13 @@ const userSchema = new mongoose.Schema(
 
 userSchema.index({ role: 1, isActive: 1 });
 userSchema.index({ deletedAt: 1, isActive: 1 });
+userSchema.index(
+    { phone: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { deletedAt: null }
+    }
+);
 
 userSchema.pre("validate", function(next) {
     if (this.phone) {

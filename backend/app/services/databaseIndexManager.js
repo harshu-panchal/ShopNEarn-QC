@@ -93,6 +93,7 @@ const INDEX_DEFINITIONS = {
   // collection name below.
   users: [
     { keys: { phone: 1 }, options: { name: "idx_phone", background: true, sparse: true } },
+    { keys: { phone: 1 }, options: { name: "idx_phone_unique_partial", background: true, unique: true, partialFilterExpression: { deletedAt: null } } },
     // NOTE: `email` is intentionally NON-UNIQUE (multiple customers
     // may share an email). The legacy `email_1` unique index that
     // older deployments still carry is dropped on startup — see
@@ -205,6 +206,9 @@ const LEGACY_INDEX_DROPS = [
   // inserts until dropped — the new `idx_email` (non-unique) is created
   // immediately after in the standard pass.
   { collection: "users", indexName: "email_1" },
+  // Let new users register with the same phone number as a soft-deleted account
+  // by dropping the global unique index. The new partial index enforces uniqueness.
+  { collection: "users", indexName: "phone_1" },
 ];
 
 async function dropLegacyIndexes() {

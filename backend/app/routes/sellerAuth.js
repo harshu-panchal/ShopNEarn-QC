@@ -4,6 +4,9 @@ import {
     loginSeller,
     sendSellerSignupOtp,
     verifySellerSignupOtp,
+    sendForgotPasswordOtp,
+    verifyForgotPasswordOtp,
+    resetForgotPassword,
 } from "../controller/sellerAuthController.js";
 import { getSellerProfile, updateSellerProfile, requestWithdrawal, getNearbySellers } from "../controller/sellerController.js";
 import { getSellerStats, getSellerEarnings } from "../controller/sellerStatsController.js";
@@ -35,7 +38,27 @@ router.post(
     authRouteRateLimiter,
     otpRouteRateLimiter,
     sellerOtpPayloadGuard,
-    verifySellerSignupOtp
+);
+
+router.post(
+    "/forgot-password/send-otp",
+    authRouteRateLimiter,
+    otpRouteRateLimiter,
+    sellerOtpPayloadGuard,
+    sendForgotPasswordOtp
+);
+router.post(
+    "/forgot-password/verify-otp",
+    authRouteRateLimiter,
+    otpRouteRateLimiter,
+    sellerOtpPayloadGuard,
+    verifyForgotPasswordOtp
+);
+router.post(
+    "/forgot-password/reset",
+    authRouteRateLimiter,
+    sellerOtpPayloadGuard,
+    resetForgotPassword
 );
 
 router.post(
