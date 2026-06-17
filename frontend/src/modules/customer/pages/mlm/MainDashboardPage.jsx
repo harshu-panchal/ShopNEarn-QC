@@ -535,7 +535,7 @@ const MemberDashboard = ({ overview, navigate, user, login }) => {
               <div className="grid grid-cols-3 gap-3 mb-3">
                 <LegBox
                   label="Left Leg"
-                  count={binary.leftLegDirectCount}
+                  count={binary.leftLegTotalDownlineCount}
                   icon={<ArrowLeft size={18} />}
                   weaker={
                     binary.leftLegDirectCount <= binary.rightLegDirectCount
@@ -544,7 +544,7 @@ const MemberDashboard = ({ overview, navigate, user, login }) => {
                 <LegBox label="Pairs" count={binary.pairsCompleted} accent />
                 <LegBox
                   label="Right Leg"
-                  count={binary.rightLegDirectCount}
+                  count={binary.rightLegTotalDownlineCount}
                   icon={<ArrowRight size={18} />}
                   weaker={
                     binary.rightLegDirectCount <= binary.leftLegDirectCount

@@ -619,28 +619,42 @@ export const getDashboardOverview = async (req, res) => {
       ? await getPlanAPairBonusForPairIndex(pairsCompleted + 1)
       : 0;
 
+    const leftChildId = membership?.binaryLeftChildId;
+    const rightChildId = membership?.binaryRightChildId;
+
     // Downline split: active customers vs registered-unpaid. We count
     // memberships whose `sponsorChain` contains the caller (full
     // downline, not just direct referrals).
-    const [activeDownline, unpaidDownline, directActive, directUnpaid] =
-      await Promise.all([
-        MlmMembership.countDocuments({
-          sponsorChain: userObjectId,
-          status: MLM_MEMBERSHIP_STATUS.ACTIVE,
-        }),
-        MlmMembership.countDocuments({
-          sponsorChain: userObjectId,
-          status: MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
-        }),
-        MlmMembership.countDocuments({
-          sponsorId: userId,
-          status: MLM_MEMBERSHIP_STATUS.ACTIVE,
-        }),
-        MlmMembership.countDocuments({
-          sponsorId: userId,
-          status: MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
-        }),
-      ]);
+    const [
+      activeDownline,
+      unpaidDownline,
+      directActive,
+      directUnpaid,
+      leftChildMembership,
+      rightChildMembership,
+    ] = await Promise.all([
+      MlmMembership.countDocuments({
+        sponsorChain: userObjectId,
+        status: MLM_MEMBERSHIP_STATUS.ACTIVE,
+      }),
+      MlmMembership.countDocuments({
+        sponsorChain: userObjectId,
+        status: MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
+      }),
+      MlmMembership.countDocuments({
+        sponsorId: userId,
+        status: MLM_MEMBERSHIP_STATUS.ACTIVE,
+      }),
+      MlmMembership.countDocuments({
+        sponsorId: userId,
+        status: MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
+      }),
+      leftChildId ? MlmMembership.findOne({ userId: leftChildId }, { totalDownlineCount: 1 }).lean() : null,
+      rightChildId ? MlmMembership.findOne({ userId: rightChildId }, { totalDownlineCount: 1 }).lean() : null,
+    ]);
+
+    const leftLegTotalDownlineCount = leftChildMembership ? (leftChildMembership.totalDownlineCount || 0) + 1 : 0;
+    const rightLegTotalDownlineCount = rightChildMembership ? (rightChildMembership.totalDownlineCount || 0) + 1 : 0;
 
     const [pendingWithdrawAgg, todaysCreditAgg, monthCreditAgg] =
       await Promise.all([
@@ -754,6 +768,8 @@ export const getDashboardOverview = async (req, res) => {
       binary: {
         leftLegDirectCount: membership?.leftLegDirectCount || 0,
         rightLegDirectCount: membership?.rightLegDirectCount || 0,
+        leftLegTotalDownlineCount,
+        rightLegTotalDownlineCount,
         pairsCompleted,
         lastPaidPairIndex: membership?.lastPaidPairIndex || 0,
         nextPairIndex: pairsCompleted + 1,
