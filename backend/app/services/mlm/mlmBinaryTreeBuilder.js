@@ -98,7 +98,7 @@ export async function buildBinaryTreeBottomUp({ rootMembership, depthLeft }) {
         connectFromField: "userId",
         connectToField: "binaryParentId",
         as: "descendants",
-        maxDepth: Math.max(0, depthLeft - 1),
+        maxDepth: 64,
       },
     },
   ]);
@@ -201,6 +201,42 @@ export async function buildBinaryTreeBottomUp({ rootMembership, depthLeft }) {
     slot[slotKey] = winner;
   }
 
+  const trueCountsMap = new Map();
+
+  function countTrueSizes(userIdStr) {
+    const slot = childrenByParent.get(userIdStr);
+    if (!slot) return { left: 0, right: 0, active: 0, inactive: 0, pairs: 0 };
+    
+    let leftCount = 0;
+    let rightCount = 0;
+    let active = 0;
+    let inactive = 0;
+    let pairsCount = (slot.L && slot.R) ? 1 : 0;
+    
+    if (slot.L) {
+      const childStr = String(slot.L.userId?._id || slot.L.userId);
+      const childRes = countTrueSizes(childStr);
+      leftCount = 1 + childRes.left + childRes.right;
+      active += childRes.active + (slot.L.status === "active" ? 1 : 0);
+      inactive += childRes.inactive + (slot.L.status === "registered_unpaid" ? 1 : 0);
+      pairsCount += childRes.pairs;
+    }
+    if (slot.R) {
+      const childStr = String(slot.R.userId?._id || slot.R.userId);
+      const childRes = countTrueSizes(childStr);
+      rightCount = 1 + childRes.left + childRes.right;
+      active += childRes.active + (slot.R.status === "active" ? 1 : 0);
+      inactive += childRes.inactive + (slot.R.status === "registered_unpaid" ? 1 : 0);
+      pairsCount += childRes.pairs;
+    }
+    
+    const res = { left: leftCount, right: rightCount, active, inactive, pairs: pairsCount };
+    trueCountsMap.set(userIdStr, res);
+    return res;
+  }
+  
+  countTrueSizes(String(rootUserId));
+
   // Walk top-down from the root, but using the bottom-up children
   // map. Capped at `depthLeft` to bound payload size for distant
   // genealogies (frontend lazy-expands deeper levels by re-querying
@@ -209,6 +245,15 @@ export async function buildBinaryTreeBottomUp({ rootMembership, depthLeft }) {
   function walk(member, depth, position) {
     if (!member) return null;
     rendered.add(String(member._id));
+    
+    const nodeUserId = String(member.userId?._id || member.userId);
+    const counts = trueCountsMap.get(nodeUserId) || { left: 0, right: 0, active: 0, inactive: 0, pairs: 0 };
+    member.trueLeftLegTotalDownlineCount = counts.left;
+    member.trueRightLegTotalDownlineCount = counts.right;
+    member.trueBinaryActiveDownlineCount = counts.active;
+    member.trueBinaryInactiveDownlineCount = counts.inactive;
+    member.trueBinaryPairsCount = counts.pairs;
+
     const node = {
       position,
       raw: member,
@@ -216,8 +261,7 @@ export async function buildBinaryTreeBottomUp({ rootMembership, depthLeft }) {
       right: null,
     };
     if (depth <= 0) return node;
-    const key = String(member.userId?._id || member.userId);
-    const slot = childrenByParent.get(key);
+    const slot = childrenByParent.get(nodeUserId);
     if (!slot) return node;
     if (slot.L) node.left = walk(slot.L, depth - 1, "L");
     if (slot.R) node.right = walk(slot.R, depth - 1, "R");

@@ -619,9 +619,6 @@ export const getDashboardOverview = async (req, res) => {
       ? await getPlanAPairBonusForPairIndex(pairsCompleted + 1)
       : 0;
 
-    const leftChildId = membership?.binaryLeftChildId;
-    const rightChildId = membership?.binaryRightChildId;
-
     // Downline split: active customers vs registered-unpaid. We count
     // memberships whose `sponsorChain` contains the caller (full
     // downline, not just direct referrals).
@@ -630,8 +627,7 @@ export const getDashboardOverview = async (req, res) => {
       unpaidDownline,
       directActive,
       directUnpaid,
-      leftChildMembership,
-      rightChildMembership,
+      binaryTreeDescendantsAgg,
     ] = await Promise.all([
       MlmMembership.countDocuments({
         sponsorChain: userObjectId,
@@ -649,12 +645,62 @@ export const getDashboardOverview = async (req, res) => {
         sponsorId: userId,
         status: MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
       }),
-      leftChildId ? MlmMembership.findOne({ userId: leftChildId }, { totalDownlineCount: 1 }).lean() : null,
-      rightChildId ? MlmMembership.findOne({ userId: rightChildId }, { totalDownlineCount: 1 }).lean() : null,
+      MlmMembership.aggregate([
+        { $match: { userId: userObjectId } },
+        {
+          $graphLookup: {
+            from: MlmMembership.collection.name,
+            startWith: "$userId",
+            connectFromField: "userId",
+            connectToField: "binaryParentId",
+            as: "descendants",
+            maxDepth: 64,
+          },
+        },
+        {
+          $project: {
+            descendants: {
+              $map: {
+                input: "$descendants",
+                as: "d",
+                in: {
+                  userId: "$$d.userId",
+                  binaryParentId: "$$d.binaryParentId",
+                  binaryPosition: "$$d.binaryPosition",
+                },
+              },
+            },
+          },
+        },
+      ]),
     ]);
 
-    const leftLegTotalDownlineCount = leftChildMembership ? (leftChildMembership.totalDownlineCount || 0) + 1 : 0;
-    const rightLegTotalDownlineCount = rightChildMembership ? (rightChildMembership.totalDownlineCount || 0) + 1 : 0;
+    const descendants = binaryTreeDescendantsAgg[0]?.descendants || [];
+    const parentLinkByUser = new Map();
+    for (const d of descendants) {
+      parentLinkByUser.set(String(d.userId), {
+        parent: d.binaryParentId ? String(d.binaryParentId) : null,
+        position: d.binaryPosition || null,
+      });
+    }
+
+    let leftLegTotalDownlineCount = 0;
+    let rightLegTotalDownlineCount = 0;
+    for (const d of descendants) {
+      let cursor = String(d.userId);
+      let legUnderRoot = null;
+      for (let i = 0; i < 64; i++) {
+        const link = parentLinkByUser.get(cursor);
+        if (!link || !link.parent) break;
+        if (link.parent === String(userObjectId)) {
+          legUnderRoot = link.position;
+          break;
+        }
+        cursor = link.parent;
+      }
+      if (legUnderRoot === "L") leftLegTotalDownlineCount++;
+      if (legUnderRoot === "R") rightLegTotalDownlineCount++;
+    }
 
     const [pendingWithdrawAgg, todaysCreditAgg, monthCreditAgg] =
       await Promise.all([
@@ -855,8 +901,14 @@ function shapeCustomerNode(member, position) {
 function shapeCustomerTree(node) {
   if (!node) return null;
   const shaped = shapeCustomerNode(node.raw, node.position);
-  shaped.leftLegTotalDownlineCount = node.left ? (node.left.raw.totalDownlineCount || 0) + 1 : 0;
-  shaped.rightLegTotalDownlineCount = node.right ? (node.right.raw.totalDownlineCount || 0) + 1 : 0;
+  shaped.leftLegTotalDownlineCount = node.raw.trueLeftLegTotalDownlineCount || 0;
+  shaped.rightLegTotalDownlineCount = node.raw.trueRightLegTotalDownlineCount || 0;
+  
+  shaped.totalDownlineCount = shaped.leftLegTotalDownlineCount + shaped.rightLegTotalDownlineCount;
+  shaped.activeDownlineCount = node.raw.trueBinaryActiveDownlineCount || 0;
+  shaped.inactiveDownlineCount = node.raw.trueBinaryInactiveDownlineCount || 0;
+  shaped.pairsCompleted = node.raw.trueBinaryPairsCount || 0;
+  
   shaped.left = shapeCustomerTree(node.left);
   shaped.right = shapeCustomerTree(node.right);
   return shaped;

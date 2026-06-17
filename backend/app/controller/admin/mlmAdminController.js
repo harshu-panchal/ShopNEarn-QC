@@ -1122,8 +1122,14 @@ function shapeAdminNode(member, position) {
 function shapeAdminTree(node) {
   if (!node) return null;
   const shaped = shapeAdminNode(node.raw, node.position);
-  shaped.leftLegTotalDownlineCount = node.left ? (node.left.raw.totalDownlineCount || 0) + 1 : 0;
-  shaped.rightLegTotalDownlineCount = node.right ? (node.right.raw.totalDownlineCount || 0) + 1 : 0;
+  shaped.leftLegTotalDownlineCount = node.raw.trueLeftLegTotalDownlineCount || 0;
+  shaped.rightLegTotalDownlineCount = node.raw.trueRightLegTotalDownlineCount || 0;
+  
+  shaped.totalDownlineCount = shaped.leftLegTotalDownlineCount + shaped.rightLegTotalDownlineCount;
+  shaped.activeDownlineCount = node.raw.trueBinaryActiveDownlineCount || 0;
+  shaped.inactiveDownlineCount = node.raw.trueBinaryInactiveDownlineCount || 0;
+  shaped.pairsCompleted = node.raw.trueBinaryPairsCount || 0;
+  
   shaped.left = shapeAdminTree(node.left);
   shaped.right = shapeAdminTree(node.right);
   return shaped;
