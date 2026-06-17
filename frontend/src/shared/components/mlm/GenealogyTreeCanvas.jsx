@@ -1391,8 +1391,8 @@ const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
   const status = data.status || "unknown";
   const planType = data.planType || "—";
   const joinedAt = data.planAJoinedAt || data.joinedAt || null;
-  const left = Number(data.leftLegDirectCount || 0);
-  const right = Number(data.rightLegDirectCount || 0);
+  const left = Number(data.leftLegTotalDownlineCount || 0);
+  const right = Number(data.rightLegTotalDownlineCount || 0);
   const pairs = Number(data.pairsCompleted || 0);
   const totalDownline = Number(data.totalDownlineCount || 0);
   const activeDownline = Number(data.activeDownlineCount || 0);

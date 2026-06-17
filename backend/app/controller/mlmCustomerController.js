@@ -839,6 +839,8 @@ function shapeCustomerNode(member, position) {
 function shapeCustomerTree(node) {
   if (!node) return null;
   const shaped = shapeCustomerNode(node.raw, node.position);
+  shaped.leftLegTotalDownlineCount = node.left ? (node.left.raw.totalDownlineCount || 0) + 1 : 0;
+  shaped.rightLegTotalDownlineCount = node.right ? (node.right.raw.totalDownlineCount || 0) + 1 : 0;
   shaped.left = shapeCustomerTree(node.left);
   shaped.right = shapeCustomerTree(node.right);
   return shaped;
