@@ -22,6 +22,7 @@ import {
   requestWithdrawal,
   submitJoiningProof,
   updateMyTreeLayout,
+  updateMyMembership,
 } from "../controller/mlmCustomerController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 
@@ -35,6 +36,7 @@ import { verifyToken } from "../middleware/authMiddleware.js";
 const router = express.Router();
 
 router.get("/membership", verifyToken, getMyMembership);
+router.put("/membership", verifyToken, updateMyMembership);
 router.get("/referral-code", verifyToken, getMyReferralCode);
 router.get("/direct-referrals", verifyToken, getMyDirectReferrals);
 router.get("/upline", verifyToken, getMyUpline);

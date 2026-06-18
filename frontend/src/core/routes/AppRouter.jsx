@@ -56,6 +56,7 @@ const MlmReferralPage = lazy(() => import('../../modules/customer/pages/mlm/MlmR
 const MlmEarningsPage = lazy(() => import('../../modules/customer/pages/mlm/MlmEarningsPage'));
 const MlmWithdrawalPage = lazy(() => import('../../modules/customer/pages/mlm/MlmWithdrawalPage'));
 const MlmHomeShoppingPage = lazy(() => import('../../modules/customer/pages/mlm/MlmHomeShoppingPage'));
+const MlmProfilePage = lazy(() => import('../../modules/customer/pages/mlm/MlmProfilePage'));
 const ManualPaymentPage = lazy(() => import('../../modules/customer/pages/mlm/ManualPaymentPage'));
 // Customer-MLM-rebuild Phase 8 — new dashboard + Genealogy + Payouts sections.
 const MainDashboardPage = lazy(() => import('../../modules/customer/pages/mlm/MainDashboardPage'));
@@ -239,6 +240,7 @@ const AppRouter = () => {
                                 { index: true, element: <MainDashboardPage /> },
                                 { path: 'legacy', element: <MlmDashboardPage /> },
                                 { path: 'referrals', element: <MlmReferralPage /> },
+                                { path: 'profile', element: <MlmProfilePage /> },
                                 // Genealogy section — tabbed layout (Tree /
                                 // Binary / Matching / Sponsor). `/mlm/genealogy`
                                 // redirects to the Tree View by default.

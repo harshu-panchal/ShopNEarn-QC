@@ -10,6 +10,10 @@ import { getWithDedupe, invalidateCache } from "@core/api/dedupe";
  */
 export const mlmApi = {
   getMembership: () => getWithDedupe("/customer/mlm/membership", {}, { ttl: 5000 }),
+  updateMembership: (data) => {
+    invalidateCache("/customer/mlm/membership");
+    return axiosInstance.put("/customer/mlm/membership", data);
+  },
   getReferralCode: () => getWithDedupe("/customer/mlm/referral-code", {}, { ttl: 30000 }),
   getDirectReferrals: (params) => getWithDedupe("/customer/mlm/direct-referrals", params, { ttl: 5000 }),
   getUpline: (params) => getWithDedupe("/customer/mlm/upline", params, { ttl: 30000 }),

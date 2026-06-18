@@ -784,9 +784,6 @@ const GenealogyTreeCanvas = ({
           >
             <Minus size={14} />
           </button>
-          <span className="text-xs font-bold text-slate-600 w-10 text-center">
-            {Math.round(zoom * 200)}%
-          </span>
           <button
             onClick={() => adjustZoomCentered(0.05)}
             className="w-8 h-8 rounded-md border border-slate-200 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-600"
@@ -809,11 +806,7 @@ const GenealogyTreeCanvas = ({
       {/* Canvas */}
       <div
         ref={containerRef}
-        className="relative w-full flex-1 min-h-0 bg-[radial-gradient(circle_at_1px_1px,_#e2e8f0_1px,_transparent_0)] [background-size:16px_16px] cursor-grab active:cursor-grabbing select-none overflow-hidden touch-pan-y"
-        onPointerDown={onPanStart}
-        onPointerMove={onPanMove}
-        onPointerUp={onPanEnd}
-        onPointerCancel={onPanEnd}
+        className="relative w-full flex-1 min-h-0 bg-[radial-gradient(circle_at_1px_1px,_#e2e8f0_1px,_transparent_0)] [background-size:16px_16px] overflow-hidden"
         onWheel={onWheel}
       >
         <div

@@ -191,6 +191,39 @@ export const getMyMembership = async (req, res) => {
   }
 };
 
+/**
+ * PUT /api/customer/mlm/membership
+ * Updates the user's MLM membership payout details (bank/UPI/KYC).
+ */
+export const updateMyMembership = async (req, res) => {
+  try {
+    const { payoutBeneficiary } = req.body;
+    
+    if (!payoutBeneficiary || typeof payoutBeneficiary !== "object") {
+      return handleResponse(res, 400, "Invalid payload");
+    }
+
+    const membership = await getMembershipByUserId(req.user.id);
+    if (!membership) {
+      return handleResponse(res, 404, "You are not an MLM member yet");
+    }
+
+    // Merge new payoutBeneficiary details
+    membership.payoutBeneficiary = {
+      ...(membership.payoutBeneficiary || {}),
+      ...payoutBeneficiary,
+    };
+
+    await membership.save();
+
+    return handleResponse(res, 200, "Membership details updated successfully", {
+      payoutBeneficiary: membership.payoutBeneficiary,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
 /** GET /api/customer/mlm/referral-code — short read used by share buttons. */
 export const getMyReferralCode = async (req, res) => {
   try {

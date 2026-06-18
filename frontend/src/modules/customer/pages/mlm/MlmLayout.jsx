@@ -16,6 +16,7 @@ import {
   Network,
   ShoppingBag,
   Users,
+  User,
   Wallet,
   X,
 } from "lucide-react";
@@ -102,6 +103,11 @@ const SIDEBAR_NAV_ITEMS = [
     label: "Home Shopping",
     path: "/mlm/home-shopping",
     icon: ShoppingBag,
+  },
+  {
+    label: "Profile",
+    path: "/mlm/profile",
+    icon: User,
   },
   // Storefront escape hatch — keeps the customer one click away
   // from the products they came to shop, regardless of how deep

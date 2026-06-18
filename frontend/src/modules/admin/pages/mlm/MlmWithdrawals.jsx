@@ -10,7 +10,7 @@ const STATUS_FILTERS = ['pending', 'approved', 'paid', 'rejected', 'cancelled', 
 
 const MlmWithdrawals = () => {
     const [items, setItems] = useState([]);
-    const [status, setStatus] = useState('pending');
+    const [status, setStatus] = useState('');
     const [loading, setLoading] = useState(false);
     const [actionId, setActionId] = useState(null);
 
