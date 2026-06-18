@@ -103,7 +103,7 @@ const MyPayoutPage = () => {
     const adminPct = membership.config.withdrawalAdminChargePercent || 0;
     const gstPct = membership.config.withdrawalGstOnAdminChargePercent || 0;
     const adminCharge = Math.round(((amount * adminPct) / 100) * 100) / 100;
-    const gst = Math.round(((adminCharge * gstPct) / 100) * 100) / 100;
+    const gst = Math.round(((amount * gstPct) / 100) * 100) / 100;
     setPreview({
       amount,
       adminCharge,
@@ -251,7 +251,7 @@ const MyPayoutPage = () => {
               </span>
             </div>
             <div className="flex justify-between text-rose-600">
-              <span>GST on charge</span>
+              <span>TDS</span>
               <span className="font-bold">-{formatINR(preview.gst)}</span>
             </div>
             <div className="flex justify-between text-emerald-700 border-t border-slate-200 pt-1.5 mt-1">

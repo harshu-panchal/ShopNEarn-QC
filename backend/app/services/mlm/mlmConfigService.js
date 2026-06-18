@@ -92,7 +92,7 @@ export async function computeWithdrawalCharges(grossAmount, opts) {
 
   const gross = round(grossAmount);
   const adminCharge = round((gross * adminPct) / 100);
-  const gst = round((adminCharge * gstPct) / 100);
+  const gst = round((gross * gstPct) / 100);
   const net = round(gross - adminCharge - gst);
 
   return {

@@ -61,7 +61,7 @@ const MlmWithdrawalPage = () => {
         const adminPct = membership.config.withdrawalAdminChargePercent || 0;
         const gstPct = membership.config.withdrawalGstOnAdminChargePercent || 0;
         const adminCharge = Math.round(((amount * adminPct) / 100) * 100) / 100;
-        const gst = Math.round(((adminCharge * gstPct) / 100) * 100) / 100;
+        const gst = Math.round(((amount * gstPct) / 100) * 100) / 100;
         setPreview({
             amount,
             adminCharge,
@@ -152,7 +152,7 @@ const MlmWithdrawalPage = () => {
                     <p className="text-xs font-bold uppercase tracking-widest opacity-80">Withdrawable Earnings</p>
                     <h2 className="text-3xl font-black mt-1">{formatINR(earnings)}</h2>
                     <p className="text-xs opacity-80 mt-2">
-                        Min withdrawal {formatINR(minAmt)} · Fees deducted: {membership.config.withdrawalAdminChargePercent}% admin + {membership.config.withdrawalGstOnAdminChargePercent}% GST on charge
+                        Min withdrawal {formatINR(minAmt)} · Fees deducted: {membership.config.withdrawalAdminChargePercent}% admin + {membership.config.withdrawalGstOnAdminChargePercent}% TDS
                     </p>
                 </div>
 
@@ -178,7 +178,7 @@ const MlmWithdrawalPage = () => {
                         <div className="bg-slate-50 rounded-xl p-3 text-xs space-y-1.5">
                             <div className="flex justify-between"><span>Requested</span><span className="font-bold">{formatINR(preview.amount)}</span></div>
                             <div className="flex justify-between text-rose-600"><span>Admin charge</span><span className="font-bold">-{formatINR(preview.adminCharge)}</span></div>
-                            <div className="flex justify-between text-rose-600"><span>GST on charge</span><span className="font-bold">-{formatINR(preview.gst)}</span></div>
+                            <div className="flex justify-between text-rose-600"><span>TDS</span><span className="font-bold">-{formatINR(preview.gst)}</span></div>
                             <div className="flex justify-between text-emerald-700 border-t border-slate-200 pt-1.5 mt-1"><span className="font-bold">You receive</span><span className="font-black">{formatINR(preview.net)}</span></div>
                         </div>
                     )}
