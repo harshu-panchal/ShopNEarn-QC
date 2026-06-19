@@ -7,6 +7,13 @@ import { useMlmDrawer } from './MlmLayout';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
+const referralPlanLabel = (referral) => {
+    if (referral?.status !== 'active') return 'Member';
+    if (referral?.planType === 'B') return 'Plan B';
+    if (referral?.planType === 'A') return 'Plan A';
+    return 'Member';
+};
+
 const MlmReferralPage = () => {
     const navigate = useNavigate();
     const [membership, setMembership] = useState(null);
@@ -211,7 +218,7 @@ const MlmReferralPage = () => {
                                                 <p className="text-sm font-semibold text-slate-900 truncate">{r.name || 'New member'}</p>
                                                 <p className="text-[11px] text-slate-500 truncate">
                                                     Joined {new Date(r.joinedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                                                    {' · '}{r.status === 'active' ? (r.planType === 'B' ? 'Plan B' : 'Plan A') : 'Member'}
+                                                    {' · '}{referralPlanLabel(r)}
                                                 </p>
                                             </div>
                                             <div className="text-right shrink-0">

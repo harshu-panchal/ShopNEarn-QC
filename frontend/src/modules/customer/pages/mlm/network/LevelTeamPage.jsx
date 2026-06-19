@@ -1,9 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, ArrowLeft, ArrowRight, Filter } from 'lucide-react';
+import { Menu, ArrowLeft, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import mlmApi from '../../../services/mlmApi';
 import { useMlmDrawer } from '../MlmLayout';
+
+const MAX_LEVEL = 15;
+
+const referralPlanLabel = (member) => {
+    if (member?.status !== 'active') return 'Member';
+    if (member?.planType === 'B') return 'Plan B';
+    if (member?.planType === 'A') return 'Plan A';
+    return 'Member';
+};
+
+const statusBadgeClass = (member) => {
+    if (member?.status !== 'active') return 'bg-slate-100 text-slate-600';
+    if (member?.planType === 'B') return 'bg-indigo-100 text-indigo-700';
+    if (member?.planType === 'A') return 'bg-emerald-100 text-emerald-700';
+    return 'bg-slate-100 text-slate-600';
+};
 
 const LevelTeamPage = () => {
     const navigate = useNavigate();
@@ -12,7 +28,8 @@ const LevelTeamPage = () => {
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
-    const [stats, setStats] = useState({ l1: 0, l2: 0, planA: 0, planB: 0, inactive: 0 });
+    const [stats, setStats] = useState({ planA: 0, planB: 0, inactive: 0 });
+    const [levelCounts, setLevelCounts] = useState({});
     const [filter, setFilter] = useState('ALL');
     const [level, setLevel] = useState('ALL');
     const limit = 20;
@@ -22,11 +39,11 @@ const LevelTeamPage = () => {
         (async () => {
             setLoading(true);
             try {
-                const res = await mlmApi.getLevelTeam({ 
-                    level: level !== 'ALL' ? level : undefined, 
-                    page, 
+                const res = await mlmApi.getLevelTeam({
+                    level: level !== 'ALL' ? level : undefined,
+                    page,
                     limit,
-                    filter: filter !== 'ALL' ? filter : undefined
+                    filter: filter !== 'ALL' ? filter : undefined,
                 });
                 const data = res.data?.result ?? res.data?.data ?? res.data;
                 if (mounted) {
@@ -34,12 +51,11 @@ const LevelTeamPage = () => {
                     setTotalPages(data.totalPages || 1);
                     setTotal(data.totalMembers || 0);
                     setStats({
-                        l1: data.l1Members || 0,
-                        l2: data.l2Members || 0,
                         planA: data.activePlanA || 0,
                         planB: data.activePlanB || 0,
                         inactive: data.inactiveMembers || 0,
                     });
+                    setLevelCounts(data.levelCounts || {});
                 }
             } catch (err) {
                 toast.error(err?.response?.data?.message || 'Failed to load team');
@@ -50,63 +66,89 @@ const LevelTeamPage = () => {
         return () => { mounted = false; };
     }, [page, level, filter]);
 
-    const handleLevelChange = (e) => {
-        setLevel(e.target.value);
-        setPage(1); // Reset page on filter change
-    };
+    const levelsWithMembers = [...Array(MAX_LEVEL)]
+        .map((_, i) => i + 1)
+        .filter((lv) => (levelCounts[lv] || 0) > 0);
+
+    const networkTotal = Object.values(levelCounts).reduce((sum, n) => sum + (n || 0), 0);
+    const levelLabel = level === 'ALL' ? 'all levels' : `Level ${level}`;
 
     return (
         <div className="min-h-screen bg-slate-50 pb-24 md:pb-12">
             <Header navigate={navigate} />
             <div className="max-w-7xl mx-auto px-4 md:px-8 space-y-4 md:space-y-6">
-                <div className="hidden md:flex items-end justify-between gap-4 pt-6 pb-4 border-b border-slate-200/80">
-                    <div>
-                        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Level Team</h1>
-                        <p className="text-sm text-slate-500 mt-1">View members in your sponsor network grouped by level.</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Filter size={16} className="text-slate-400" />
-                        <select
-                            value={level || ''}
-                            onChange={(e) => {
-                                setLevel(e.target.value ? Number(e.target.value) : 'ALL');
-                                setPage(1);
-                            }}
-                            className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                        >
-                            <option value="ALL">All Levels</option>
-                            {[...Array(15)].map((_, i) => (
-                                <option key={i + 1} value={i + 1}>Level {i + 1}</option>
-                            ))}
-                        </select>
-                    </div>
+                <div className="hidden md:block pt-6 pb-4 border-b border-slate-200/80">
+                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">Level Team</h1>
+                    <p className="text-sm text-slate-500 mt-1">
+                        View members in your sponsor network grouped by level.
+                    </p>
                 </div>
 
-                <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-                    <button onClick={() => { setFilter('ALL'); setPage(1); }} className={`bg-white rounded-2xl border p-4 shadow-sm flex flex-col justify-center text-left transition-all ${filter === 'ALL' ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/10' : 'border-slate-200 hover:border-indigo-300'}`}>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <button
+                        type="button"
+                        onClick={() => { setFilter('ALL'); setPage(1); }}
+                        className={`bg-white rounded-2xl border p-4 shadow-sm flex flex-col justify-center text-left transition-all ${filter === 'ALL' ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/10' : 'border-slate-200 hover:border-indigo-300'}`}
+                    >
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Total Members</p>
                         <p className="text-2xl font-black text-slate-900">{loading ? '-' : total}</p>
                     </button>
-                    <button onClick={() => { setFilter('L1'); setPage(1); }} className={`bg-white rounded-2xl border p-4 shadow-sm flex flex-col justify-center text-left transition-all ${filter === 'L1' ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/10' : 'border-slate-200 hover:border-indigo-300'}`}>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">L1 Members</p>
-                        <p className="text-2xl font-black text-slate-900">{loading ? '-' : stats.l1}</p>
-                    </button>
-                    <button onClick={() => { setFilter('L2'); setPage(1); }} className={`bg-white rounded-2xl border p-4 shadow-sm flex flex-col justify-center text-left transition-all ${filter === 'L2' ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/10' : 'border-slate-200 hover:border-indigo-300'}`}>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">L2 Members</p>
-                        <p className="text-2xl font-black text-slate-900">{loading ? '-' : stats.l2}</p>
-                    </button>
-                    <button onClick={() => { setFilter('planA'); setPage(1); }} className={`bg-emerald-50 rounded-2xl border p-4 shadow-sm flex flex-col justify-center text-left transition-all ${filter === 'planA' ? 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-100/50' : 'border-emerald-100 hover:border-emerald-300'}`}>
+                    <button
+                        type="button"
+                        onClick={() => { setFilter('planA'); setPage(1); }}
+                        className={`bg-emerald-50 rounded-2xl border p-4 shadow-sm flex flex-col justify-center text-left transition-all ${filter === 'planA' ? 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-100/50' : 'border-emerald-100 hover:border-emerald-300'}`}
+                    >
                         <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Active Plan A</p>
                         <p className="text-2xl font-black text-emerald-700">{loading ? '-' : stats.planA}</p>
                     </button>
-                    <button onClick={() => { setFilter('planB'); setPage(1); }} className={`bg-indigo-50 rounded-2xl border p-4 shadow-sm flex flex-col justify-center text-left transition-all ${filter === 'planB' ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-100/50' : 'border-indigo-100 hover:border-indigo-300'}`}>
+                    <button
+                        type="button"
+                        onClick={() => { setFilter('planB'); setPage(1); }}
+                        className={`bg-indigo-50 rounded-2xl border p-4 shadow-sm flex flex-col justify-center text-left transition-all ${filter === 'planB' ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-100/50' : 'border-indigo-100 hover:border-indigo-300'}`}
+                    >
                         <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-1">Active Plan B</p>
                         <p className="text-2xl font-black text-indigo-700">{loading ? '-' : stats.planB}</p>
                     </button>
-                    <button onClick={() => { setFilter('inactive'); setPage(1); }} className={`bg-rose-50 rounded-2xl border p-4 shadow-sm flex flex-col justify-center text-left transition-all ${filter === 'inactive' ? 'border-rose-500 ring-1 ring-rose-500 bg-rose-100/50' : 'border-rose-100 hover:border-rose-300'}`}>
+                    <button
+                        type="button"
+                        onClick={() => { setFilter('inactive'); setPage(1); }}
+                        className={`bg-rose-50 rounded-2xl border p-4 shadow-sm flex flex-col justify-center text-left transition-all ${filter === 'inactive' ? 'border-rose-500 ring-1 ring-rose-500 bg-rose-100/50' : 'border-rose-100 hover:border-rose-300'}`}
+                    >
                         <p className="text-[10px] font-bold text-rose-600 uppercase tracking-wider mb-1">Inactive</p>
                         <p className="text-2xl font-black text-rose-700">{loading ? '-' : stats.inactive}</p>
                     </button>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Browse by level</p>
+                        {level !== 'ALL' && (
+                            <span className="text-xs font-semibold text-indigo-600">
+                                Showing {levelLabel}
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
+                        <button
+                            type="button"
+                            onClick={() => { setLevel('ALL'); setPage(1); }}
+                            className={`shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all ${level === 'ALL' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                        >
+                            All Levels
+                            <span className="ml-1.5 text-xs opacity-80">({networkTotal})</span>
+                        </button>
+                        {levelsWithMembers.map((lv) => (
+                            <button
+                                key={lv}
+                                type="button"
+                                onClick={() => { setLevel(lv); setPage(1); }}
+                                className={`shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all ${level === lv ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                            >
+                                L{lv}
+                                <span className="ml-1.5 text-xs opacity-80">({levelCounts[lv]})</span>
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
@@ -127,7 +169,9 @@ const LevelTeamPage = () => {
                                     </tr>
                                 ) : team.length === 0 ? (
                                     <tr>
-                                        <td colSpan={4} className="px-5 py-12 text-center text-slate-500">No members found at this level.</td>
+                                        <td colSpan={4} className="px-5 py-12 text-center text-slate-500">
+                                            No members found{level !== 'ALL' ? ` at Level ${level}` : ''}.
+                                        </td>
                                     </tr>
                                 ) : (
                                     team.map((row) => (
@@ -142,12 +186,12 @@ const LevelTeamPage = () => {
                                                 </div>
                                             </td>
                                             <td className="px-5 py-4">
-                                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${row.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                                                    {row.status === 'active' ? (row.planType === 'B' ? 'Plan B' : 'Plan A') : 'Member'}
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${statusBadgeClass(row)}`}>
+                                                    {referralPlanLabel(row)}
                                                 </span>
                                             </td>
                                             <td className="px-5 py-4 text-right text-slate-600">
-                                                {row.joinedAt ? new Date(row.joinedAt).toLocaleDateString() : '—'}
+                                                {row.joinedAt ? new Date(row.joinedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                                             </td>
                                         </tr>
                                     ))
@@ -160,6 +204,7 @@ const LevelTeamPage = () => {
                 {totalPages > 1 && (
                     <div className="flex items-center justify-between gap-4 mt-6">
                         <button
+                            type="button"
                             onClick={() => setPage((p) => Math.max(1, p - 1))}
                             disabled={page === 1}
                             className="flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm bg-white border border-slate-200 text-slate-700 disabled:opacity-50"
@@ -170,6 +215,7 @@ const LevelTeamPage = () => {
                             Page {page} of {totalPages}
                         </span>
                         <button
+                            type="button"
                             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                             disabled={page === totalPages}
                             className="flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm bg-white border border-slate-200 text-slate-700 disabled:opacity-50"
@@ -188,6 +234,7 @@ function Header({ navigate }) {
     return (
         <div className="md:hidden sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm px-4 pt-4 pb-2 border-b border-slate-200/60 flex items-center gap-3">
             <button
+                type="button"
                 onClick={openDrawer}
                 className="w-10 h-10 flex items-center justify-center hover:bg-slate-200/70 rounded-full transition-colors -ml-2"
                 aria-label="Open navigation"

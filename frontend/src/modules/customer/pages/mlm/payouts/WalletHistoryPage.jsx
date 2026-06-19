@@ -33,6 +33,9 @@ const TYPE_LABEL = {
   MLM_WITHDRAWAL_REVERSED: "Withdrawal Reversed",
   MLM_JOINING_FEE: "Activation Fee",
   MLM_REPURCHASE_DEBIT: "Repurchase",
+  MLM_JOINING_PACKAGE_SHOPPING_CREDIT: "Plan A Shopping Credit",
+  MLM_SIGNUP_BONUS_SELF: "Signup Bonus",
+  MLM_SIGNUP_BONUS_SPONSOR: "Referral Bonus",
   WALLET_TOPUP: "Wallet Top-up",
   WALLET_REFUND: "Refund",
 };
@@ -164,19 +167,23 @@ const WalletHistoryPage = () => {
                       <p className="text-sm font-bold text-slate-900 capitalize">
                         {label}
                       </p>
-                      {row.description && (
-                        <p className="text-[11px] text-slate-500 line-clamp-2">
-                          {row.metadata?.referralName ? (
-                            <>
-                              {row.description} <br />
-                              <span className="font-medium text-slate-600">
-                                {row.metadata.referralName} ({row.metadata.referralUserId})
-                              </span>
-                            </>
-                          ) : (
-                            row.description
-                          )}
+                      {row.type === "MLM_SIGNUP_BONUS_SPONSOR" &&
+                      row.metadata?.referralName ? (
+                        <p className="text-[11px] text-slate-500">
+                          {row.description}
+                          <span className="block font-semibold text-indigo-700 mt-0.5">
+                            Referral: {row.metadata.referralName}
+                            {row.metadata.referralUserId
+                              ? ` · ${row.metadata.referralUserId}`
+                              : ""}
+                          </span>
                         </p>
+                      ) : (
+                        row.description && (
+                          <p className="text-[11px] text-slate-500 line-clamp-2">
+                            {row.description}
+                          </p>
+                        )
                       )}
                       <p className="text-[10px] text-slate-400 mt-0.5">
                         {formatDate(row.createdAt)}

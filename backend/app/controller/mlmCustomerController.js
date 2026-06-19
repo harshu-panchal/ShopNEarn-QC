@@ -5,7 +5,8 @@ import LedgerEntry from "../models/ledgerEntry.js";
 import MlmMembership from "../models/mlmMembership.js";
 import MlmCommissionEvent from "../models/mlmCommissionEvent.js";
 import MlmWithdrawalRequest from "../models/mlmWithdrawalRequest.js";
-import { OWNER_TYPE } from "../constants/finance.js";
+import { LEDGER_TRANSACTION_TYPE, OWNER_TYPE } from "../constants/finance.js";
+import Customer from "../models/customer.js";
 import {
   ALL_MLM_WITHDRAWAL_STATUSES,
   MLM_BONUS_TYPE,
@@ -257,6 +258,7 @@ export const getMyDirectReferrals = async (req, res) => {
           name: customer?.name || null,
           phone: customer?.phone || null,
           joinedAt: m.joinedAt,
+          status: m.status,
           planType: m.planType,
           directReferralsCount: m.directReferralsCount || 0,
           lifetimeEarnings:
@@ -700,6 +702,7 @@ export const getDashboardOverview = async (req, res) => {
                   userId: "$$d.userId",
                   binaryParentId: "$$d.binaryParentId",
                   binaryPosition: "$$d.binaryPosition",
+                  status: "$$d.status",
                 },
               },
             },
@@ -719,6 +722,9 @@ export const getDashboardOverview = async (req, res) => {
 
     let leftLegTotalDownlineCount = 0;
     let rightLegTotalDownlineCount = 0;
+    let leftLegActiveDownlineCount = 0;
+    let rightLegActiveDownlineCount = 0;
+
     for (const d of descendants) {
       let cursor = String(d.userId);
       let legUnderRoot = null;
@@ -731,8 +737,14 @@ export const getDashboardOverview = async (req, res) => {
         }
         cursor = link.parent;
       }
-      if (legUnderRoot === "L") leftLegTotalDownlineCount++;
-      if (legUnderRoot === "R") rightLegTotalDownlineCount++;
+      if (legUnderRoot === "L") {
+        leftLegTotalDownlineCount++;
+        if (d.status === 'active') leftLegActiveDownlineCount++;
+      }
+      if (legUnderRoot === "R") {
+        rightLegTotalDownlineCount++;
+        if (d.status === 'active') rightLegActiveDownlineCount++;
+      }
     }
 
     const [pendingWithdrawAgg, todaysCreditAgg, monthCreditAgg] =
@@ -849,6 +861,8 @@ export const getDashboardOverview = async (req, res) => {
         rightLegDirectCount: membership?.rightLegDirectCount || 0,
         leftLegTotalDownlineCount,
         rightLegTotalDownlineCount,
+        leftLegActiveDownlineCount,
+        rightLegActiveDownlineCount,
         pairsCompleted,
         lastPaidPairIndex: membership?.lastPaidPairIndex || 0,
         nextPairIndex: pairsCompleted + 1,
@@ -1516,6 +1530,67 @@ export const addMemberAtSlot = async (req, res) => {
   }
 };
 
+function extractSignupSponsorReferralObjectId(row) {
+  const meta = row.metadata || {};
+  const fromMeta = meta.newCustomerId || meta.referralObjectId;
+  if (fromMeta && mongoose.Types.ObjectId.isValid(String(fromMeta))) {
+    return String(fromMeta);
+  }
+
+  const ref = String(row.idempotencyKey || row.reference || "");
+  const keyed = ref.match(/^MLM-SBR-[a-f0-9]{24}-([a-f0-9]{24})$/i);
+  if (keyed) return keyed[1];
+
+  const parts = ref.split("-");
+  if (parts[0] === "MLM" && parts[1] === "SBR" && parts.length >= 4) {
+    const candidate = parts[parts.length - 1];
+    if (mongoose.Types.ObjectId.isValid(candidate)) return candidate;
+  }
+
+  return null;
+}
+
+async function enrichWalletHistoryWithReferralDetails(items) {
+  const referralIds = [
+    ...new Set(
+      items
+        .filter((row) => row.type === LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SPONSOR)
+        .map((row) => extractSignupSponsorReferralObjectId(row))
+        .filter(Boolean),
+    ),
+  ];
+
+  if (!referralIds.length) return items;
+
+  const users = await Customer.find({ _id: { $in: referralIds } })
+    .select("name userId phone")
+    .lean();
+  const userById = new Map(users.map((u) => [String(u._id), u]));
+
+  return items.map((row) => {
+    if (row.type !== LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SPONSOR) {
+      return row;
+    }
+
+    const referralObjectId = extractSignupSponsorReferralObjectId(row);
+    if (!referralObjectId) return row;
+
+    const referral = userById.get(referralObjectId);
+    if (!referral) return row;
+
+    return {
+      ...row,
+      metadata: {
+        ...(row.metadata || {}),
+        referralObjectId,
+        referralName: referral.name || "Member",
+        referralUserId: referral.userId || "",
+        referralPhone: referral.phone || "",
+      },
+    };
+  });
+}
+
 /**
  * GET /api/customer/mlm/payouts/wallet-history?page=1&limit=20&type=&direction=
  *
@@ -1559,22 +1634,25 @@ export const getMyWalletHistory = async (req, res) => {
       LedgerEntry.countDocuments(query),
     ]);
 
-    const shaped = items.map((row) => ({
-      _id: row._id,
-      transactionId: row.transactionId,
-      type: row.type,
-      direction: row.direction,
-      amount: row.amount,
-      status: row.status,
-      description: row.description || null,
-      reference: row.reference || null,
-      createdAt: row.createdAt,
-      balanceBefore: row.balanceBefore,
-      balanceAfter: row.balanceAfter,
-      orderId: row.orderId || null,
-      payoutId: row.payoutId || null,
-      metadata: row.metadata || {},
-    }));
+    const shaped = await enrichWalletHistoryWithReferralDetails(
+      items.map((row) => ({
+        _id: row._id,
+        transactionId: row.transactionId,
+        type: row.type,
+        direction: row.direction,
+        amount: row.amount,
+        status: row.status,
+        description: row.description || null,
+        reference: row.reference || null,
+        idempotencyKey: row.idempotencyKey || null,
+        createdAt: row.createdAt,
+        balanceBefore: row.balanceBefore,
+        balanceAfter: row.balanceAfter,
+        orderId: row.orderId || null,
+        payoutId: row.payoutId || null,
+        metadata: row.metadata || {},
+      })),
+    );
 
     return handleResponse(res, 200, "Wallet history", {
       items: shaped,
@@ -1746,8 +1824,17 @@ export const getMyLevelTeam = async (req, res) => {
     ]);
 
     const descendants = aggResult[0]?.descendants || [];
-    let levelMembers = descendants.map((d) => ({ ...d, level: d.depth + 1 }));
+    const allLevelMembers = descendants.map((d) => ({ ...d, level: d.depth + 1 }));
 
+    const levelCounts = {};
+    for (let i = 1; i <= 15; i++) levelCounts[i] = 0;
+    allLevelMembers.forEach((m) => {
+      if (m.level >= 1 && m.level <= 15) {
+        levelCounts[m.level] = (levelCounts[m.level] || 0) + 1;
+      }
+    });
+
+    let levelMembers = allLevelMembers;
     if (targetLevel !== null) {
       levelMembers = levelMembers.filter((m) => m.level === targetLevel);
     }
@@ -1759,8 +1846,6 @@ export const getMyLevelTeam = async (req, res) => {
     const activePlanA = levelMembers.filter(m => m.status === 'active' && m.planType === 'A').length;
     const activePlanB = levelMembers.filter(m => m.status === 'active' && m.planType === 'B').length;
     const inactiveMembers = levelMembers.filter(m => m.status !== 'active').length;
-    const l1Members = levelMembers.filter(m => m.level === 1).length;
-    const l2Members = levelMembers.filter(m => m.level === 2).length;
 
     let filteredMembers = levelMembers;
     const filter = req.query.filter;
@@ -1770,10 +1855,6 @@ export const getMyLevelTeam = async (req, res) => {
       filteredMembers = levelMembers.filter(m => m.status === 'active' && m.planType === 'B');
     } else if (filter === 'inactive') {
       filteredMembers = levelMembers.filter(m => m.status !== 'active');
-    } else if (filter === 'L1') {
-      filteredMembers = levelMembers.filter(m => m.level === 1);
-    } else if (filter === 'L2') {
-      filteredMembers = levelMembers.filter(m => m.level === 2);
     }
 
     const total = filteredMembers.length;
@@ -1809,8 +1890,7 @@ export const getMyLevelTeam = async (req, res) => {
       activePlanA,
       activePlanB,
       inactiveMembers,
-      l1Members,
-      l2Members,
+      levelCounts,
       totalPages: Math.ceil(total / limit) || 1,
     });
   } catch (error) {

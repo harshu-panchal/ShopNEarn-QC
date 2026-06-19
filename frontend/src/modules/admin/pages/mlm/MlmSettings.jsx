@@ -132,13 +132,13 @@ const MlmSettings = () => {
                 </div>
             </Section>
 
-            <Section title="Joining Package (Plan A entry)">
+            <Section title="Plan A Activation">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <NumField label="Price (₹)" value={cfg.joiningPackagePrice} onChange={(v) => setCfg({ ...cfg, joiningPackagePrice: v })} />
-                    <NumField label="Shopping wallet credit on join (₹)" value={cfg.joiningPackageShoppingWalletCredit} onChange={(v) => setCfg({ ...cfg, joiningPackageShoppingWalletCredit: v })} />
+                    <NumField label="Activation Amount (₹)" value={cfg.joiningPackagePrice} onChange={(v) => setCfg({ ...cfg, joiningPackagePrice: v })} />
+                    <NumField label="Shopping wallet credit on Plan A activation (₹)" value={cfg.joiningPackageShoppingWalletCredit} onChange={(v) => setCfg({ ...cfg, joiningPackageShoppingWalletCredit: v })} />
                 </div>
                 <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
-                    Joining is a direct payment subscription — no product or order is created.
+                    Plan A Activation is a direct payment subscription — no product or order is created.
                     The price and shopping credit are snapshotted when the customer clicks
                     "Join Now", so mid-flight edits never cheat in-flight customers.
                 </p>
