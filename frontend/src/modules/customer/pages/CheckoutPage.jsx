@@ -6,6 +6,7 @@ import { useCart } from "../context/CartContext";
 import { useAuth } from "../../../core/context/AuthContext";
 import { useWishlist } from "../context/WishlistContext";
 import { customerApi } from "../services/customerApi";
+import { mlmApi } from "../services/mlmApi";
 import { useLocation as useAppLocation } from "../context/LocationContext";
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 import {
@@ -31,7 +32,6 @@ import {
   Clipboard,
   Check,
   Contact2,
-  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
@@ -140,6 +140,7 @@ const CheckoutPage = () => {
   const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
   const [useWallet, setUseWallet] = useState(false);
   const [walletAmountToUse, setWalletAmountToUse] = useState(0);
+  const [shoppingWalletBalance, setShoppingWalletBalance] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
   const [orderId, setOrderId] = useState(null);
   const [pricingPreview, setPricingPreview] = useState(null);
@@ -186,28 +187,52 @@ const CheckoutPage = () => {
     }
   }, [cart.length === 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const paymentMethods = [
-    ...(settings?.onlineEnabled === false
-      ? []
-      : [
-          {
-            id: "online",
-            label: "Pay Online",
-            icon: CreditCard,
-            sublabel: "UPI / Cards / NetBanking",
-          },
-        ]),
-    ...(settings?.codEnabled === false
-      ? []
-      : [
-          {
-            id: "cash",
-            label: "Cash on Delivery",
-            icon: Banknote,
-            sublabel: "Pay after delivery",
-          },
-        ]),
-  ];
+  const formatWalletBalance = (amount) =>
+    Number(amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+
+  const paymentMethods = useMemo(() => {
+    const orderTotal = Number(pricingPreview?.grandTotal || 0);
+    const shoppingBalance = Number(shoppingWalletBalance || 0);
+    const shoppingWalletDisabled =
+      orderTotal > 0 && shoppingBalance < orderTotal;
+
+    return [
+      ...(settings?.onlineEnabled === false
+        ? []
+        : [
+            {
+              id: "online",
+              label: "Pay Online",
+              icon: CreditCard,
+              sublabel: "UPI / Cards / NetBanking",
+            },
+          ]),
+      ...(settings?.codEnabled === false
+        ? []
+        : [
+            {
+              id: "cash",
+              label: "Cash on Delivery",
+              icon: Banknote,
+              sublabel: "Pay after delivery",
+            },
+          ]),
+      {
+        id: "shopping_wallet",
+        label: "Shopping Wallet",
+        icon: ShoppingBag,
+        sublabel:
+          shoppingBalance > 0
+            ? `Available balance: ₹${formatWalletBalance(shoppingBalance)}`
+            : "No balance available",
+        disabled: shoppingWalletDisabled,
+        disabledReason:
+          shoppingWalletDisabled && orderTotal > 0
+            ? `Insufficient balance (need ₹${formatWalletBalance(orderTotal)})`
+            : null,
+      },
+    ];
+  }, [settings?.onlineEnabled, settings?.codEnabled, shoppingWalletBalance, pricingPreview?.grandTotal]);
 
   const tipAmounts = [
     { value: 0, label: "No Tip" },
@@ -232,21 +257,57 @@ const CheckoutPage = () => {
 
   useEffect(() => {
     if (!paymentMethods.length) return;
-    const exists = paymentMethods.some((method) => method.id === selectedPayment);
-    if (!exists) {
-      setSelectedPayment(paymentMethods[0].id);
+    const selectedMethod = paymentMethods.find((method) => method.id === selectedPayment);
+    if (!selectedMethod || selectedMethod.disabled) {
+      const fallback = paymentMethods.find((method) => !method.disabled);
+      if (fallback) setSelectedPayment(fallback.id);
     }
   }, [paymentMethods, selectedPayment]);
 
   useEffect(() => {
-    if (useWallet && user?.walletBalance && pricingPreview?.grandTotal) {
-      const maxAvailable = Number(user.walletBalance || 0);
-      const totalToPay = Number(pricingPreview.grandTotal || 0);
-      setWalletAmountToUse(Math.min(maxAvailable, totalToPay));
-    } else {
-      setWalletAmountToUse(0);
+    if (!isAuthenticated) {
+      setShoppingWalletBalance(0);
+      return;
     }
-  }, [useWallet, user?.walletBalance, pricingPreview?.grandTotal]);
+    mlmApi
+      .getMembership()
+      .then((res) => {
+        const wallet = res?.data?.result?.wallet ?? res?.data?.data?.wallet;
+        setShoppingWalletBalance(Number(wallet?.shoppingBalance || 0));
+      })
+      .catch(() => setShoppingWalletBalance(0));
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    const totalToPay = Number(pricingPreview?.grandTotal || 0);
+    if (selectedPayment === "shopping_wallet" && totalToPay > 0) {
+      const available = Number(shoppingWalletBalance || 0);
+      setWalletAmountToUse(available >= totalToPay ? totalToPay : 0);
+      return;
+    }
+    if (useWallet && user?.walletBalance && totalToPay > 0) {
+      const maxAvailable = Number(user.walletBalance || 0);
+      setWalletAmountToUse(Math.min(maxAvailable, totalToPay));
+      return;
+    }
+    setWalletAmountToUse(0);
+  }, [
+    selectedPayment,
+    useWallet,
+    user?.walletBalance,
+    shoppingWalletBalance,
+    pricingPreview?.grandTotal,
+  ]);
+
+  const resolvePaymentMode = () =>
+    selectedPayment === "online" ? "ONLINE" : "COD";
+
+  const handleSelectPayment = (methodId) => {
+    setSelectedPayment(methodId);
+    if (methodId === "shopping_wallet") {
+      setUseWallet(false);
+    }
+  };
 
   const finalAmountToPay = Math.max(0, (pricingPreview?.grandTotal || 0) - walletAmountToUse);
 
@@ -661,7 +722,8 @@ const CheckoutPage = () => {
       discountTotal: discountAmount,
       taxTotal: 0,
       tipAmount: selectedTip,
-      paymentMode: selectedPayment === "online" ? "ONLINE" : "COD",
+      paymentMode: resolvePaymentMode(),
+      walletAmount: walletAmountToUse,
       timeSlot: selectedTimeSlot,
     });
 
@@ -690,6 +752,7 @@ const CheckoutPage = () => {
     selectedTip,
     selectedTimeSlot,
     discountAmount,
+    walletAmountToUse,
     savedRecipient,
     currentAddress,
     currentLocation,
@@ -719,12 +782,20 @@ const CheckoutPage = () => {
   }, [cartProductIdKey]);
 
   const handlePlaceOrder = async () => {
+    if (selectedPayment === "shopping_wallet") {
+      const orderTotal = Number(pricingPreview?.grandTotal || 0);
+      if (shoppingWalletBalance < orderTotal) {
+        showToast("Insufficient shopping wallet balance for this order.", "error");
+        return;
+      }
+    }
+
     setIsPlacingOrder(true);
     try {
       const taxAmount = pricingPreview?.taxTotal || 0;
       const orderData = {
         address: buildAddressForOrder(),
-        paymentMode: selectedPayment === "online" ? "ONLINE" : "COD",
+        paymentMode: resolvePaymentMode(),
         discountTotal: discountAmount,
         taxTotal: taxAmount,
         tipAmount: selectedTip,
@@ -1043,11 +1114,12 @@ const CheckoutPage = () => {
             <CheckoutPaymentSelector
               paymentMethods={paymentMethods}
               selectedPayment={selectedPayment}
-              onSelectPayment={setSelectedPayment}
+              onSelectPayment={handleSelectPayment}
               useWallet={useWallet}
               onToggleWallet={() => setUseWallet((v) => !v)}
               walletBalance={user?.walletBalance || 0}
               walletAmountToUse={walletAmountToUse}
+              showWalletToggle={selectedPayment !== "shopping_wallet"}
             />
 
             {/* Desktop Slide to Pay */}

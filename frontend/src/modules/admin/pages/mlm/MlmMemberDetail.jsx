@@ -27,7 +27,7 @@ const STATUS_LABEL = {
 // crashes on enum drift.
 const BONUS_TYPE_LABEL = {
     BINARY_PAIR_MATCH: 'Binary pair match',
-    DIRECT_REFERRAL_MILESTONE: 'Direct referral milestone',
+    DIRECT_REFERRAL_MILESTONE: 'Matching Income',
     REPURCHASE_BONUS: 'Repurchase',
     MENTOR_ROYALTY: 'Mentor royalty',
     HOME_SHOPPING_SALES: 'Home shopping sales',

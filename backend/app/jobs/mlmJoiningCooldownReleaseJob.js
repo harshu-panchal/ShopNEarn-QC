@@ -81,7 +81,12 @@ const mlmJoiningCooldownReleaseJobHandler = async () => {
     // creation time is at or before the cutoff. The `releasedAt`
     // existence check is the post-release marker.
     const events = await MlmCommissionEvent.find({
-      bonusType: MLM_BONUS_TYPE.BINARY_PAIR_MATCH,
+      bonusType: {
+        $in: [
+          MLM_BONUS_TYPE.BINARY_PAIR_MATCH,
+          MLM_BONUS_TYPE.DIRECT_REFERRAL_MILESTONE,
+        ],
+      },
       status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
       walletBucket: "pending",
       releasedAt: { $exists: false },
@@ -120,7 +125,7 @@ const mlmJoiningCooldownReleaseJobHandler = async () => {
             session,
             ledgerType: LEDGER_TRANSACTION_TYPE.MLM_BONUS_RELEASED,
             ledgerReference: releaseKey,
-            ledgerDescription: `Plan A pair bonus cooldown release (pending->earnings)`,
+            ledgerDescription: `Plan A earnings bonus cooldown release (pending->earnings)`,
             idempotencyKey: `${releaseKey}-D`,
             metadata: {
               mlmEventId: String(event._id),
@@ -138,7 +143,7 @@ const mlmJoiningCooldownReleaseJobHandler = async () => {
             session,
             ledgerType: LEDGER_TRANSACTION_TYPE.MLM_BONUS_RELEASED,
             ledgerReference: releaseKey,
-            ledgerDescription: `Plan A pair bonus credited to earnings`,
+            ledgerDescription: `Plan A earnings bonus credited to earnings wallet`,
             idempotencyKey: `${releaseKey}-C`,
             metadata: {
               mlmEventId: String(event._id),

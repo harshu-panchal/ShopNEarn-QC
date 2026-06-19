@@ -13,6 +13,7 @@ import { motion } from "framer-motion";
  *   onToggleWallet  – () => void
  *   walletBalance   – number (0 means wallet section is hidden)
  *   walletAmountToUse – number
+ *   showWalletToggle – boolean (hide partial wallet toggle when paying via shopping wallet)
  */
 const CheckoutPaymentSelector = React.memo(function CheckoutPaymentSelector({
   paymentMethods,
@@ -22,11 +23,12 @@ const CheckoutPaymentSelector = React.memo(function CheckoutPaymentSelector({
   onToggleWallet,
   walletBalance,
   walletAmountToUse,
+  showWalletToggle = true,
 }) {
   return (
     <>
-      {/* Wallet Section */}
-      {walletBalance > 0 && (
+      {/* Wallet Section — partial redemption with COD / online */}
+      {showWalletToggle && walletBalance > 0 && (
         <motion.div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 overflow-hidden relative">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -79,40 +81,51 @@ const CheckoutPaymentSelector = React.memo(function CheckoutPaymentSelector({
         <div className="space-y-2">
           {paymentMethods.map((method) => {
             const Icon = method.icon;
+            const isDisabled = Boolean(method.disabled);
+            const isSelected = selectedPayment === method.id;
             return (
               <button
                 key={method.id}
-                onClick={() => onSelectPayment(method.id)}
+                type="button"
+                disabled={isDisabled}
+                onClick={() => !isDisabled && onSelectPayment(method.id)}
                 className={`w-full p-3 rounded-xl border-2 transition-all flex items-center gap-3 ${
-                  selectedPayment === method.id
-                    ? "border-primary bg-brand-50"
-                    : "border-slate-200 bg-white hover:border-slate-300"
+                  isDisabled
+                    ? "border-slate-100 bg-slate-50 opacity-60 cursor-not-allowed"
+                    : isSelected
+                      ? "border-primary bg-brand-50"
+                      : "border-slate-200 bg-white hover:border-slate-300"
                 }`}>
                 <div
                   className={`h-10 w-10 rounded-full flex items-center justify-center ${
-                    selectedPayment === method.id ? "bg-brand-100" : "bg-slate-100"
+                    isSelected && !isDisabled ? "bg-brand-100" : "bg-slate-100"
                   }`}>
                   <Icon
                     size={18}
                     className={
-                      selectedPayment === method.id ? "text-primary" : "text-slate-600"
+                      isSelected && !isDisabled ? "text-primary" : "text-slate-600"
                     }
                   />
                 </div>
                 <div className="flex-1 text-left">
                   <p
                     className={`font-bold text-sm ${
-                      selectedPayment === method.id ? "text-primary" : "text-slate-800"
+                      isSelected && !isDisabled ? "text-primary" : "text-slate-800"
                     }`}>
                     {method.label}
                   </p>
                   <p className="text-xs text-slate-500">{method.sublabel}</p>
+                  {isDisabled && method.disabledReason && (
+                    <p className="text-[10px] text-amber-600 font-semibold mt-0.5">
+                      {method.disabledReason}
+                    </p>
+                  )}
                 </div>
                 <div
                   className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${
-                    selectedPayment === method.id ? "border-primary" : "border-slate-300"
+                    isSelected && !isDisabled ? "border-primary" : "border-slate-300"
                   }`}>
-                  {selectedPayment === method.id && (
+                  {isSelected && !isDisabled && (
                     <div className="h-3 w-3 rounded-full bg-primary" />
                   )}
                 </div>

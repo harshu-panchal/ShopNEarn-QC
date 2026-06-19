@@ -19,7 +19,7 @@ import {
   transitionUplineDownlineStatus,
 } from "./mlmMembershipService.js";
 import {
-  computeAndCreditBinaryPairBonus,
+  computeAndCreditMatchingIncomeMilestone,
   releaseHeldPairBonusesForDownlineActivation,
 } from "./mlmBonusEngineService.js";
 import { getMlmConfig } from "./mlmConfigService.js";
@@ -74,9 +74,9 @@ async function runInSession(externalSession, fn) {
  *   5. Credit the joining-package shopping-wallet seed (using the
  *      payment's snapshot value — NOT the live config — so admins
  *      can't cheat mid-flight customers) to `shoppingBalance`.
- *   6. Fire the Plan A binary pair-matching bonus for the sponsor
- *      (if any) via `computeAndCreditBinaryPairBonus`. Replaces the
- *      legacy direct-referral count milestone.
+ *   6. Fire the Plan A matching-income milestone for the sponsor
+ *      (one-time at 2 / 3 / 5 active directs with Plan A on both
+ *      legs) and release any legacy HELD binary-pair rows.
  *   7. Mark `MlmJoiningPayment.activationApplied = true`.
  *   8. Resync the customer's denormalised `Customer.mlm` projection.
  *
@@ -220,44 +220,23 @@ export async function activateMembershipFromJoiningPayment(
       });
     }
 
-    // Plan A binary pair-matching bonus.
-    //
-    // Customer-MLM-rebuild Phase 4: there are two paths now.
-    //
-    //   (a) NEW signup flow: the member registered earlier with a
-    //       chosen leg, placed in tree, and the pair-bonus engine
-    //       already emitted HELD_AWAITING_DOWNLINE_ACTIVATION events
-    //       for the sponsor. At THIS activation we RELEASE those held
-    //       bonuses into the sponsor's wallet.
-    //
-    //   (b) LEGACY flow: a customer who never went through the new
-    //       signup just paid the joining fee. `assignSponsor` ran
-    //       above, which inline-fired the pair-bonus engine, which
-    //       credited the sponsor directly because the new member was
-    //       already ACTIVE (createOrGetMembership defaulted to
-    //       ACTIVE for legacy rows). No HELD events exist.
-    //
-    // Both branches are idempotent so calling both here is safe.
-    let pairBonusEvents = [];
+    // Plan A matching-income milestone (one-time at 2 / 3 / 5 active
+    // directs with Plan A on both legs). Legacy HELD binary-pair rows
+    // from before this rule change are still released below.
+    let matchingIncomeEvent = null;
     if (sponsorMembership) {
-      const releasedEvents = await releaseHeldPairBonusesForDownlineActivation({
+      await releaseHeldPairBonusesForDownlineActivation({
         newActiveUserId: customerId,
         session,
         correlationId,
       });
-      pairBonusEvents = releasedEvents;
 
-      // Defence-in-depth: if the new signup never emitted a HELD
-      // event (e.g. legacy customer minted ACTIVE directly), still
-      // run the pair-bonus engine so the sponsor isn't shorted.
-      if (releasedEvents.length === 0) {
-        pairBonusEvents = await computeAndCreditBinaryPairBonus({
-          sponsorUserId: sponsorMembership.userId,
-          newReferralUserId: customerId,
-          session,
-          correlationId,
-        });
-      }
+      matchingIncomeEvent = await computeAndCreditMatchingIncomeMilestone({
+        sponsorUserId: sponsorMembership.userId,
+        newReferralUserId: customerId,
+        session,
+        correlationId,
+      });
     }
 
     payment.activationApplied = true;
@@ -290,11 +269,10 @@ export async function activateMembershipFromJoiningPayment(
       sponsorMembership,
       shoppingCreditAmount,
       shoppingCreditResult,
-      pairBonusEvents,
-      // Backwards-compat alias for any caller still reading
-      // `milestoneEvent` from the legacy direct-referral milestone
-      // path. Surfaces the first newly-credited pair bonus (or null).
-      milestoneEvent: pairBonusEvents?.[0] || null,
+      matchingIncomeEvent,
+      // Backwards-compat alias for callers still reading legacy fields.
+      pairBonusEvents: matchingIncomeEvent ? [matchingIncomeEvent] : [],
+      milestoneEvent: matchingIncomeEvent,
     };
   });
 }
@@ -395,14 +373,31 @@ export async function adminActivateMembership({
 
     await transitionUplineDownlineStatus(membership.sponsorChain, { session });
 
-    // Release any held pair-bonuses for this member's sponsor — same
-    // path the paid activation takes. Idempotent: re-running emits
-    // zero new events if there are no held rows.
+    let sponsorMembership = null;
+    if (membership.sponsorId) {
+      sponsorMembership = await MlmMembership.findOne(
+        { userId: membership.sponsorId },
+        null,
+        { session },
+      );
+    }
+
+    // Release legacy held binary-pair rows (pre rule-change).
     const releasedEvents = await releaseHeldPairBonusesForDownlineActivation({
       newActiveUserId: customerId,
       session,
       correlationId,
     });
+
+    let matchingIncomeEvent = null;
+    if (sponsorMembership) {
+      matchingIncomeEvent = await computeAndCreditMatchingIncomeMilestone({
+        sponsorUserId: sponsorMembership.userId,
+        newReferralUserId: customerId,
+        session,
+        correlationId,
+      });
+    }
 
     await syncCustomerMlmProjection(customerId, { session });
 
@@ -423,6 +418,7 @@ export async function adminActivateMembership({
       activated: true,
       membership,
       releasedEvents,
+      matchingIncomeEvent,
     };
   });
 }

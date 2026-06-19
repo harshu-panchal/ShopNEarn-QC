@@ -205,10 +205,12 @@ export async function buildBinaryTreeBottomUp({ rootMembership, depthLeft }) {
 
   function countTrueSizes(userIdStr) {
     const slot = childrenByParent.get(userIdStr);
-    if (!slot) return { left: 0, right: 0, active: 0, inactive: 0, pairs: 0 };
+    if (!slot) return { left: 0, right: 0, leftActive: 0, rightActive: 0, active: 0, inactive: 0, pairs: 0 };
     
     let leftCount = 0;
     let rightCount = 0;
+    let leftActiveCount = 0;
+    let rightActiveCount = 0;
     let active = 0;
     let inactive = 0;
     let pairsCount = (slot.L && slot.R) ? 1 : 0;
@@ -217,7 +219,8 @@ export async function buildBinaryTreeBottomUp({ rootMembership, depthLeft }) {
       const childStr = String(slot.L.userId?._id || slot.L.userId);
       const childRes = countTrueSizes(childStr);
       leftCount = 1 + childRes.left + childRes.right;
-      active += childRes.active + (slot.L.status === "active" ? 1 : 0);
+      leftActiveCount = childRes.active + (slot.L.status === "active" ? 1 : 0);
+      active += leftActiveCount;
       inactive += childRes.inactive + (slot.L.status === "registered_unpaid" ? 1 : 0);
       pairsCount += childRes.pairs;
     }
@@ -225,12 +228,13 @@ export async function buildBinaryTreeBottomUp({ rootMembership, depthLeft }) {
       const childStr = String(slot.R.userId?._id || slot.R.userId);
       const childRes = countTrueSizes(childStr);
       rightCount = 1 + childRes.left + childRes.right;
-      active += childRes.active + (slot.R.status === "active" ? 1 : 0);
+      rightActiveCount = childRes.active + (slot.R.status === "active" ? 1 : 0);
+      active += rightActiveCount;
       inactive += childRes.inactive + (slot.R.status === "registered_unpaid" ? 1 : 0);
       pairsCount += childRes.pairs;
     }
     
-    const res = { left: leftCount, right: rightCount, active, inactive, pairs: pairsCount };
+    const res = { left: leftCount, right: rightCount, leftActive: leftActiveCount, rightActive: rightActiveCount, active, inactive, pairs: pairsCount };
     trueCountsMap.set(userIdStr, res);
     return res;
   }
@@ -247,9 +251,11 @@ export async function buildBinaryTreeBottomUp({ rootMembership, depthLeft }) {
     rendered.add(String(member._id));
     
     const nodeUserId = String(member.userId?._id || member.userId);
-    const counts = trueCountsMap.get(nodeUserId) || { left: 0, right: 0, active: 0, inactive: 0, pairs: 0 };
+    const counts = trueCountsMap.get(nodeUserId) || { left: 0, right: 0, leftActive: 0, rightActive: 0, active: 0, inactive: 0, pairs: 0 };
     member.trueLeftLegTotalDownlineCount = counts.left;
     member.trueRightLegTotalDownlineCount = counts.right;
+    member.trueLeftLegActiveDownlineCount = counts.leftActive;
+    member.trueRightLegActiveDownlineCount = counts.rightActive;
     member.trueBinaryActiveDownlineCount = counts.active;
     member.trueBinaryInactiveDownlineCount = counts.inactive;
     member.trueBinaryPairsCount = counts.pairs;
