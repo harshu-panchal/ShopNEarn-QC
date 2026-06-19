@@ -8,6 +8,7 @@ import React, {
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   ChevronRight,
+  ChevronDown,
   Gift,
   History,
   Home,
@@ -75,9 +76,16 @@ const SIDEBAR_NAV_ITEMS = [
     end: true,
   },
   {
-    label: "Genealogy",
-    path: "/mlm/genealogy",
+    label: "Network",
+    path: "/mlm/network",
     icon: Network,
+    children: [
+      { label: "Direct Referrals", path: "/mlm/network/referrals" },
+      { label: "Left Team", path: "/mlm/network/left-team" },
+      { label: "Right Team", path: "/mlm/network/right-team" },
+      { label: "Genealogy", path: "/mlm/network/genealogy" },
+      { label: "Level Team", path: "/mlm/network/level-team" },
+    ],
   },
   {
     label: "My Earnings",
@@ -93,11 +101,6 @@ const SIDEBAR_NAV_ITEMS = [
     label: "Wallet History",
     path: "/mlm/payouts/wallet-history",
     icon: History,
-  },
-  {
-    label: "Referrals",
-    path: "/mlm/referrals",
-    icon: Users,
   },
   {
     label: "Home Shopping",
@@ -149,6 +152,82 @@ function NavItem({ item, currentPathname, onNavigate }) {
     ? currentPathname === item.path
     : currentPathname === item.path ||
       currentPathname.startsWith(`${item.path}/`);
+
+  const hasChildren = Boolean(item.children && item.children.length > 0);
+  const [isOpen, setIsOpen] = useState(isActive);
+
+  // Keep accordion open if the route becomes active externally
+  useEffect(() => {
+    if (isActive && hasChildren) {
+      setIsOpen(true);
+    }
+  }, [isActive, hasChildren]);
+
+  if (hasChildren) {
+    return (
+      <div className="space-y-1">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className={[
+            "w-full group relative flex items-center gap-3 rounded-xl pl-3 pr-2 py-2.5 text-sm font-semibold transition-colors",
+            isActive
+              ? "bg-indigo-50 text-indigo-700"
+              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+          ].join(" ")}
+        >
+          {isActive && (
+            <span
+              aria-hidden="true"
+              className="absolute -left-px top-2 bottom-2 w-1 rounded-full bg-indigo-600"
+            />
+          )}
+          <span
+            className={[
+              "shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors",
+              isActive
+                ? "bg-indigo-100 text-indigo-700"
+                : "bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-slate-700",
+            ].join(" ")}
+          >
+            <Icon size={16} />
+          </span>
+          <span className="flex-1 truncate text-left">{item.label}</span>
+          <ChevronDown
+            size={14}
+            className={[
+              "transition-transform",
+              isOpen ? "rotate-180" : "",
+              isActive
+                ? "text-indigo-400 opacity-100"
+                : "text-slate-300 opacity-0 group-hover:opacity-100",
+            ].join(" ")}
+          />
+        </button>
+        {isOpen && (
+          <div className="pl-12 pr-2 space-y-1 mt-1">
+            {item.children.map((child) => {
+              const isChildActive = currentPathname === child.path || currentPathname.startsWith(`${child.path}/`);
+              return (
+                <NavLink
+                  key={child.path}
+                  to={child.path}
+                  onClick={onNavigate}
+                  className={[
+                    "block px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                    isChildActive
+                      ? "bg-indigo-50 text-indigo-700"
+                      : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
+                  ].join(" ")}
+                >
+                  {child.label}
+                </NavLink>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <NavLink

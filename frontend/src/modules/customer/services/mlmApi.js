@@ -14,6 +14,13 @@ export const mlmApi = {
     invalidateCache("/customer/mlm/membership");
     return axiosInstance.put("/customer/mlm/membership", data);
   },
+  uploadMedia: (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return axiosInstance.post("/media/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
   getReferralCode: () => getWithDedupe("/customer/mlm/referral-code", {}, { ttl: 30000 }),
   getDirectReferrals: (params) => getWithDedupe("/customer/mlm/direct-referrals", params, { ttl: 5000 }),
   getUpline: (params) => getWithDedupe("/customer/mlm/upline", params, { ttl: 30000 }),
@@ -131,6 +138,11 @@ export const mlmApi = {
     invalidateCache("/customer/mlm/membership");
     return axiosInstance.post("/customer/mlm/genealogy/add-member", payload);
   },
+  // Network section
+  getLegTeam: (params) =>
+    getWithDedupe("/customer/mlm/network/leg-team", params, { ttl: 2000 }),
+  getLevelTeam: (params) =>
+    getWithDedupe("/customer/mlm/network/level-team", params, { ttl: 2000 }),
 };
 
 export default mlmApi;

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Copy, Share2, Users, MessageCircle, Download, QrCode } from 'lucide-react';
+import { Menu, Copy, Share2, Users, MessageCircle, Download, QrCode, ArrowLeft, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { mlmApi } from '../../services/mlmApi';
 import { useMlmDrawer } from './MlmLayout';
@@ -18,14 +18,16 @@ const MlmReferralPage = () => {
         let mounted = true;
         (async () => {
             try {
-                const [m, r] = await Promise.all([
+                const [m, r, o] = await Promise.all([
                     mlmApi.getMembership(),
                     mlmApi.getDirectReferrals({ limit: 100 }),
+                    mlmApi.getDashboardOverview()
                 ]);
                 const mp = m.data?.result ?? m.data?.data;
                 const rp = r.data?.result ?? r.data?.data;
+                const op = o.data?.result ?? o.data?.data ?? o.data;
                 if (mounted) {
-                    setMembership(mp);
+                    setMembership({ ...mp, binaryOverview: op?.binary });
                     setReferrals(rp?.items || []);
                 }
             } catch (err) {
@@ -209,7 +211,7 @@ const MlmReferralPage = () => {
                                                 <p className="text-sm font-semibold text-slate-900 truncate">{r.name || 'New member'}</p>
                                                 <p className="text-[11px] text-slate-500 truncate">
                                                     Joined {new Date(r.joinedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                                                    {' · '}{r.planType === 'B' ? 'Plan B' : 'Plan A'}
+                                                    {' · '}{r.status === 'active' ? (r.planType === 'B' ? 'Plan B' : 'Plan A') : 'Member'}
                                                 </p>
                                             </div>
                                             <div className="text-right shrink-0">
@@ -260,62 +262,90 @@ const MlmReferralPage = () => {
     );
 };
 
+const LegBox = ({ label, count, activeCount, weaker, accent, icon }) => (
+    <div
+      className={`rounded-xl border p-3 text-center ${
+        accent
+          ? "bg-indigo-50 border-indigo-200"
+          : weaker
+            ? "bg-amber-50 border-amber-200"
+            : "bg-slate-50 border-slate-200"
+      }`}
+    >
+      {icon && (
+        <div
+          className={`mx-auto mb-1 ${
+            accent ? "text-indigo-700" : weaker ? "text-amber-700" : "text-slate-600"
+          }`}
+        >
+          {icon}
+        </div>
+      )}
+      <p
+        className={`text-lg font-black ${
+          accent ? "text-indigo-700" : weaker ? "text-amber-700" : "text-slate-900"
+        }`}
+      >
+        {count} {activeCount !== undefined && <span className="opacity-70 text-sm">({activeCount})</span>}
+      </p>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mt-1">
+        {label}
+      </p>
+    </div>
+  );
+
 /**
- * LegBalanceCard — surfaces left-leg-direct vs right-leg-direct counts
- * and the next pair's payout. Helps the customer see exactly where to
- * place their next referral to unlock the next pair-match bonus.
+ * LegBalanceCard — surfaces left-leg vs right-leg true counts
+ * to match the main dashboard exactly.
  */
 const LegBalanceCard = ({ membership, config }) => {
-    const left = Number(membership.leftLegDirectCount) || 0;
-    const right = Number(membership.rightLegDirectCount) || 0;
-    const pairs = Number(membership.pairsCompleted) || 0;
-    const nextAmount = Number(membership.nextPairBonusAmount) || 0;
-    const nextIdx = Number(membership.nextPairIndex) || pairs + 1;
-    const cooldown = Number(config?.planAPairBonusReleaseCooldownDays) || 0;
-    const weakerLeg = left <= right ? 'left' : 'right';
+    const binary = membership.binaryOverview;
+    if (!binary) return null; // Wait until dashboard overview loads
 
     return (
         <div className="bg-white rounded-2xl border border-slate-200 p-5">
-            <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold uppercase tracking-wide text-slate-600">
-                    Binary Tree Balance
-                </h3>
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">
-                    Plan A
-                </span>
-            </div>
+            <h3 className="text-base font-bold text-slate-900 mb-3">
+                Binary Network
+            </h3>
 
             <div className="grid grid-cols-3 gap-3 mb-3">
-                <div className={`rounded-xl border p-3 text-center ${weakerLeg === 'left' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
-                    <p className={`text-xl font-black ${weakerLeg === 'left' ? 'text-amber-700' : 'text-slate-900'}`}>{left}</p>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mt-1">Left Leg</p>
-                </div>
-                <div className="rounded-xl border bg-indigo-50 border-indigo-200 p-3 text-center">
-                    <p className="text-xl font-black text-indigo-700">{pairs}</p>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mt-1">Pairs Done</p>
-                </div>
-                <div className={`rounded-xl border p-3 text-center ${weakerLeg === 'right' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
-                    <p className={`text-xl font-black ${weakerLeg === 'right' ? 'text-amber-700' : 'text-slate-900'}`}>{right}</p>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mt-1">Right Leg</p>
-                </div>
+                <LegBox
+                  label="Left Leg"
+                  count={binary.leftLegTotalDownlineCount}
+                  activeCount={binary.leftLegActiveDownlineCount}
+                  icon={<ArrowLeft size={18} />}
+                  weaker={
+                    binary.leftLegDirectCount <= binary.rightLegDirectCount
+                  }
+                />
+                <LegBox label="Pairs" count={binary.pairsCompleted} accent />
+                <LegBox
+                  label="Right Leg"
+                  count={binary.rightLegTotalDownlineCount}
+                  activeCount={binary.rightLegActiveDownlineCount}
+                  icon={<ArrowRight size={18} />}
+                  weaker={
+                    binary.rightLegDirectCount <= binary.leftLegDirectCount
+                  }
+                />
             </div>
 
-            <div className="bg-slate-50 rounded-xl px-4 py-3 border border-slate-200">
-                <div className="flex items-baseline justify-between">
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                        Next Pair Payout
-                    </p>
-                    <span className="text-base font-black text-slate-900">
-                        {nextAmount > 0 ? formatINR(nextAmount) : '—'}
-                    </span>
-                </div>
-                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                    Refer one more friend on your <strong>{weakerLeg} leg</strong> to complete pair #{nextIdx}.
-                    {cooldown > 0 && (
-                        <> Pair bonuses unlock for withdrawal after {cooldown} days.</>
-                    )}
-                </p>
-            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+                Refer one more friend on your{" "}
+                <strong>
+                  {binary.leftLegDirectCount <= binary.rightLegDirectCount
+                    ? "left"
+                    : "right"}{" "}
+                  leg
+                </strong>{" "}
+                to complete pair #{binary.nextPairIndex} and earn{" "}
+                <strong>
+                  {binary.nextPairBonusAmount > 0
+                    ? formatINR(binary.nextPairBonusAmount)
+                    : "—"}
+                </strong>
+                .
+            </p>
         </div>
     );
 };

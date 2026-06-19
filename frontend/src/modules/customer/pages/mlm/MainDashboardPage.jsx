@@ -536,6 +536,7 @@ const MemberDashboard = ({ overview, navigate, user, login }) => {
                 <LegBox
                   label="Left Leg"
                   count={binary.leftLegTotalDownlineCount}
+                  activeCount={binary.leftLegActiveDownlineCount}
                   icon={<ArrowLeft size={18} />}
                   weaker={
                     binary.leftLegDirectCount <= binary.rightLegDirectCount
@@ -545,6 +546,7 @@ const MemberDashboard = ({ overview, navigate, user, login }) => {
                 <LegBox
                   label="Right Leg"
                   count={binary.rightLegTotalDownlineCount}
+                  activeCount={binary.rightLegActiveDownlineCount}
                   icon={<ArrowRight size={18} />}
                   weaker={
                     binary.rightLegDirectCount <= binary.leftLegDirectCount
@@ -575,7 +577,7 @@ const MemberDashboard = ({ overview, navigate, user, login }) => {
               <QuickLink
                 label="Genealogy"
                 icon={<Network size={20} />}
-                to="/mlm/genealogy/tree"
+                to="/mlm/network/genealogy/tree"
               />
               <QuickLink
                 label="Earnings"
@@ -1477,7 +1479,7 @@ const StatTile = ({ label, value, icon, tone = "indigo", subtle }) => {
   );
 };
 
-const LegBox = ({ label, count, weaker, accent, icon }) => (
+const LegBox = ({ label, count, activeCount, weaker, accent, icon }) => (
   <div
     className={`rounded-xl border p-3 text-center ${
       accent
@@ -1501,7 +1503,7 @@ const LegBox = ({ label, count, weaker, accent, icon }) => (
         accent ? "text-indigo-700" : weaker ? "text-amber-700" : "text-slate-900"
       }`}
     >
-      {count}
+      {count} {activeCount !== undefined && <span className="opacity-70 text-sm">({activeCount})</span>}
     </p>
     <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mt-1">
       {label}

@@ -23,6 +23,8 @@ import {
   submitJoiningProof,
   updateMyTreeLayout,
   updateMyMembership,
+  getMyLegTeam,
+  getMyLevelTeam,
 } from "../controller/mlmCustomerController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 
@@ -60,6 +62,10 @@ router.put("/genealogy/tree-layout", verifyToken, updateMyTreeLayout);
 // their downline (or is themselves). OTP is skipped; the new row
 // lands `isVerified=true, status=REGISTERED_UNPAID`.
 router.post("/genealogy/add-member", verifyToken, addMemberAtSlot);
+
+// Network section
+router.get("/network/leg-team", verifyToken, getMyLegTeam);
+router.get("/network/level-team", verifyToken, getMyLevelTeam);
 
 // Customer-MLM-rebuild Phase 5 — Payouts section: My Earnings
 // reuses /earnings-summary + /earnings-history; My Payout reuses

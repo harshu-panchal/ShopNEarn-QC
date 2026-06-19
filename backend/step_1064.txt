@@ -1,0 +1,197 @@
+Created At: 2026-06-19T04:31:32Z
+Completed At: 2026-06-19T04:31:32Z
+The following changes were made by the replace_file_content tool to: d:\AppZeto\ShopAndEarn\backend\app\controller\mlmCustomerController.js. If relevant, proactively run terminal commands to execute this code for the USER. Don't ask for permission.
+[diff_block_start]
+@@ -1632,4 +1632,189 @@
+     return handleResponse(res, error.statusCode || 500, error.message);
+   }
+ };
++
++/**
++ * GET /api/customer/mlm/network/leg-team
++ * Fetch paginated members for a specific leg (L or R).
++ */
++export const getMyLegTeam = async (req, res) => {
++  try {
++    const userId = req.user.id;
++    const leg = req.query.leg; // 'L' or 'R'
++    if (!['L', 'R'].includes(leg)) {
++      return handleResponse(res, 400, "Invalid leg. Must be L or R.");
++    }
++    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
++    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
++
++    const membership = await getMembershipByUserId(userId);
++    if (!membership) {
++      return handleResponse(res, 200, "Leg team", { items: [], page, limit, total: 0, totalPages: 0 });
++    }
++
++    const aggResult = await mongoose.model("MlmMembership").aggregate([
++      { $match: { userId: membership.userId } },
++      {
++        $graphLookup: {
++          from: mongoose.model("MlmMembership").collection.name,
++          startWith: "$userId",
++          connectFromField: "userId",
++          connectToField: "binaryParentId",
++          as: "descendants",
++          maxDepth: 64,
++        },
++      },
++    ]);
++
++    const descendants = aggResult[0]?.descendants || [];
++    const parentLinkByUser = new Map();
++    for (const d of descendants) {
++      parentLinkByUser.set(String(d.userId), {
++        parent: d.binaryParentId ? String(d.binaryParentId) : null,
++        position: d.binaryPosition || null,
++      });
++    }
++
++    // Determine actual leg under root
++    const actualLegByUser = new Map();
++    actualLegByUser.set(String(membership.userId), "ROOT");
++    
++    const legMembers = [];
++    for (const d of descendants) {
++      const targetId = String(d.userId);
++      let curr = targetId;
++      let actualLeg = null;
++      let pathLength = 0;
++      while (curr !== String(membership.userId) && pathLength < 100) {
++        const link = parentLinkByUser.get(curr);
++        if (!link) break;
++        if (link.parent === String(membership.userId)) {
++          actualLeg = link.position;
++          break;
++        }
++        curr = link.parent;
++        pathLength++;
++      }
++      if (actualLeg === leg) {
++        legMembers.push(d);
++      }
++    }
++
++    // Sort by joinedAt descending
++    legMembers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
++
++    const total = legMembers.length;
++    const paginated = legMembers.slice((page - 1) * limit, page * limit);
++
++    const userRows = await mongoose
++      .model("User")
++      .find({ _id: { $in: paginated.map((d) => d.userId) } }, { name: 1, phone: 1 })
++      .lean();
++    const userById = new Map(userRows.map((u) => [String(u._id), u]));
++
++    const items = paginated.map((m) => {
++      const u = userById.get(String(m.userId));
++      return {
++        userId: m.userId,
++        name: u?.name || null,
++        phone: u?.phone || null,
++        referralCode: m.referralCode,
++        status: m.status,
++        planType: m.planType,
++        joinedAt: m.joinedAt || m.createdAt || null,
++        leftLegDirectCount: m.leftLegDirectCount || 0,
++        rightLegDirectCount: m.rightLegDirectCount || 0,
++        isMember: m.status !== "REGISTERED_UNPAID",
++      };
++    });
++
++    return handleResponse(res, 200, "Leg team", {
++      items,
++      page,
++      limit,
++      total,
++      totalPages: Math.ceil(total / limit) || 1,
++    });
++  } catch (error) {
++    return handleResponse(res, error.statusCode || 500, error.message);
++  }
++};
++
++/**
++ * GET /api/customer/mlm/network/level-team
++ * Fetch paginated members grouped by sponsor level.
++ */
++export const getMyLevelTeam = async (req, res) => {
++  try {
++    const userId = req.user.id;
++    const targetLevel = parseInt(req.query.level, 10) || null; // if null, fetch all levels
++    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
++    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
++
++    const membership = await getMembershipByUserId(userId);
++    if (!membership) {
++      return handleResponse(res, 200, "Level team", { items: [], page, limit, total: 0, totalPages: 0 });
++    }
++
++    // Unilevel (sponsor) descendants
++    const aggResult = await mongoose.model("MlmMembership").aggregate([
++      { $match: { userId: membership.userId } },
++      {
++        $graphLookup: {
++          from: mongoose.model("MlmMembership").collection.name,
++          startWith: "$userId",
++          connectFromField: "userId",
++          connectToField: "sponsorId",
++          as: "descendants",
++          depthField: "depth",
++          maxDepth: 15,
++        },
++      },
++    ]);
++
++    const descendants = aggResult[0]?.descendants || [];
++    let levelMembers = descendants.map((d) => ({ ...d, level: d.depth + 1 }));
++
++    if (targetLevel !== null) {
++      levelMembers = levelMembers.filter((m) => m.level === targetLevel);
++    }
++
++    // Sort by joinedAt descending
++    levelMembers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
++
++    const total = levelMembers.length;
++    const paginated = levelMembers.slice((page - 1) * limit, page * limit);
++
++    const userRows = await mongoose
++      .model("User")
++      .find({ _id: { $in: paginated.map((d) => d.userId) } }, { name: 1, phone: 1 })
++      .lean();
++    const userById = new Map(userRows.map((u) => [String(u._id), u]));
++
++    const items = paginated.map((m) => {
++      const u = userById.get(String(m.userId));
++      return {
++        userId: m.userId,
++        name: u?.name || null,
++        phone: u?.phone || null,
++        referralCode: m.referralCode,
++        status: m.status,
++        planType: m.planType,
++        joinedAt: m.joinedAt || m.createdAt || null,
++        level: m.level,
++        isMember: m.status !== "REGISTERED_UNPAID",
++      };
++    });
++
++    return handleResponse(res, 200, "Level team", {
++      items,
++      page,
++      limit,
++      total,
++      totalPages: Math.ceil(total / limit) || 1,
++    });
++  } catch (error) {
++    return handleResponse(res, error.statusCode || 500, error.message);
++  }
++};
+ 
+[diff_block_end]
+
+Please note that the above snippet only shows the MODIFIED lines from the last change. It shows up to 3 lines of unchanged lines before and after the modified lines. The actual file contents may have many more lines not shown.

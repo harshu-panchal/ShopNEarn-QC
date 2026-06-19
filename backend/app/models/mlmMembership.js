@@ -35,6 +35,8 @@ const beneficiarySchema = new mongoose.Schema(
     upiId: { type: String, trim: true, default: "" },
     panNumber: { type: String, trim: true, uppercase: true, default: "" },
     aadhaarNumber: { type: String, trim: true, default: "" },
+    aadhaarImage: { type: String, default: null },
+    panImage: { type: String, default: null },
     method: { type: String, enum: ["bank", "upi", null], default: null },
   },
   { _id: false },

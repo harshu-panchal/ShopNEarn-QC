@@ -132,10 +132,15 @@ const WalletHistoryPage = () => {
           <ul className="divide-y divide-slate-100">
             {items.map((row) => {
               const isCredit = row.direction === "CREDIT";
-              const label =
+              let label =
                 TYPE_LABEL[row.type] ||
                 row.type?.replace(/_/g, " ").toLowerCase() ||
                 "Transaction";
+              
+              if (row.type === "MLM_MANUAL_ADJUSTMENT" || row.type === "MANUAL_ADJUSTMENT") {
+                label = "Shopping Wallet";
+              }
+
               return (
                 <li
                   key={String(row._id)}
@@ -161,7 +166,16 @@ const WalletHistoryPage = () => {
                       </p>
                       {row.description && (
                         <p className="text-[11px] text-slate-500 line-clamp-2">
-                          {row.description}
+                          {row.metadata?.referralName ? (
+                            <>
+                              {row.description} <br />
+                              <span className="font-medium text-slate-600">
+                                {row.metadata.referralName} ({row.metadata.referralUserId})
+                              </span>
+                            </>
+                          ) : (
+                            row.description
+                          )}
                         </p>
                       )}
                       <p className="text-[10px] text-slate-400 mt-0.5">

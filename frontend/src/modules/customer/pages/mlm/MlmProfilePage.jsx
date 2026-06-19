@@ -38,6 +38,10 @@ const MlmProfilePage = () => {
         upiId: '',
         panNumber: '',
         aadhaarNumber: '',
+        aadhaarImage: '',
+        panImage: '',
+        aadhaarImageFile: null,
+        panImageFile: null,
         method: ''
     });
 
@@ -59,6 +63,10 @@ const MlmProfilePage = () => {
                     upiId: memData?.payoutBeneficiary?.upiId || '',
                     panNumber: memData?.payoutBeneficiary?.panNumber || '',
                     aadhaarNumber: memData?.payoutBeneficiary?.aadhaarNumber || '',
+                    aadhaarImage: memData?.payoutBeneficiary?.aadhaarImage || '',
+                    panImage: memData?.payoutBeneficiary?.panImage || '',
+                    aadhaarImageFile: null,
+                    panImageFile: null,
                     method: memData?.payoutBeneficiary?.method || ''
                 });
             } catch (err) {
@@ -87,7 +95,19 @@ const MlmProfilePage = () => {
                 email: formData.email
             });
 
-            // 2. Update MLM Membership Details (Payout, KYC)
+            // 2. Upload images if selected
+            let aadhaarImageUrl = formData.aadhaarImage;
+            if (formData.aadhaarImageFile) {
+                const res = await mlmApi.uploadMedia(formData.aadhaarImageFile);
+                aadhaarImageUrl = res.data?.result?.url || res.data?.url;
+            }
+            let panImageUrl = formData.panImage;
+            if (formData.panImageFile) {
+                const res = await mlmApi.uploadMedia(formData.panImageFile);
+                panImageUrl = res.data?.result?.url || res.data?.url;
+            }
+
+            // 3. Update MLM Membership Details (Payout, KYC)
             const membershipUpdate = {
                 payoutBeneficiary: {
                     accountHolderName: formData.accountHolderName,
@@ -96,6 +116,8 @@ const MlmProfilePage = () => {
                     upiId: formData.upiId,
                     panNumber: formData.panNumber,
                     aadhaarNumber: formData.aadhaarNumber,
+                    aadhaarImage: aadhaarImageUrl,
+                    panImage: panImageUrl,
                     method: formData.method || null
                 }
             };
@@ -266,9 +288,66 @@ const MlmProfilePage = () => {
                     {loading ? (
                         <div className="text-center py-4 text-slate-500 text-sm">Loading KYC details...</div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-2">
-                            <InfoRow label="Aadhaar Number" value={beneficiary.aadhaarNumber} name="aadhaarNumber" editable={true} />
-                            <InfoRow label="PAN Number" value={beneficiary.panNumber} name="panNumber" editable={true} />
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-x-8 gap-y-6">
+                            <div className="space-y-4">
+                                <InfoRow label="Aadhaar Number" value={beneficiary.aadhaarNumber} name="aadhaarNumber" editable={true} />
+                                {isEditing ? (
+                                    <div className="flex flex-col py-3 border-b border-slate-100 last:border-0">
+                                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Aadhaar Image</span>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) => setFormData(prev => ({ ...prev, aadhaarImageFile: e.target.files[0] }))}
+                                            className="mt-1 text-sm text-slate-900 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                        />
+                                        {formData.aadhaarImageFile && <span className="text-xs text-indigo-600 mt-1">File selected: {formData.aadhaarImageFile.name}</span>}
+                                        {!formData.aadhaarImageFile && formData.aadhaarImage && <span className="text-xs text-slate-500 mt-1">Current image uploaded</span>}
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col py-3 border-b border-slate-100 last:border-0">
+                                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Aadhaar Image</span>
+                                        {beneficiary.aadhaarImage ? (
+                                            <a href={beneficiary.aadhaarImage} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-indigo-600 hover:text-indigo-700 mt-1 flex items-center gap-1">
+                                                <IdCard size={14} /> View Document
+                                            </a>
+                                        ) : (
+                                            <span className="text-sm font-medium text-slate-900 mt-1">
+                                                <span className="text-slate-400 italic">Not provided</span>
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="space-y-4">
+                                <InfoRow label="PAN Number" value={beneficiary.panNumber} name="panNumber" editable={true} />
+                                {isEditing ? (
+                                    <div className="flex flex-col py-3 border-b border-slate-100 last:border-0">
+                                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">PAN Image</span>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) => setFormData(prev => ({ ...prev, panImageFile: e.target.files[0] }))}
+                                            className="mt-1 text-sm text-slate-900 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                        />
+                                        {formData.panImageFile && <span className="text-xs text-indigo-600 mt-1">File selected: {formData.panImageFile.name}</span>}
+                                        {!formData.panImageFile && formData.panImage && <span className="text-xs text-slate-500 mt-1">Current image uploaded</span>}
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col py-3 border-b border-slate-100 last:border-0">
+                                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">PAN Image</span>
+                                        {beneficiary.panImage ? (
+                                            <a href={beneficiary.panImage} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-indigo-600 hover:text-indigo-700 mt-1 flex items-center gap-1">
+                                                <IdCard size={14} /> View Document
+                                            </a>
+                                        ) : (
+                                            <span className="text-sm font-medium text-slate-900 mt-1">
+                                                <span className="text-slate-400 italic">Not provided</span>
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                     

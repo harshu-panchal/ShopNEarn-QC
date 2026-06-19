@@ -74,6 +74,9 @@ const PayoutsLayout = lazy(() => import('../../modules/customer/pages/mlm/payout
 const MyEarningsPage = lazy(() => import('../../modules/customer/pages/mlm/payouts/MyEarningsPage'));
 const MyPayoutPage = lazy(() => import('../../modules/customer/pages/mlm/payouts/MyPayoutPage'));
 const WalletHistoryPage = lazy(() => import('../../modules/customer/pages/mlm/payouts/WalletHistoryPage'));
+const LeftTeamPage = lazy(() => import('../../modules/customer/pages/mlm/network/LeftTeamPage'));
+const RightTeamPage = lazy(() => import('../../modules/customer/pages/mlm/network/RightTeamPage'));
+const LevelTeamPage = lazy(() => import('../../modules/customer/pages/mlm/network/LevelTeamPage'));
 
 // Lazy load heavy modules
 const SellerModule = lazy(() => import('../../modules/seller/routes/index'));
@@ -239,21 +242,27 @@ const AppRouter = () => {
                             children: [
                                 { index: true, element: <MainDashboardPage /> },
                                 { path: 'legacy', element: <MlmDashboardPage /> },
-                                { path: 'referrals', element: <MlmReferralPage /> },
                                 { path: 'profile', element: <MlmProfilePage /> },
-                                // Genealogy section — tabbed layout (Tree /
-                                // Binary / Matching / Sponsor). `/mlm/genealogy`
-                                // redirects to the Tree View by default.
+                                // Network section
                                 {
-                                    path: 'genealogy',
-                                    element: <GenealogyLayout />,
+                                    path: 'network',
                                     children: [
-                                        { index: true, element: <Navigate to="tree" replace /> },
-                                        { path: 'tree', element: <TreeViewPage /> },
-                                        { path: 'binary', element: <BinaryGenealogyPage /> },
-                                        { path: 'matching-report', element: <MatchingReportPage /> },
-                                        { path: 'direct-sponsor', element: <DirectSponsorPage /> },
-                                    ],
+                                        { path: 'referrals', element: <MlmReferralPage /> },
+                                        { path: 'left-team', element: <LeftTeamPage /> },
+                                        { path: 'right-team', element: <RightTeamPage /> },
+                                        { path: 'level-team', element: <LevelTeamPage /> },
+                                        {
+                                            path: 'genealogy',
+                                            element: <GenealogyLayout />,
+                                            children: [
+                                                { index: true, element: <Navigate to="tree" replace /> },
+                                                { path: 'tree', element: <TreeViewPage /> },
+                                                { path: 'binary', element: <BinaryGenealogyPage /> },
+                                                { path: 'matching-report', element: <MatchingReportPage /> },
+                                                { path: 'direct-sponsor', element: <DirectSponsorPage /> },
+                                            ],
+                                        },
+                                    ]
                                 },
                                 // Payouts section — tabbed layout (Earnings /
                                 // Payout / Wallet History). `/mlm/payouts`

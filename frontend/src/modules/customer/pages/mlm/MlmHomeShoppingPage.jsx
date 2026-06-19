@@ -179,7 +179,6 @@ const MlmHomeShoppingPage = () => {
                         <ul className="space-y-2 text-sm text-slate-700">
                             <li className="flex justify-between"><span>L1 (Direct Sponsor)</span><b>{cfg.homeShoppingCommissions?.salesPercent ?? 10}%</b></li>
                             <li className="flex justify-between"><span>L2 (Grandsponsor)</span><b>{cfg.homeShoppingCommissions?.referralPercent ?? 5}%</b></li>
-                            <li className="flex justify-between"><span>L3 (Great-grandsponsor)</span><b>{cfg.homeShoppingCommissions?.royaltyPercent ?? 2}%</b></li>
                         </ul>
                     </div>
                 </div>

@@ -919,7 +919,7 @@ const MlmMemberDetail = () => {
                         <li key={row._id} className="py-2 flex items-center justify-between">
                             <div>
                                 <p className="font-semibold text-slate-800">{row.userId?.name || 'Unknown'} <span className="text-xs text-slate-500">· {row.userId?.phone || ''}</span></p>
-                                <p className="text-[11px] text-slate-500">{row.referralCode} · Plan {row.planType}</p>
+                                <p className="text-[11px] text-slate-500">{row.referralCode} · {row.isMember ? `Plan ${row.planType}` : 'Member'}</p>
                             </div>
                             <Link to={`/admin/mlm/members/${row._id}`} className="text-xs font-bold text-indigo-600">View</Link>
                         </li>

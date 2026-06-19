@@ -145,7 +145,6 @@ const MlmMembers = () => {
                             <th className="text-left px-4 py-3">Customer</th>
                             <th className="text-left px-4 py-3">Email</th>
                             <th className="text-left px-4 py-3">Code</th>
-                            <th className="text-left px-4 py-3">Plan</th>
                             <th className="text-left px-4 py-3">Status</th>
                             <th className="text-left px-4 py-3">Leg</th>
                             <th className="text-left px-4 py-3">Sponsor</th>
@@ -157,9 +156,9 @@ const MlmMembers = () => {
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-500">Loading...</td></tr>
+                            <tr><td colSpan={10} className="px-4 py-10 text-center text-slate-500">Loading...</td></tr>
                         ) : items.length === 0 ? (
-                            <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-500">No members match the current filters.</td></tr>
+                            <tr><td colSpan={10} className="px-4 py-10 text-center text-slate-500">No members match the current filters.</td></tr>
                         ) : items.map((m) => (
                             <tr key={m._id} className="border-b border-slate-100 hover:bg-slate-50">
                                 <td className="px-4 py-3">
@@ -171,13 +170,8 @@ const MlmMembers = () => {
                                 </td>
                                 <td className="px-4 py-3 font-mono font-bold text-xs">{m.referralCode}</td>
                                 <td className="px-4 py-3">
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${m.planType === 'B' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'}`}>
-                                        Plan {m.planType}
-                                    </span>
-                                </td>
-                                <td className="px-4 py-3">
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${STATUS_BADGE[m.status] || 'bg-slate-100 text-slate-600'}`}>
-                                        {STATUS_LABEL[m.status] || m.status}
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${m.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                        {m.status === 'active' ? (m.planType === 'B' ? 'Plan B' : 'Plan A') : 'Member'}
                                     </span>
                                 </td>
                                 <td className="px-4 py-3">

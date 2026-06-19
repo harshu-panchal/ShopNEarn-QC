@@ -17,15 +17,15 @@ import { useMlmDrawer } from "../MlmLayout";
  * URL state — no local tab state needed.
  */
 const TABS = [
-  { to: "/mlm/genealogy/tree", label: "Tree View", icon: <Network size={16} /> },
-  { to: "/mlm/genealogy/binary", label: "Binary", icon: <GitBranch size={16} /> },
+  { to: "/mlm/network/genealogy/tree", label: "Tree View", icon: <Network size={16} /> },
+  { to: "/mlm/network/genealogy/binary", label: "Binary", icon: <GitBranch size={16} /> },
   {
-    to: "/mlm/genealogy/matching-report",
+    to: "/mlm/network/genealogy/matching-report",
     label: "Matching",
     icon: <FileBarChart2 size={16} />,
   },
   {
-    to: "/mlm/genealogy/direct-sponsor",
+    to: "/mlm/network/genealogy/direct-sponsor",
     label: "Sponsor",
     icon: <UserSquare2 size={16} />,
   },
