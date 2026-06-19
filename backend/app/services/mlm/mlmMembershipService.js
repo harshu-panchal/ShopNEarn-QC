@@ -602,33 +602,6 @@ export async function assignSponsor({
     });
   }
 
-  // Customer-MLM-rebuild Phase 4: fire the binary pair-match bonus
-  // engine inline. If THIS new member is `REGISTERED_UNPAID`, the
-  // engine emits a HELD_AWAITING_DOWNLINE_ACTIVATION event for the
-  // sponsor and bumps the sponsor's `heldPairBonusForSponsor` tracker
-  // instead of crediting the wallet. When the new member's joining
-  // payment is later captured, `mlmActivationService` calls
-  // `releaseHeldPairBonusesForDownlineActivation(newActiveUserId)`
-  // which flips the held event to CREDITED and credits the sponsor's
-  // pending wallet bucket.
-  try {
-    const { computeAndCreditBinaryPairBonus } = await import(
-      "./mlmBonusEngineService.js"
-    );
-    await computeAndCreditBinaryPairBonus({
-      sponsorUserId: sponsorMembership.userId,
-      newReferralUserId: membership.userId,
-      session,
-    });
-  } catch (err) {
-    if (typeof console !== "undefined" && console.warn) {
-      console.warn(
-        "[mlmMembershipService] inline pair-bonus emit failed; will retry at activation",
-        { error: err.message },
-      );
-    }
-  }
-
   await syncCustomerMlmProjection(membership.userId, { session });
   await syncCustomerMlmProjection(sponsorMembership.userId, { session });
 

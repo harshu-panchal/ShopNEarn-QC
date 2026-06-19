@@ -28,6 +28,7 @@ import {
   getUplineChain,
   recordLifetimeEarning,
 } from "./mlmMembershipService.js";
+import { classifyDirectReferralsByLegUnderRoot } from "./mlmBinaryTreeBuilder.js";
 
 const HELD_BONUS_RECIPIENT_BLOCKED = new Set([
   MLM_MEMBERSHIP_STATUS.TERMINATED,
@@ -410,32 +411,64 @@ export async function creditBonusToEarningsWallet({
 }
 
 /**
- * @deprecated since the Plan A binary pair-matching refactor.
+ * Plan A one-time matching-income milestone.
  *
- * The direct-referral COUNT milestone has been replaced by the
- * binary-pair-matching bonus. New activations call
- * `computeAndCreditBinaryPairBonus` instead. This function is kept
- * exported only to avoid breaking any external code that still
- * imports it; runtime activation no longer calls it.
+ * Fires when a direct referral activates Plan A and the sponsor:
+ *   1. Has exactly hit a configured milestone count (2, 3, 5, …) of
+ *      ACTIVE Plan A direct referrals, and
+ *   2. Has at least one ACTIVE Plan A direct on the left leg AND one
+ *      on the right leg (binary tree placement under the sponsor).
  *
- * Removing this stub is safe once no caller imports it.
+ * Each milestone pays once (idempotency key per sponsor + count).
+ * Credits go to the earnings wallet pending bucket.
  */
-export async function computeAndCreditDirectReferralMilestone({
+export async function computeAndCreditMatchingIncomeMilestone({
   sponsorUserId,
   newReferralUserId,
-  atDirectCount,
   session,
   correlationId = null,
 }) {
-  if (!sponsorUserId || !atDirectCount) return null;
+  if (!sponsorUserId) return null;
 
-  const sponsorMembership = await getMembershipByUserId(sponsorUserId, { session });
-  if (!sponsorMembership) return null;
+  const sponsor = await getMembershipByUserId(sponsorUserId, { session });
+  if (!sponsor) return null;
 
-  const bonusAmount = await getDirectReferralMilestoneBonus(atDirectCount);
+  const activeDirects = await MlmMembership.find(
+    {
+      sponsorId: sponsorUserId,
+      status: MLM_MEMBERSHIP_STATUS.ACTIVE,
+      planType: MLM_PLAN_TYPE.A,
+    },
+    null,
+    session ? { session } : {},
+  ).lean();
+
+  const activeDirectCount = activeDirects.length;
+  const bonusAmount = await getDirectReferralMilestoneBonus(activeDirectCount);
   if (!bonusAmount || bonusAmount <= 0) return null;
 
-  const idempotencyKey = `${MLM_IDEMPOTENCY_PREFIX.DIRECT_REFERRAL_MILESTONE}-${sponsorUserId}-${atDirectCount}`;
+  const legByReferralId = await classifyDirectReferralsByLegUnderRoot({
+    rootMembership: sponsor,
+    directReferrals: activeDirects,
+  });
+
+  let hasActivePlanAOnLeft = false;
+  let hasActivePlanAOnRight = false;
+  for (const ref of activeDirects) {
+    const leg = legByReferralId.get(String(ref._id));
+    if (leg === "L") hasActivePlanAOnLeft = true;
+    if (leg === "R") hasActivePlanAOnRight = true;
+  }
+  if (!hasActivePlanAOnLeft || !hasActivePlanAOnRight) return null;
+
+  const idempotencyKey = `${MLM_IDEMPOTENCY_PREFIX.DIRECT_REFERRAL_MILESTONE}-${sponsorUserId}-${activeDirectCount}`;
+
+  const existing = await MlmCommissionEvent.findOne(
+    { idempotencyKey },
+    null,
+    session ? { session } : {},
+  );
+  if (existing) return existing;
 
   return creditBonusToEarningsWallet({
     recipientUserId: sponsorUserId,
@@ -448,12 +481,25 @@ export async function computeAndCreditDirectReferralMilestone({
     sourceUserId: newReferralUserId,
     sourceOrderId: null,
     bucket: "pending",
-    description: `Direct referral milestone bonus at ${atDirectCount} directs`,
-    meta: { atDirectCount: Number(atDirectCount) },
+    description: `Matching income milestone at ${activeDirectCount} active directs`,
+    meta: {
+      atDirectCount: activeDirectCount,
+      hasActivePlanAOnLeft,
+      hasActivePlanAOnRight,
+      milestoneType: "MATCHING_INCOME",
+    },
     idempotencyKey,
     correlationId,
     session,
   });
+}
+
+/**
+ * @deprecated Use `computeAndCreditMatchingIncomeMilestone` instead.
+ * Kept as a thin alias for any stale imports.
+ */
+export async function computeAndCreditDirectReferralMilestone(args) {
+  return computeAndCreditMatchingIncomeMilestone(args);
 }
 
 /**

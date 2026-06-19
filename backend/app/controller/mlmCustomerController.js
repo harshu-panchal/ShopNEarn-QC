@@ -950,6 +950,8 @@ function shapeCustomerTree(node) {
   const shaped = shapeCustomerNode(node.raw, node.position);
   shaped.leftLegTotalDownlineCount = node.raw.trueLeftLegTotalDownlineCount || 0;
   shaped.rightLegTotalDownlineCount = node.raw.trueRightLegTotalDownlineCount || 0;
+  shaped.leftLegActiveDownlineCount = node.raw.trueLeftLegActiveDownlineCount || 0;
+  shaped.rightLegActiveDownlineCount = node.raw.trueRightLegActiveDownlineCount || 0;
   
   shaped.totalDownlineCount = shaped.leftLegTotalDownlineCount + shaped.rightLegTotalDownlineCount;
   shaped.activeDownlineCount = node.raw.trueBinaryActiveDownlineCount || 0;

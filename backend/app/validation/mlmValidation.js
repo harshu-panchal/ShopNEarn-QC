@@ -34,8 +34,7 @@ export const updateMlmSettingsSchema = Joi.object({
   }),
   premiumUpgradeShoppingWalletTopup: Joi.number().min(0),
   planBAutoUpgradeAtPlanALifetimeEarnings: Joi.number().min(0),
-  // DEPRECATED: replaced by `planAPairBonusTiers`. Retained on the
-  // schema so admin clients submitting legacy payloads don't break.
+  // Plan A one-time matching-income milestones (active Plan A direct count).
   directReferralMilestones: Joi.array()
     .items(
       Joi.object({

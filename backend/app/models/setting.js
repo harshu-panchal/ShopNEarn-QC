@@ -241,10 +241,9 @@ const settingSchema = new mongoose.Schema(
                 default: MLM_DEFAULTS.planBAutoUpgradeAtPlanALifetimeEarnings,
                 min: 0,
             },
-            // DEPRECATED: replaced by `planAPairBonusTiers` for the
-            // binary pair-matching bonus. Kept so legacy Setting rows
-            // do not lose data; no runtime code path consumes it any
-            // more for new credits.
+            // Plan A one-time matching-income milestones. Paid once when
+            // the sponsor reaches `atDirectCount` activated Plan A direct
+            // referrals with at least one active Plan A direct on each leg.
             directReferralMilestones: {
                 type: [
                     {

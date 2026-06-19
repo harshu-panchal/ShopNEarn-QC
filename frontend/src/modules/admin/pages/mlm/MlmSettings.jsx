@@ -11,7 +11,7 @@ import axiosInstance from '@core/api/axios';
  *
  * Sections:
  *   - Toggle + joining package
- *   - Plan A binary pair bonus tiers + fixed-after fallback + cooldown
+ *   - Plan A matching-income milestones + earnings cooldown
  *   - Plan B repurchase bonus levels (editable rows)
  *   - Mentor royalty levels
  *   - Withdrawal charges
@@ -56,12 +56,11 @@ const MlmSettings = () => {
                 },
                 premiumUpgradeShoppingWalletTopup: Number(cfg.premiumUpgradeShoppingWalletTopup) || 0,
                 planBAutoUpgradeAtPlanALifetimeEarnings: Number(cfg.planBAutoUpgradeAtPlanALifetimeEarnings) || 0,
-                planAPairBonusTiers: (cfg.planAPairBonusTiers || []).map((t) => ({
-                    pairIndex: Number(t.pairIndex) || 1,
-                    bonusAmount: Number(t.bonusAmount) || 0,
+                directReferralMilestones: (cfg.directReferralMilestones || []).map((m) => ({
+                    atDirectCount: Number(m.atDirectCount) || 1,
+                    bonusAmount: Number(m.bonusAmount) || 0,
+                    planRequired: m.planRequired || 'A',
                 })),
-                planAPairBonusFixedAfterPair: Number(cfg.planAPairBonusFixedAfterPair) || 0,
-                planAPairBonusFixedAmount: Number(cfg.planAPairBonusFixedAmount) || 0,
                 planAPairBonusReleaseCooldownDays: Number(cfg.planAPairBonusReleaseCooldownDays) || 0,
                 repurchaseBonusLevels: (cfg.repurchaseBonusLevels || []).map((l) => ({
                     level: Number(l.level) || 1,
@@ -155,37 +154,29 @@ const MlmSettings = () => {
                 </div>
             </Section>
 
-            <Section title="Plan A: Binary Pair Bonus Tiers">
+            <Section title="Plan A: Matching Income Milestones">
                 <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
-                    Plan A pays a bonus every time a sponsor completes a new
-                    matched pair of direct referrals — one personally referred
-                    member in the LEFT subtree and one in the RIGHT subtree
-                    of their binary tree. Each row below sets the payout for
-                    a specific pair index (1st pair, 2nd pair, ...). Pairs
-                    beyond the table fall back to the fixed amount below.
+                    One-time matching income paid to the earnings wallet when a sponsor
+                    reaches the configured count of <strong>activated Plan A direct
+                    referrals</strong> and has at least one activated Plan A direct on
+                    each binary leg (left and right). Each row pays once per sponsor —
+                    not on every new pair. Direct referral signup bonus (₹50 shopping
+                    wallet) is configured separately via signup bonus settings.
                 </p>
                 <RuleEditor
-                    rows={cfg.planAPairBonusTiers || []}
+                    rows={cfg.directReferralMilestones || []}
                     columns={[
-                        { key: 'pairIndex', label: 'Pair #', type: 'number', min: 1 },
+                        { key: 'atDirectCount', label: 'Active directs #', type: 'number', min: 1 },
                         { key: 'bonusAmount', label: 'Bonus (₹)', type: 'number', min: 0 },
                     ]}
-                    defaults={{ pairIndex: (cfg.planAPairBonusTiers?.length || 0) + 1, bonusAmount: 0 }}
-                    onChange={(rows) => setCfg({ ...cfg, planAPairBonusTiers: rows })}
+                    defaults={{
+                        atDirectCount: (cfg.directReferralMilestones?.length || 0) + 2,
+                        bonusAmount: 0,
+                        planRequired: 'A',
+                    }}
+                    onChange={(rows) => setCfg({ ...cfg, directReferralMilestones: rows })}
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-                    <NumField
-                        label="Fixed amount kicks in AFTER pair #"
-                        value={cfg.planAPairBonusFixedAfterPair}
-                        onChange={(v) => setCfg({ ...cfg, planAPairBonusFixedAfterPair: v })}
-                        min={0}
-                    />
-                    <NumField
-                        label="Fixed bonus amount (₹)"
-                        value={cfg.planAPairBonusFixedAmount}
-                        onChange={(v) => setCfg({ ...cfg, planAPairBonusFixedAmount: v })}
-                        min={0}
-                    />
                     <NumField
                         label="Pending → Earnings cooldown (days)"
                         value={cfg.planAPairBonusReleaseCooldownDays}
@@ -194,7 +185,7 @@ const MlmSettings = () => {
                         max={365}
                     />
                 </div>
-                <PairBonusPreview cfg={cfg} />
+                <MatchingIncomePreview cfg={cfg} />
             </Section>
 
             <Section title="Plan B: Repurchase Bonus Levels (% of grandTotal)">
@@ -331,10 +322,41 @@ const SelectField = ({ label, value, onChange, options }) => (
 );
 
 /**
- * Inline preview of the resulting pair bonus payouts so admins can
- * verify their tier table at a glance. Shows pairs 1..min(8, fixedAfterPair+3)
- * with their resolved amount (per-tier override or fixed-amount fallback).
+ * Inline preview of one-time matching-income milestones.
  */
+const MatchingIncomePreview = ({ cfg }) => {
+    const rows = [...(cfg.directReferralMilestones || [])]
+        .filter((m) => Number(m.atDirectCount) > 0)
+        .sort((a, b) => Number(a.atDirectCount) - Number(b.atDirectCount));
+
+    if (rows.length === 0) {
+        return (
+            <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-500">
+                No milestones configured — matching income will not be paid.
+            </div>
+        );
+    }
+
+    return (
+        <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-3">
+            <div className="text-[10px] uppercase font-bold text-slate-500 mb-2">Preview</div>
+            <div className="flex flex-wrap gap-2">
+                {rows.map((m) => (
+                    <div
+                        key={`${m.atDirectCount}-${m.bonusAmount}`}
+                        className="text-xs font-mono px-2 py-1 rounded bg-indigo-100 text-indigo-700"
+                    >
+                        {m.atDirectCount} active directs → ₹{Number(m.bonusAmount) || 0} (once)
+                    </div>
+                ))}
+            </div>
+            <div className="text-[10px] text-slate-500 mt-2">
+                Requires Plan A activation on both left and right legs before each milestone pays.
+            </div>
+        </div>
+    );
+};
+
 const PairBonusPreview = ({ cfg }) => {
     const tiers = (cfg.planAPairBonusTiers || []).reduce((acc, t) => {
         if (t && Number.isFinite(Number(t.pairIndex))) {

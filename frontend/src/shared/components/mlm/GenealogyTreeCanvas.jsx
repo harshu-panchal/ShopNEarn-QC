@@ -1385,7 +1385,9 @@ const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
   const planType = data.planType || "—";
   const joinedAt = data.planAJoinedAt || data.joinedAt || null;
   const left = Number(data.leftLegTotalDownlineCount || 0);
+  const leftActive = Number(data.leftLegActiveDownlineCount || 0);
   const right = Number(data.rightLegTotalDownlineCount || 0);
+  const rightActive = Number(data.rightLegActiveDownlineCount || 0);
   const pairs = Number(data.pairsCompleted || 0);
   const totalDownline = Number(data.totalDownlineCount || 0);
   const activeDownline = Number(data.activeDownlineCount || 0);
@@ -1518,13 +1520,13 @@ const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
           <Stat
             icon={<ChevronLeft size={11} />}
             label="Left"
-            value={left}
+            value={<>{left} <span className="opacity-70 text-[10px]">({leftActive})</span></>}
             tone="emerald"
           />
           <Stat
             icon={<ChevronRight size={11} />}
             label="Right"
-            value={right}
+            value={<>{right} <span className="opacity-70 text-[10px]">({rightActive})</span></>}
             tone="indigo"
           />
           <Stat

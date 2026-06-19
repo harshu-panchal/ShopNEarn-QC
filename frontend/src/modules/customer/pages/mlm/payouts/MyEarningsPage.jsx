@@ -18,7 +18,7 @@ const formatDate = (d) =>
 const bonusTypeLabel = (t) => {
   const map = {
     SIGNUP_BONUS_SPONSOR: "Referral Signup Bonus",
-    DIRECT_REFERRAL_MILESTONE: "Referral Milestone (legacy)",
+    DIRECT_REFERRAL_MILESTONE: "Matching Income",
     BINARY_PAIR_MATCH: "Pair Match Bonus",
     REPURCHASE_BONUS: "Repurchase Bonus",
     MENTOR_ROYALTY: "Mentor Royalty",
@@ -163,6 +163,7 @@ const MyEarningsPage = () => {
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           {[
             "",
+            "DIRECT_REFERRAL_MILESTONE",
             "BINARY_PAIR_MATCH",
             "REPURCHASE_BONUS",
             "MENTOR_ROYALTY",

@@ -656,15 +656,23 @@ export async function placeOrderAtomic({
       // Legacy `Transaction` row: kept under both code paths so existing
       // admin dashboards and the `walletLedgerVerifierJob` baseline view
       // are unaffected. The collection deprecation is a later phase.
-      await Transaction.create({
-        user: customerId,
-        userModel: "User",
-        type: "Wallet Payment",
-        amount: -walletAmount,
-        status: "Settled",
-        reference: `WLT-CHOUT-${checkoutGroupId}`,
-        meta: { checkoutGroupId, walletSplit: walletSplitForOrders }
-      }, { session });
+      // Mongoose 8 requires an array when passing `{ session }` — a bare
+      // `create(doc, { session })` treats the options object as a second
+      // document and fails validation on an empty Transaction row.
+      await Transaction.create(
+        [
+          {
+            user: customerId,
+            userModel: "User",
+            type: "Wallet Payment",
+            amount: -walletAmount,
+            status: "Settled",
+            reference: `WLT-CHOUT-${checkoutGroupId}`,
+            meta: { checkoutGroupId, walletSplit: walletSplitForOrders },
+          },
+        ],
+        { session },
+      );
 
       // MLM Phase 1: stamp per-order walletSplit (proportional to each
       // order's walletAmount slice) so refunds + clawbacks can route

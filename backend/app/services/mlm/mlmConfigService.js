@@ -126,9 +126,8 @@ export async function getMentorRoyaltyRate(level, opts) {
 }
 
 /**
- * DEPRECATED: replaced by `getPlanAPairBonusForPairIndex` after the
- * Plan A binary pair-matching refactor. Retained so older imports do
- * not break compilation; no runtime path consumes it.
+ * One-time matching-income amount when the sponsor reaches
+ * `atDirectCount` activated Plan A direct referrals.
  */
 export async function getDirectReferralMilestoneBonus(atDirectCount, opts) {
   const cfg = await getMlmConfig(opts);

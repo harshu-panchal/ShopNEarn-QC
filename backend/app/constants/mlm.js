@@ -219,14 +219,15 @@ export const MLM_DEFAULTS = Object.freeze({
   planBAutoUpgradeAtPlanALifetimeEarnings: 30000,
   premiumUpgradeShoppingWalletTopup: 10000,
 
-  // Plan A: Direct Referral Milestone Bonus — DEPRECATED in favour of
-  // `planAPairBonusTiers` (binary pair-matching). The shape is kept so
-  // existing Setting rows don't lose data, but no runtime code path
-  // reads from it for new credits.
+  // Plan A: one-time matching-income milestones. Paid once when the
+  // sponsor reaches the configured active-Plan-A direct count AND has
+  // at least one activated Plan A direct on each binary leg (L + R).
+  // Amounts are credited to the earnings wallet (pending → available
+  // after cooldown). Replaces the deprecated per-pair binary bonus.
   directReferralMilestones: [
     { atDirectCount: 2, bonusAmount: 200, planRequired: MLM_PLAN_TYPE.A },
-    { atDirectCount: 3, bonusAmount: 150, planRequired: MLM_PLAN_TYPE.A },
-    { atDirectCount: 4, bonusAmount: 100, planRequired: MLM_PLAN_TYPE.A },
+    { atDirectCount: 3, bonusAmount: 250, planRequired: MLM_PLAN_TYPE.A },
+    { atDirectCount: 5, bonusAmount: 300, planRequired: MLM_PLAN_TYPE.A },
   ],
 
   // Plan A: Binary Pair Bonus — paid every time the sponsor completes a
