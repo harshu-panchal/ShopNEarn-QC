@@ -15,6 +15,9 @@
  *   node backend/scripts/recalc-mlm-earnings-wallet.js
  *   node backend/scripts/recalc-mlm-earnings-wallet.js --apply
  *   node backend/scripts/recalc-mlm-earnings-wallet.js --apply --verbose
+ *   node backend/scripts/recalc-mlm-earnings-wallet.js --apply --force
+ *     Re-run after binary tree rebuild (new idempotency keys; voids all
+ *     prior pair/milestone credits including an earlier recalc pass).
  */
 import dotenv from "dotenv";
 import mongoose from "mongoose";
@@ -52,8 +55,12 @@ dotenv.config();
 
 const APPLY = process.argv.includes("--apply");
 const VERBOSE = process.argv.includes("--verbose");
-const MIGRATION_ID = "MLM-EARN-RECALC-2026";
-const RESET_KEY = (userId) => `${MIGRATION_ID}-RESET-${String(userId)}`;
+const FORCE = process.argv.includes("--force");
+const MIGRATION_ID = FORCE
+  ? "MLM-EARN-RECALC-TREE-2026"
+  : "MLM-EARN-RECALC-2026";
+const RESET_KEY = (userId, bucket) =>
+  `${MIGRATION_ID}-RESET-${String(userId)}-${bucket.toUpperCase()}`;
 const PAIR_KEY = (userId, pairIndex) =>
   `${MIGRATION_ID}-PAIR-${String(userId)}-P${pairIndex}`;
 
@@ -94,7 +101,7 @@ async function zeroBucketIfNeeded({
   const amount = roundCurrency(wallet[field] || 0);
   if (amount <= 0) return 0;
 
-  const idempotencyKey = `${RESET_KEY(userId)}-${bucket.toUpperCase()}`;
+  const idempotencyKey = RESET_KEY(userId, bucket);
   if (await ledgerExists(idempotencyKey, session)) {
     return 0;
   }
@@ -118,19 +125,23 @@ async function zeroBucketIfNeeded({
 }
 
 async function voidPriorMatchingEvents(userId, session) {
-  const result = await MlmCommissionEvent.updateMany(
-    {
-      recipientId: userId,
-      bonusType: { $in: VOID_BONUS_TYPES },
-      status: {
-        $in: [
-          MLM_COMMISSION_EVENT_STATUS.CREDITED,
-          MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_DOWNLINE_ACTIVATION,
-          MLM_COMMISSION_EVENT_STATUS.CAPPED_ROLLOVER,
-        ],
-      },
-      "meta.recalcVoided": { $ne: true },
+  const match = {
+    recipientId: userId,
+    bonusType: { $in: VOID_BONUS_TYPES },
+    status: {
+      $in: [
+        MLM_COMMISSION_EVENT_STATUS.CREDITED,
+        MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_DOWNLINE_ACTIVATION,
+        MLM_COMMISSION_EVENT_STATUS.CAPPED_ROLLOVER,
+      ],
     },
+  };
+  if (!FORCE) {
+    match["meta.recalcVoided"] = { $ne: true };
+  }
+
+  const result = await MlmCommissionEvent.updateMany(
+    match,
     {
       $set: {
         status: MLM_COMMISSION_EVENT_STATUS.CLAWED_BACK,
@@ -143,10 +154,59 @@ async function voidPriorMatchingEvents(userId, session) {
   return result.modifiedCount || 0;
 }
 
+async function zeroInactiveStaleEarnings(membership, totals, session) {
+  if (!FORCE || !APPLY) return false;
+  if (membership.status === MLM_MEMBERSHIP_STATUS.ACTIVE) return false;
+
+  const userId = membership.userId;
+  const wallet = await Wallet.findOne({
+    ownerType: OWNER_TYPE.CUSTOMER,
+    ownerId: userId,
+  }).session(session || null);
+  const earnings = roundCurrency(wallet?.earningsBalance || 0);
+  const pending = roundCurrency(wallet?.pendingBalance || 0);
+  if (earnings <= 0 && pending <= 0) return false;
+
+  const correlationId = `${MIGRATION_ID}-INACTIVE-${String(userId)}`;
+  if (earnings > 0) {
+    await zeroBucketIfNeeded({
+      userId,
+      bucket: "earnings",
+      wallet,
+      session,
+      correlationId,
+    });
+  }
+  if (pending > 0) {
+    await zeroBucketIfNeeded({
+      userId,
+      bucket: "pending",
+      wallet: await Wallet.findOne({
+        ownerType: OWNER_TYPE.CUSTOMER,
+        ownerId: userId,
+      }).session(session),
+      session,
+      correlationId,
+    });
+  }
+  const voided = await voidPriorMatchingEvents(userId, session);
+  totals.inactiveStaleZeroed += 1;
+  totals.zeroedEarnings += earnings;
+  totals.zeroedPending += pending;
+  totals.voidedEvents += voided;
+  if (VERBOSE) {
+    log(
+      `INACTIVE zero ${String(userId)} E=₹${earnings} P=₹${pending} voided=${voided}`,
+    );
+  }
+  return true;
+}
+
 async function recalcOne(membership, cfg, totals, session) {
   const userId = membership.userId;
 
   if (membership.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) {
+    await zeroInactiveStaleEarnings(membership, totals, session);
     totals.skippedInactive += 1;
     return;
   }
@@ -157,20 +217,28 @@ async function recalcOne(membership, cfg, totals, session) {
     return;
   }
 
-  if (membership.meta?.earningsRecalcMigrationId === MIGRATION_ID) {
-    totals.alreadyDone += 1;
-    return;
-  }
+  if (!FORCE) {
+    if (membership.meta?.earningsRecalcMigrationId === MIGRATION_ID) {
+      totals.alreadyDone += 1;
+      return;
+    }
 
-  if (await ledgerExists(`${RESET_KEY(userId)}-EARNINGS`, session)) {
-    totals.alreadyDone += 1;
-    return;
-  }
+    if (await ledgerExists(RESET_KEY(userId, "earnings"), session)) {
+      totals.alreadyDone += 1;
+      return;
+    }
 
-  const hasRecalcPair = await LedgerEntry.findOne({
-    idempotencyKey: { $regex: `^${MIGRATION_ID}-PAIR-${String(userId)}-P` },
-  }).session(session || null);
-  if (hasRecalcPair) {
+    const hasRecalcPair = await LedgerEntry.findOne({
+      idempotencyKey: { $regex: `^${MIGRATION_ID}-PAIR-${String(userId)}-P` },
+    }).session(session || null);
+    if (hasRecalcPair) {
+      totals.alreadyDone += 1;
+      return;
+    }
+  } else if (
+    membership.meta?.earningsRecalcMigrationId === MIGRATION_ID ||
+    (await ledgerExists(RESET_KEY(userId, "earnings"), session))
+  ) {
     totals.alreadyDone += 1;
     return;
   }
@@ -314,6 +382,7 @@ async function recalcOne(membership, cfg, totals, session) {
         heldPairBonusForSponsor: 0,
         "meta.earningsRecalcMigrationId": MIGRATION_ID,
         "meta.earningsRecalcAt": new Date(),
+        ...(FORCE ? { "meta.earningsRecalcTreeAt": new Date() } : {}),
       },
     },
     { session },
@@ -335,7 +404,10 @@ async function recalcOne(membership, cfg, totals, session) {
 
 async function main() {
   await connectDB();
-  log(APPLY ? "APPLY mode (writes enabled)" : "DRY-RUN (no writes)");
+  log(
+    APPLY ? "APPLY mode (writes enabled)" : "DRY-RUN (no writes)",
+    FORCE ? `[FORCE migrationId=${MIGRATION_ID}]` : "",
+  );
 
   const cfg = await getMlmConfig();
   const totals = {
@@ -355,6 +427,7 @@ async function main() {
     creditedAmount: 0,
     wouldCreditPairs: 0,
     wouldCreditAmount: 0,
+    inactiveStaleZeroed: 0,
   };
 
   const cursor = MlmMembership.find(
