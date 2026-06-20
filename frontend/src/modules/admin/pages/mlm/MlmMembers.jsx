@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import { Search, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminMlmApi } from '../../services/api/mlmApi';
-import { formatMemberJoinedAt } from '../../../../shared/utils/mlmMemberDisplay';
-import MemberJoinedSubtitle from '../../../../shared/components/mlm/MemberJoinedSubtitle';
+import { formatMemberJoinedAt } from '@shared/utils/mlmMemberDisplay';
+import MemberJoinedSubtitle from '@shared/components/mlm/MemberJoinedSubtitle';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
-import MemberJoinedSubtitle from '../../../../shared/components/mlm/MemberJoinedSubtitle';
+import MemberJoinedSubtitle from '@shared/components/mlm/MemberJoinedSubtitle';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDate = (d) => new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { TrendingUp, ArrowDownLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../../services/mlmApi";
-import MemberJoinedSubtitle from "../../../../shared/components/mlm/MemberJoinedSubtitle";
+import MemberJoinedSubtitle from "@shared/components/mlm/MemberJoinedSubtitle";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;

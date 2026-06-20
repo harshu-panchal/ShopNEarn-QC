@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Loader2, User, Award, Phone, Calendar, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../../services/mlmApi";
-import { formatMemberJoinedAt } from "../../../../shared/utils/mlmMemberDisplay";
+import { formatMemberJoinedAt } from "@shared/utils/mlmMemberDisplay";
 
 /**
  * Customer-MLM-rebuild Phase 8 — Direct Sponsor page.

@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { mlmApi } from '../../services/mlmApi';
 import { useMlmDrawer } from './MlmLayout';
 import TeamMemberSearch, { filterTeamMembersByQuery } from '../../../../shared/components/mlm/TeamMemberSearch';
-import MemberJoinedSubtitle from '../../../../shared/components/mlm/MemberJoinedSubtitle';
+import MemberJoinedSubtitle from '@shared/components/mlm/MemberJoinedSubtitle';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 

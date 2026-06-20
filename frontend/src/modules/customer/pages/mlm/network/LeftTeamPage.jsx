@@ -5,8 +5,8 @@ import { toast } from 'sonner';
 import mlmApi from '../../../services/mlmApi';
 import { useMlmDrawer } from '../MlmLayout';
 import TeamMemberSearch from '../../../../../shared/components/mlm/TeamMemberSearch';
-import MemberJoinedSubtitle from '../../../../../shared/components/mlm/MemberJoinedSubtitle';
-import { formatMemberJoinedAt } from '../../../../../shared/utils/mlmMemberDisplay';
+import MemberJoinedSubtitle from '@shared/components/mlm/MemberJoinedSubtitle';
+import { formatMemberJoinedAt } from '@shared/utils/mlmMemberDisplay';
 
 const LeftTeamPage = () => {
     const navigate = useNavigate();
