@@ -370,13 +370,25 @@ const BinaryPairIncomePreview = ({ cfg }) => {
     let left = 15;
     let right = 10;
     let pairs = 0;
-    if (left >= 2 && right >= 1) {
-        left -= 2;
-        right -= 1;
+    let leftBal = left;
+    let rightBal = right;
+    if (leftBal >= 2 && rightBal >= 1) {
+        leftBal -= 2;
+        rightBal -= 1;
         pairs += 1;
+        const extra = Math.min(leftBal, rightBal);
+        pairs += extra;
+        leftBal -= extra;
+        rightBal -= extra;
+    } else if (rightBal >= 2 && leftBal >= 1) {
+        rightBal -= 2;
+        leftBal -= 1;
+        pairs += 1;
+        const extra = Math.min(leftBal, rightBal);
+        pairs += extra;
+        leftBal -= extra;
+        rightBal -= extra;
     }
-    const extra = Math.min(left, right);
-    pairs += extra;
     const capped = Math.min(pairs, dailyCap);
     const income = capped * pairIncome;
 
@@ -385,7 +397,7 @@ const BinaryPairIncomePreview = ({ cfg }) => {
             <div className="text-[10px] uppercase font-bold text-slate-500 mb-2">Example (client PHP)</div>
             <div>Left 15 · Right 10 · 5 directs → <strong>{pairs} pairs</strong> (cap {dailyCap})</div>
             <div>Income: <strong>₹{income.toLocaleString('en-IN')}</strong> ({capped} × ₹{pairIncome})</div>
-            <div>Balance: left {left - extra}, right {right - extra}</div>
+            <div>Balance: left {leftBal}, right {rightBal}</div>
         </div>
     );
 };

@@ -21,6 +21,7 @@ import {
   getMlmConfig,
   getPlanAPairBonusForPairIndex,
   getRepurchaseBonusRate,
+  resolvePlanABonusWalletBucket,
 } from "./mlmConfigService.js";
 import MlmMembership from "../../models/mlmMembership.js";
 import {
@@ -480,7 +481,7 @@ export async function computeAndCreditMatchingIncomeMilestone({
     ratePercent: null,
     sourceUserId: newReferralUserId,
     sourceOrderId: null,
-    bucket: "pending",
+    bucket: await resolvePlanABonusWalletBucket(),
     description: `Matching income milestone at ${activeDirectCount} active directs`,
     meta: {
       atDirectCount: activeDirectCount,

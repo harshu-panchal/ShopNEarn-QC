@@ -277,26 +277,25 @@ export async function activateMembershipFromJoiningPayment(
  * Customer-MLM-rebuild Phase 7 (PO-request): admin-initiated
  * "approve without payment" activation.
  *
- * Same end-state as `activateMembershipFromJoiningPayment` MINUS the
- * shopping-wallet seed (no payment ⇒ no goods are being purchased,
- * so no shopping credit is granted). The admin can still grant a
- * complementary shopping credit afterwards via the existing
- * "Manual Wallet Adjustment" panel if they choose to.
+ * Same end-state as `activateMembershipFromJoiningPayment`, including
+ * the Plan A joining-package shopping-wallet seed from live MLM config
+ * (`joiningPackageShoppingWalletCredit`, default ₹5000).
  *
  * Operations (all inside one session):
  *   1. Reload the membership; require status REGISTERED_UNPAID.
  *      ACTIVE → idempotent no-op.
  *      SUSPENDED / TERMINATED → 409 (admin must lift first).
  *   2. Flip status to ACTIVE, planType to A, set planAJoinedAt.
- *   3. Stamp `meta.adminApprovedActivation = { adminId, at, ... }`
+ *   3. Credit joining-package shopping wallet (idempotent per membership).
+ *   4. Stamp `meta.adminApprovedActivation = { adminId, at, ... }`
  *      and `updatedBy = adminId` for the audit trail.
- *   4. Release any HELD pair-bonuses sitting on this member's
+ *   5. Release any HELD pair-bonuses sitting on this member's
  *      sponsor (the exact same path the paid activation takes).
- *   5. Resync the customer's denormalised `Customer.mlm` projection.
- *   6. Fire the MLM_MEMBERSHIP_ACTIVATED notification.
+ *   6. Resync the customer's denormalised `Customer.mlm` projection.
+ *   7. Fire the MLM_MEMBERSHIP_ACTIVATED notification.
  *
- * Returns `{ activated, membership, releasedEvents }`. Idempotent:
- * re-running on an already-active membership returns
+ * Returns `{ activated, membership, shoppingCreditAmount, releasedEvents }`.
+ * Idempotent: re-running on an already-active membership returns
  * `{ skipped: true, reason: "already_active" }`.
  */
 export async function adminActivateMembership({
@@ -369,6 +368,32 @@ export async function adminActivateMembership({
 
     await transitionUplineDownlineStatus(membership.sponsorChain, { session });
 
+    const cfg = await getMlmConfig();
+    const shoppingCreditAmount =
+      Number(cfg.joiningPackageShoppingWalletCredit) || 0;
+    let shoppingCreditResult = null;
+    if (shoppingCreditAmount > 0) {
+      shoppingCreditResult = await creditWallet({
+        ownerType: OWNER_TYPE.CUSTOMER,
+        ownerId: customerId,
+        amount: shoppingCreditAmount,
+        bucket: "shopping",
+        session,
+        ledgerType: LEDGER_TRANSACTION_TYPE.MLM_JOINING_PACKAGE_SHOPPING_CREDIT,
+        ledgerReference: `${MLM_IDEMPOTENCY_PREFIX.JOINING_PACKAGE_CREDIT}-ADMIN-${membership._id}`,
+        ledgerDescription: "MLM joining package shopping wallet seed (admin approval)",
+        idempotencyKey: `${MLM_IDEMPOTENCY_PREFIX.JOINING_PACKAGE_CREDIT}-ADMIN-${membership._id}`,
+        correlationId,
+        metadata: {
+          mlmEvent: "JOINING_PACKAGE_ACTIVATED",
+          activationSource: "admin_manual",
+          membershipId: String(membership._id),
+          adminId: String(adminId),
+        },
+        syncUserWalletBalance: false,
+      });
+    }
+
     let pairBonusEvents = [];
     const releasedEvents = await releaseHeldPairBonusesForDownlineActivation({
       newActiveUserId: customerId,
@@ -400,6 +425,8 @@ export async function adminActivateMembership({
     return {
       activated: true,
       membership,
+      shoppingCreditAmount,
+      shoppingCreditResult,
       releasedEvents,
       pairBonusEvents,
     };

@@ -45,6 +45,7 @@ import {
 import { createMemberInBinarySlot } from "../../services/mlm/mlmManualSlotPlacementService.js";
 import { buildBinaryTreeBottomUp } from "../../services/mlm/mlmBinaryTreeBuilder.js";
 import { getMlmConfig } from "../../services/mlm/mlmConfigService.js";
+import { drainAllPendingPlanABonuses } from "../../services/mlm/mlmPairBonusCooldownReleaseService.js";
 import { softDeleteMlmMember } from "../../services/mlm/mlmMemberSoftDeleteService.js";
 import { verifyMlmMemberWallet } from "../../jobs/mlmWalletLedgerVerifierJob.js";
 import { USER_ID_PATTERN } from "../../utils/userIdGenerator.js";
@@ -398,9 +399,8 @@ export const getMlmMemberDetail = async (req, res) => {
  *
  * Use case: support agent confirms a customer should be activated
  * for free (gift / promo / KYC reconciliation / etc.). The customer
- * goes from REGISTERED_UNPAID → ACTIVE without any wallet seed
- * (admin can grant that separately via the Manual Wallet Adjustment
- * panel).
+ * goes from REGISTERED_UNPAID → ACTIVE and receives the same Plan A
+ * joining-package shopping-wallet seed as a paid activation.
  *
  * Idempotent: re-running on an ACTIVE row returns 200 + skipped.
  * Refuses to approve SUSPENDED / TERMINATED rows.
@@ -434,6 +434,7 @@ export const approveMlmMember = async (req, res) => {
 
     return handleResponse(res, 200, "Member approved for Plan A", {
       activated: true,
+      shoppingCreditAmount: result.shoppingCreditAmount || 0,
       releasedHeldBonusCount: result.releasedEvents?.length || 0,
     });
   } catch (error) {
@@ -1237,7 +1238,20 @@ export const updateMlmSettings = async (req, res) => {
     }
     await Setting.findOneAndUpdate(filter, { $set: toSet }, { upsert: true, new: true });
     await invalidate("cache:platform:settings:*");
-    return handleResponse(res, 200, "MLM settings updated", await getMlmConfig());
+
+    let pendingBonusRelease = null;
+    if (
+      Object.prototype.hasOwnProperty.call(payload, "planAPairBonusReleaseCooldownDays") &&
+      Number(payload.planAPairBonusReleaseCooldownDays) === 0
+    ) {
+      pendingBonusRelease = await drainAllPendingPlanABonuses({ cooldownDays: 0 });
+    }
+
+    const cfg = await getMlmConfig();
+    return handleResponse(res, 200, "MLM settings updated", {
+      ...cfg,
+      pendingBonusRelease,
+    });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
   }

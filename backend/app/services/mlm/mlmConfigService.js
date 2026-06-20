@@ -176,6 +176,12 @@ export async function getPlanAPairBonusReleaseCooldownDays(opts) {
   return Number.isFinite(days) && days >= 0 ? days : 0;
 }
 
+/** Wallet bucket for Plan A pair/milestone bonuses at credit time. */
+export async function resolvePlanABonusWalletBucket(opts) {
+  const days = await getPlanAPairBonusReleaseCooldownDays(opts);
+  return days <= 0 ? "earnings" : "pending";
+}
+
 /**
  * Active joining payment mode (`"manual_qr"` while PhonePe KYC is
  * pending, `"phonepe"` once it clears). Always returns one of the two

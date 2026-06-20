@@ -7,7 +7,7 @@ import {
   MLM_MEMBERSHIP_STATUS,
   MLM_PLAN_TYPE,
 } from "../../constants/mlm.js";
-import { getMlmConfig } from "./mlmConfigService.js";
+import { getMlmConfig, resolvePlanABonusWalletBucket } from "./mlmConfigService.js";
 import { getMembershipByUserId } from "./mlmMembershipService.js";
 import { creditBonusToEarningsWallet } from "./mlmBonusEngineService.js";
 import { MLM_IDEMPOTENCY_PREFIX } from "../../constants/mlm.js";
@@ -54,7 +54,7 @@ export function resolvePairIncomeConfig(cfg, directCount, isTopup = false) {
 
 /**
  * Mirror of client PHP `calculateBinaryIncome`.
- * First pair 2:1 or 1:2, remaining pairs 1:1.
+ * First pair requires 2:1 or 1:2; only after that opener do 1:1 pairs count.
  */
 export function calculateBinaryPairs(leftActive, rightActive) {
   let left = Math.max(0, Number(leftActive) || 0);
@@ -65,19 +65,24 @@ export function calculateBinaryPairs(leftActive, rightActive) {
     left -= 2;
     right -= 1;
     pairs += 1;
+    const extraPairs = Math.min(left, right);
+    pairs += extraPairs;
+    left -= extraPairs;
+    right -= extraPairs;
   } else if (right >= 2 && left >= 1) {
     right -= 2;
     left -= 1;
     pairs += 1;
+    const extraPairs = Math.min(left, right);
+    pairs += extraPairs;
+    left -= extraPairs;
+    right -= extraPairs;
   }
-
-  const extraPairs = Math.min(left, right);
-  pairs += extraPairs;
 
   return {
     pairs,
-    leftBalance: left - extraPairs,
-    rightBalance: right - extraPairs,
+    leftBalance: left,
+    rightBalance: right,
   };
 }
 
@@ -246,6 +251,7 @@ export async function computeAndCreditBinaryTeamPairIncome({
   newPairs = Math.min(newPairs, dailyRemaining);
   if (newPairs <= 0) return [];
 
+  const bonusBucket = await resolvePlanABonusWalletBucket();
   const events = [];
   for (let i = 0; i < newPairs; i += 1) {
     const pairIndex = alreadyPaid + i + 1;
@@ -261,7 +267,7 @@ export async function computeAndCreditBinaryTeamPairIncome({
       ratePercent: null,
       sourceUserId: triggerUserId,
       sourceOrderId: null,
-      bucket: "pending",
+      bucket: bonusBucket,
       description: `Binary pair #${pairIndex} team match (₹${pairIncome})`,
       meta: {
         pairIndex,

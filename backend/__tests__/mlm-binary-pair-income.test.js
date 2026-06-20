@@ -13,6 +13,24 @@ describe("mlmBinaryPairIncomeService (client PHP spec)", () => {
     expect(result.rightBalance).toBe(0);
   });
 
+  test("first pair requires 2:1 or 1:2 opener (not plain 1:1)", () => {
+    expect(calculateBinaryPairs(1, 1)).toEqual({
+      pairs: 0,
+      leftBalance: 1,
+      rightBalance: 1,
+    });
+    expect(calculateBinaryPairs(2, 1)).toEqual({
+      pairs: 1,
+      leftBalance: 0,
+      rightBalance: 0,
+    });
+    expect(calculateBinaryPairs(1, 2)).toEqual({
+      pairs: 1,
+      leftBalance: 0,
+      rightBalance: 0,
+    });
+  });
+
   test("resolvePairIncomeConfig tier table", () => {
     expect(resolvePairIncomeConfig(MLM_DEFAULTS, 2, false)).toEqual({
       pairIncome: 200,
