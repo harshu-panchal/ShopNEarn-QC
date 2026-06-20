@@ -390,39 +390,6 @@ const BinaryPairIncomePreview = ({ cfg }) => {
     );
 };
 
-const MatchingIncomePreview = ({ cfg }) => {
-    const rows = [...(cfg.directReferralMilestones || [])]
-        .filter((m) => Number(m.atDirectCount) > 0)
-        .sort((a, b) => Number(a.atDirectCount) - Number(b.atDirectCount));
-
-    if (rows.length === 0) {
-        return (
-            <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-500">
-                No milestones configured — matching income will not be paid.
-            </div>
-        );
-    }
-
-    return (
-        <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-3">
-            <div className="text-[10px] uppercase font-bold text-slate-500 mb-2">Preview</div>
-            <div className="flex flex-wrap gap-2">
-                {rows.map((m) => (
-                    <div
-                        key={`${m.atDirectCount}-${m.bonusAmount}`}
-                        className="text-xs font-mono px-2 py-1 rounded bg-indigo-100 text-indigo-700"
-                    >
-                        {m.atDirectCount} active directs → ₹{Number(m.bonusAmount) || 0} (once)
-                    </div>
-                ))}
-            </div>
-            <div className="text-[10px] text-slate-500 mt-2">
-                Requires Plan A activation on both left and right legs before each milestone pays.
-            </div>
-        </div>
-    );
-};
-
 const PairBonusPreview = ({ cfg }) => {
     const tiers = (cfg.planAPairBonusTiers || []).reduce((acc, t) => {
         if (t && Number.isFinite(Number(t.pairIndex))) {
