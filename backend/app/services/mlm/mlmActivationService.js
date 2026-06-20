@@ -19,7 +19,9 @@ import {
   transitionUplineDownlineStatus,
 } from "./mlmMembershipService.js";
 import {
-  computeAndCreditMatchingIncomeMilestone,
+  propagateBinaryTeamPairIncome,
+} from "./mlmBinaryPairIncomeService.js";
+import {
   releaseHeldPairBonusesForDownlineActivation,
 } from "./mlmBonusEngineService.js";
 import { getMlmConfig } from "./mlmConfigService.js";
@@ -74,9 +76,8 @@ async function runInSession(externalSession, fn) {
  *   5. Credit the joining-package shopping-wallet seed (using the
  *      payment's snapshot value — NOT the live config — so admins
  *      can't cheat mid-flight customers) to `shoppingBalance`.
- *   6. Fire the Plan A matching-income milestone for the sponsor
- *      (one-time at 2 / 3 / 5 active directs with Plan A on both
- *      legs) and release any legacy HELD binary-pair rows.
+ *   6. Propagate binary team pair income up the placement tree
+ *      (client PHP spec: 2:1 first pair, 1:1 after, tiered ₹/pair).
  *   7. Mark `MlmJoiningPayment.activationApplied = true`.
  *   8. Resync the customer's denormalised `Customer.mlm` projection.
  *
@@ -220,20 +221,17 @@ export async function activateMembershipFromJoiningPayment(
       });
     }
 
-    // Plan A matching-income milestone (one-time at 2 / 3 / 5 active
-    // directs with Plan A on both legs). Legacy HELD binary-pair rows
-    // from before this rule change are still released below.
-    let matchingIncomeEvent = null;
-    if (sponsorMembership) {
+    // Plan A binary team pair income (client PHP spec).
+    let pairBonusEvents = [];
+    if (wasPreviouslyUnpaid || membership.status === MLM_MEMBERSHIP_STATUS.ACTIVE) {
       await releaseHeldPairBonusesForDownlineActivation({
         newActiveUserId: customerId,
         session,
         correlationId,
       });
 
-      matchingIncomeEvent = await computeAndCreditMatchingIncomeMilestone({
-        sponsorUserId: sponsorMembership.userId,
-        newReferralUserId: customerId,
+      pairBonusEvents = await propagateBinaryTeamPairIncome({
+        activatedUserId: customerId,
         session,
         correlationId,
       });
@@ -269,10 +267,8 @@ export async function activateMembershipFromJoiningPayment(
       sponsorMembership,
       shoppingCreditAmount,
       shoppingCreditResult,
-      matchingIncomeEvent,
-      // Backwards-compat alias for callers still reading legacy fields.
-      pairBonusEvents: matchingIncomeEvent ? [matchingIncomeEvent] : [],
-      milestoneEvent: matchingIncomeEvent,
+      pairBonusEvents,
+      milestoneEvent: pairBonusEvents?.[0] || null,
     };
   });
 }
@@ -373,31 +369,18 @@ export async function adminActivateMembership({
 
     await transitionUplineDownlineStatus(membership.sponsorChain, { session });
 
-    let sponsorMembership = null;
-    if (membership.sponsorId) {
-      sponsorMembership = await MlmMembership.findOne(
-        { userId: membership.sponsorId },
-        null,
-        { session },
-      );
-    }
-
-    // Release legacy held binary-pair rows (pre rule-change).
+    let pairBonusEvents = [];
     const releasedEvents = await releaseHeldPairBonusesForDownlineActivation({
       newActiveUserId: customerId,
       session,
       correlationId,
     });
 
-    let matchingIncomeEvent = null;
-    if (sponsorMembership) {
-      matchingIncomeEvent = await computeAndCreditMatchingIncomeMilestone({
-        sponsorUserId: sponsorMembership.userId,
-        newReferralUserId: customerId,
-        session,
-        correlationId,
-      });
-    }
+    pairBonusEvents = await propagateBinaryTeamPairIncome({
+      activatedUserId: customerId,
+      session,
+      correlationId,
+    });
 
     await syncCustomerMlmProjection(customerId, { session });
 
@@ -418,7 +401,7 @@ export async function adminActivateMembership({
       activated: true,
       membership,
       releasedEvents,
-      matchingIncomeEvent,
+      pairBonusEvents,
     };
   });
 }

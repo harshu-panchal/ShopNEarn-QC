@@ -241,9 +241,51 @@ const settingSchema = new mongoose.Schema(
                 default: MLM_DEFAULTS.planBAutoUpgradeAtPlanALifetimeEarnings,
                 min: 0,
             },
-            // Plan A one-time matching-income milestones. Paid once when
-            // the sponsor reaches `atDirectCount` activated Plan A direct
-            // referrals with at least one active Plan A direct on each leg.
+            binaryPairIncomeTiers: {
+                type: [
+                    {
+                        _id: false,
+                        minDirectCount: { type: Number, required: true, min: 1 },
+                        pairIncome: { type: Number, required: true, min: 0 },
+                        dailyPairCap: { type: Number, required: true, min: 0 },
+                    },
+                ],
+                default: () =>
+                    MLM_DEFAULTS.binaryPairIncomeTiers.map((t) => ({ ...t })),
+            },
+            binaryTopupPairIncome: {
+                type: {
+                    _id: false,
+                    pairIncome: {
+                        type: Number,
+                        default: MLM_DEFAULTS.binaryTopupPairIncome.pairIncome,
+                        min: 0,
+                    },
+                    dailyPairCap: {
+                        type: Number,
+                        default: MLM_DEFAULTS.binaryTopupPairIncome.dailyPairCap,
+                        min: 0,
+                    },
+                    eligibilityLifetimeEarnings: {
+                        type: Number,
+                        default:
+                            MLM_DEFAULTS.binaryTopupPairIncome.eligibilityLifetimeEarnings,
+                        min: 0,
+                    },
+                    payAmount: {
+                        type: Number,
+                        default: MLM_DEFAULTS.binaryTopupPairIncome.payAmount,
+                        min: 0,
+                    },
+                    shoppingWalletCredit: {
+                        type: Number,
+                        default:
+                            MLM_DEFAULTS.binaryTopupPairIncome.shoppingWalletCredit,
+                        min: 0,
+                    },
+                },
+                default: () => ({ ...MLM_DEFAULTS.binaryTopupPairIncome }),
+            },
             directReferralMilestones: {
                 type: [
                     {

@@ -27,6 +27,14 @@ const dailyCapTrackerSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const binaryDailyPairTrackerSchema = new mongoose.Schema(
+  {
+    date: { type: String, default: null },
+    pairsPaid: { type: Number, default: 0, min: 0 },
+  },
+  { _id: false },
+);
+
 const beneficiarySchema = new mongoose.Schema(
   {
     accountHolderName: { type: String, trim: true, default: "" },
@@ -186,10 +194,17 @@ const mlmMembershipSchema = new mongoose.Schema(
     // and only ever moves forward. Used for fast read paths.
     pairsCompleted: { type: Number, default: 0 },
     // Last pair index for which a `BINARY_PAIR_MATCH` event was credited.
-    // Drives idempotent multi-pair catch-up: if multiple directs join in
-    // the same window, the engine can fire bonuses for every pair from
-    // `lastPaidPairIndex + 1` up to current `pairsCompleted`.
     lastPaidPairIndex: { type: Number, default: 0 },
+
+    // Team-based binary matching (client PHP flow) — active Plan A volume
+    // in each binary subtree and eligible pair snapshot. Recomputed on
+    // activation and via `backfill-mlm-binary-team-pair-counts.js`.
+    leftLegTeamActiveCount: { type: Number, default: 0, min: 0 },
+    rightLegTeamActiveCount: { type: Number, default: 0, min: 0 },
+    binaryPairsEligible: { type: Number, default: 0, min: 0 },
+    binaryLeftBalance: { type: Number, default: 0, min: 0 },
+    binaryRightBalance: { type: Number, default: 0, min: 0 },
+    binaryPairSnapshotAt: { type: Date, default: null },
 
     // Lifetime totals — drive Plan A => Plan B auto-upgrade trigger.
     lifetimePlanAEarnings: { type: Number, default: 0 },
@@ -197,6 +212,15 @@ const mlmMembershipSchema = new mongoose.Schema(
 
     // Daily cap usage (resets at IST midnight via mlmDailyCapRolloverJob).
     dailyCapTracker: { type: dailyCapTrackerSchema, default: () => ({}) },
+
+    // IST daily pair-match cap (`binaryPairIncomeTiers.dailyPairCap`).
+    binaryDailyPairTracker: {
+      type: binaryDailyPairTrackerSchema,
+      default: () => ({}),
+    },
+
+    // Topup member flag — uses `binaryTopupPairIncome` rates (₹550 / 20 cap).
+    binaryTopupMember: { type: Boolean, default: false },
 
     // Plan B benefits flags
     homeShoppingUnlocked: { type: Boolean, default: false },

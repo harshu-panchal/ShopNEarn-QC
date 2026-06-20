@@ -219,29 +219,34 @@ export const MLM_DEFAULTS = Object.freeze({
   planBAutoUpgradeAtPlanALifetimeEarnings: 30000,
   premiumUpgradeShoppingWalletTopup: 10000,
 
-  // Plan A: one-time matching-income milestones. Paid once when the
-  // sponsor reaches the configured active-Plan-A direct count AND has
-  // at least one activated Plan A direct on each binary leg (L + R).
-  // Amounts are credited to the earnings wallet (pending → available
-  // after cooldown). Replaces the deprecated per-pair binary bonus.
+  // Plan A binary team matching — income per pair and daily pair cap by
+  // sponsor's active Plan A direct count (highest matching tier wins).
+  // Mirrors client PHP `getPairIncome()`. Checked in descending order.
+  binaryPairIncomeTiers: [
+    { minDirectCount: 7, pairIncome: 400, dailyPairCap: 10 },
+    { minDirectCount: 5, pairIncome: 300, dailyPairCap: 10 },
+    { minDirectCount: 3, pairIncome: 250, dailyPairCap: 10 },
+    { minDirectCount: 2, pairIncome: 200, dailyPairCap: 10 },
+  ],
+
+  // Topup members (lifetime earnings >= threshold) — higher per-pair
+  // income and daily pair cap. Mirrors client PHP topup branch.
+  binaryTopupPairIncome: {
+    pairIncome: 550,
+    dailyPairCap: 20,
+    eligibilityLifetimeEarnings: 30000,
+    payAmount: 5900,
+    shoppingWalletCredit: 10000,
+  },
+
+  // Legacy one-time milestones — no longer used for new credits.
   directReferralMilestones: [
     { atDirectCount: 2, bonusAmount: 200, planRequired: MLM_PLAN_TYPE.A },
     { atDirectCount: 3, bonusAmount: 250, planRequired: MLM_PLAN_TYPE.A },
     { atDirectCount: 5, bonusAmount: 300, planRequired: MLM_PLAN_TYPE.A },
   ],
 
-  // Plan A: Binary Pair Bonus — paid every time the sponsor completes a
-  // new pair of direct referrals matched across legs (one personally
-  // referred member in the left subtree, one in the right subtree).
-  // `pairIndex` is 1-based.
-  // Default flow (matches the v2 product spec):
-  //   Pair 1 -> ₹200 (200)
-  //   Pair 2 -> ₹350 (200 + 150)
-  //   Pair 3 -> ₹300 (200 + 100)
-  //   Pair 4 -> ₹250 (200 + 50)
-  //   Pair 5+ -> ₹400 fixed (planAPairBonusFixedAmount).
-  // Admin can edit every entry, add/remove tiers, change the
-  // `fixedAfterPair` cutover point, and the `fixedAmount`.
+  // Deprecated per-pair-index tiers (superseded by binaryPairIncomeTiers).
   planAPairBonusTiers: [
     { pairIndex: 1, bonusAmount: 200 },
     { pairIndex: 2, bonusAmount: 350 },

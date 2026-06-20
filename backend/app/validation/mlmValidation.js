@@ -34,7 +34,22 @@ export const updateMlmSettingsSchema = Joi.object({
   }),
   premiumUpgradeShoppingWalletTopup: Joi.number().min(0),
   planBAutoUpgradeAtPlanALifetimeEarnings: Joi.number().min(0),
-  // Plan A one-time matching-income milestones (active Plan A direct count).
+  binaryPairIncomeTiers: Joi.array()
+    .items(
+      Joi.object({
+        minDirectCount: Joi.number().integer().min(1).required(),
+        pairIncome: Joi.number().min(0).required(),
+        dailyPairCap: Joi.number().integer().min(0).required(),
+      }),
+    )
+    .max(20),
+  binaryTopupPairIncome: Joi.object({
+    pairIncome: Joi.number().min(0),
+    dailyPairCap: Joi.number().integer().min(0),
+    eligibilityLifetimeEarnings: Joi.number().min(0),
+    payAmount: Joi.number().min(0),
+    shoppingWalletCredit: Joi.number().min(0),
+  }),
   directReferralMilestones: Joi.array()
     .items(
       Joi.object({

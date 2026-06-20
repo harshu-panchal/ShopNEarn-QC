@@ -56,11 +56,20 @@ const MlmSettings = () => {
                 },
                 premiumUpgradeShoppingWalletTopup: Number(cfg.premiumUpgradeShoppingWalletTopup) || 0,
                 planBAutoUpgradeAtPlanALifetimeEarnings: Number(cfg.planBAutoUpgradeAtPlanALifetimeEarnings) || 0,
-                directReferralMilestones: (cfg.directReferralMilestones || []).map((m) => ({
-                    atDirectCount: Number(m.atDirectCount) || 1,
-                    bonusAmount: Number(m.bonusAmount) || 0,
-                    planRequired: m.planRequired || 'A',
+                binaryPairIncomeTiers: (cfg.binaryPairIncomeTiers || []).map((t) => ({
+                    minDirectCount: Number(t.minDirectCount) || 1,
+                    pairIncome: Number(t.pairIncome) || 0,
+                    dailyPairCap: Number(t.dailyPairCap) || 0,
                 })),
+                binaryTopupPairIncome: {
+                    pairIncome: Number(cfg.binaryTopupPairIncome?.pairIncome) || 550,
+                    dailyPairCap: Number(cfg.binaryTopupPairIncome?.dailyPairCap) || 20,
+                    eligibilityLifetimeEarnings:
+                        Number(cfg.binaryTopupPairIncome?.eligibilityLifetimeEarnings) || 30000,
+                    payAmount: Number(cfg.binaryTopupPairIncome?.payAmount) || 5900,
+                    shoppingWalletCredit:
+                        Number(cfg.binaryTopupPairIncome?.shoppingWalletCredit) || 10000,
+                },
                 planAPairBonusReleaseCooldownDays: Number(cfg.planAPairBonusReleaseCooldownDays) || 0,
                 repurchaseBonusLevels: (cfg.repurchaseBonusLevels || []).map((l) => ({
                     level: Number(l.level) || 1,
@@ -154,28 +163,53 @@ const MlmSettings = () => {
                 </div>
             </Section>
 
-            <Section title="Plan A: Matching Income Milestones">
+            <Section title="Plan A: Binary Pair Income (team matching)">
                 <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
-                    One-time matching income paid to the earnings wallet when a sponsor
-                    reaches the configured count of <strong>activated Plan A direct
-                    referrals</strong> and has at least one activated Plan A direct on
-                    each binary leg (left and right). Each row pays once per sponsor —
-                    not on every new pair. Direct referral signup bonus (₹50 shopping
-                    wallet) is configured separately via signup bonus settings.
+                    Matches client PHP spec: first pair 2:1 or 1:2, then 1:1 on
+                    active Plan A volume in left vs right team legs. Income per pair
+                    and daily pair cap depend on the sponsor&apos;s active Plan A
+                    direct count. Only active Plan A IDs in each subtree count.
                 </p>
                 <RuleEditor
-                    rows={cfg.directReferralMilestones || []}
+                    rows={cfg.binaryPairIncomeTiers || []}
                     columns={[
-                        { key: 'atDirectCount', label: 'Active directs #', type: 'number', min: 1 },
-                        { key: 'bonusAmount', label: 'Bonus (₹)', type: 'number', min: 0 },
+                        { key: 'minDirectCount', label: 'Min directs', type: 'number', min: 1 },
+                        { key: 'pairIncome', label: '₹ / pair', type: 'number', min: 0 },
+                        { key: 'dailyPairCap', label: 'Daily pair cap', type: 'number', min: 0 },
                     ]}
-                    defaults={{
-                        atDirectCount: (cfg.directReferralMilestones?.length || 0) + 2,
-                        bonusAmount: 0,
-                        planRequired: 'A',
-                    }}
-                    onChange={(rows) => setCfg({ ...cfg, directReferralMilestones: rows })}
+                    defaults={{ minDirectCount: 2, pairIncome: 200, dailyPairCap: 10 }}
+                    onChange={(rows) => setCfg({ ...cfg, binaryPairIncomeTiers: rows })}
                 />
+                <p className="text-[11px] font-semibold text-slate-600 mt-4 mb-2">Topup member override</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <NumField
+                        label="Topup ₹ / pair"
+                        value={cfg.binaryTopupPairIncome?.pairIncome}
+                        onChange={(v) => setCfg({
+                            ...cfg,
+                            binaryTopupPairIncome: { ...cfg.binaryTopupPairIncome, pairIncome: v },
+                        })}
+                    />
+                    <NumField
+                        label="Topup daily pair cap"
+                        value={cfg.binaryTopupPairIncome?.dailyPairCap}
+                        onChange={(v) => setCfg({
+                            ...cfg,
+                            binaryTopupPairIncome: { ...cfg.binaryTopupPairIncome, dailyPairCap: v },
+                        })}
+                    />
+                    <NumField
+                        label="Topup eligibility (lifetime ₹)"
+                        value={cfg.binaryTopupPairIncome?.eligibilityLifetimeEarnings}
+                        onChange={(v) => setCfg({
+                            ...cfg,
+                            binaryTopupPairIncome: {
+                                ...cfg.binaryTopupPairIncome,
+                                eligibilityLifetimeEarnings: v,
+                            },
+                        })}
+                    />
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
                     <NumField
                         label="Pending → Earnings cooldown (days)"
@@ -185,7 +219,7 @@ const MlmSettings = () => {
                         max={365}
                     />
                 </div>
-                <MatchingIncomePreview cfg={cfg} />
+                <BinaryPairIncomePreview cfg={cfg} />
             </Section>
 
             <Section title="Plan B: Repurchase Bonus Levels (% of grandTotal)">
@@ -322,8 +356,40 @@ const SelectField = ({ label, value, onChange, options }) => (
 );
 
 /**
- * Inline preview of one-time matching-income milestones.
+ * Preview client PHP example: left 15, right 10, 5 directs → 10 pairs.
  */
+const BinaryPairIncomePreview = ({ cfg }) => {
+    const tiers = [...(cfg.binaryPairIncomeTiers || [])].sort(
+        (a, b) => Number(b.minDirectCount) - Number(a.minDirectCount),
+    );
+    const tierFor5 = tiers.find((t) => Number(t.minDirectCount) <= 5) || tiers[tiers.length - 1];
+    const pairIncome = Number(tierFor5?.pairIncome) || 300;
+    const dailyCap = Number(tierFor5?.dailyPairCap) || 10;
+
+    // Mirror backend calculateBinaryPairs(15, 10)
+    let left = 15;
+    let right = 10;
+    let pairs = 0;
+    if (left >= 2 && right >= 1) {
+        left -= 2;
+        right -= 1;
+        pairs += 1;
+    }
+    const extra = Math.min(left, right);
+    pairs += extra;
+    const capped = Math.min(pairs, dailyCap);
+    const income = capped * pairIncome;
+
+    return (
+        <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 space-y-1">
+            <div className="text-[10px] uppercase font-bold text-slate-500 mb-2">Example (client PHP)</div>
+            <div>Left 15 · Right 10 · 5 directs → <strong>{pairs} pairs</strong> (cap {dailyCap})</div>
+            <div>Income: <strong>₹{income.toLocaleString('en-IN')}</strong> ({capped} × ₹{pairIncome})</div>
+            <div>Balance: left {left - extra}, right {right - extra}</div>
+        </div>
+    );
+};
+
 const MatchingIncomePreview = ({ cfg }) => {
     const rows = [...(cfg.directReferralMilestones || [])]
         .filter((m) => Number(m.atDirectCount) > 0)
