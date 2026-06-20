@@ -6,9 +6,8 @@
  * membership is placed under the sponsor's right leg (i.e. the
  * sponsor's `binaryRightChildId` gets set to the new member's userId).
  *
- * Also verifies registration-ordered BFS spillover when the chosen
- * leg's direct slot is already occupied — left slot fills before
- * right at the next level, never the opposite leg under the sponsor.
+ * Also verifies same-leg spine spillover (R→R→…) when the chosen
+ * leg's direct slot is already occupied — never the opposite leg.
  */
 import { jest } from "@jest/globals";
 
@@ -116,8 +115,7 @@ describe("placeInBinaryTree — manual placement (forceManualPlacement=true)", (
     expect(newMembership.binaryPosition).toBe("L");
   });
 
-  test("fills left-before-right via BFS when the direct leg slot is full", async () => {
-    // Sponsor's right slot is occupied by "rl-user".
+  test("extends the R spine when the direct leg slot is full", async () => {
     const sponsor = makeMembership({
       _id: "sponsor-mem",
       userId: "sponsor-user",
@@ -130,9 +128,12 @@ describe("placeInBinaryTree — manual placement (forceManualPlacement=true)", (
       binaryRightChildId: null,
     });
 
-    mockMembershipFindOne.mockImplementation(() => ({
-      populate: jest.fn().mockResolvedValue(rightChild),
-    }));
+    mockMembershipFindOne.mockImplementation((query) => {
+      if (String(query?.userId) === "rl-user") {
+        return Promise.resolve(rightChild);
+      }
+      return Promise.resolve(null);
+    });
 
     const newMembership = makeMembership({
       _id: "new-mem",
@@ -147,12 +148,42 @@ describe("placeInBinaryTree — manual placement (forceManualPlacement=true)", (
       forceManualPlacement: true,
     });
 
-    expect(result.position).toBe("L");
-    expect(rightChild.binaryLeftChildId).toBe("new-user");
+    expect(result.position).toBe("R");
+    expect(rightChild.binaryRightChildId).toBe("new-user");
     expect(sponsor.binaryRightChildId).toBe("rl-user");
     expect(rightChild.save).toHaveBeenCalledTimes(1);
     expect(sponsor.save).not.toHaveBeenCalled();
     expect(newMembership.binaryParentId).toBe("rl-user");
     expect(result.legUnderSponsor).toBe("R");
+  });
+
+  test("honours leg='R' even when strategy is balanced_auto and forceManualPlacement is false", async () => {
+    mockGetMlmConfig.mockResolvedValue({
+      binaryPlacementStrategy: "balanced_auto",
+      sponsorChainMaxDepth: 10,
+    });
+
+    const sponsor = makeMembership({
+      _id: "sponsor-mem",
+      userId: "sponsor-user",
+      binaryLeftChildId: null,
+      binaryRightChildId: null,
+    });
+    const newMembership = makeMembership({
+      _id: "new-mem",
+      userId: "new-user",
+    });
+
+    const result = await placeInBinaryTree({
+      newMembership,
+      sponsorMembership: sponsor,
+      session: null,
+      preferredPosition: "R",
+      forceManualPlacement: false,
+    });
+
+    expect(result.position).toBe("R");
+    expect(sponsor.binaryRightChildId).toBe("new-user");
+    expect(sponsor.binaryLeftChildId).toBeNull();
   });
 });

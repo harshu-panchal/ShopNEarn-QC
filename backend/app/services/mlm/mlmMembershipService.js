@@ -8,7 +8,7 @@ import {
   MLM_PLAN_TYPE,
 } from "../../constants/mlm.js";
 import { getMlmConfig } from "./mlmConfigService.js";
-import { getMemberRegistrationTime } from "../../utils/mlmBinaryTreeOrder.js";
+import { findSameLegSpineSlot } from "../../utils/mlmBinaryTreeOrder.js";
 
 /**
  * mlmMembershipService — every read/write of MlmMembership rows goes
@@ -237,85 +237,34 @@ async function findBalancedBinarySlot(rootMembership, { session } = {}) {
 }
 
 /**
- * Find the first empty binary slot under a sponsor's chosen leg using
- * breadth-first search within that leg's subtree. Registration order
- * governs depth: the first joiner sits directly under the sponsor on
- * the chosen leg; later joiners fill left-before-right at each level,
- * then spill deeper in registration order among sibling subtrees.
+ * Same-leg spine spill under the sponsor's chosen leg (L→L→… or R→R→…).
  */
-async function findRegistrationOrderedLegSlot(
-  sponsorMembership,
-  leg,
-  { session } = {},
-) {
+async function findSameLegSpineLegSlot(sponsorMembership, leg, { session } = {}) {
   if (leg !== "L" && leg !== "R") return null;
 
-  const sideKey = leg === "L" ? "binaryLeftChildId" : "binaryRightChildId";
   const cfg = await getMlmConfig();
-  const maxNodes =
+  const maxHops =
     (Number(cfg.sponsorChainMaxDepth) || MLM_DEFAULTS.sponsorChainMaxDepth) *
     64;
 
   const loadChild = async (userId) => {
     if (!userId) return null;
-    return MlmMembership.findOne(
-      { userId },
-      null,
-      session ? { session } : {},
-    ).populate("userId", "createdAt");
+    return MlmMembership.findOne({ userId }, null, session ? { session } : {});
   };
 
-  if (!sponsorMembership[sideKey]) {
-    return {
-      parentMembership: sponsorMembership,
-      position: leg,
-      legUnderSponsor: leg,
-    };
-  }
+  const slot = await findSameLegSpineSlot(
+    sponsorMembership,
+    leg,
+    loadChild,
+    maxHops,
+  );
+  if (!slot) return null;
 
-  const legRoot = await loadChild(sponsorMembership[sideKey]);
-  if (!legRoot) {
-    return {
-      parentMembership: sponsorMembership,
-      position: leg,
-      legUnderSponsor: leg,
-    };
-  }
-
-  const queue = [legRoot];
-  let visited = 0;
-
-  while (queue.length > 0 && visited < maxNodes) {
-    visited += 1;
-    const node = queue.shift();
-
-    if (!node.binaryLeftChildId) {
-      return {
-        parentMembership: node,
-        position: "L",
-        legUnderSponsor: leg,
-      };
-    }
-    if (!node.binaryRightChildId) {
-      return {
-        parentMembership: node,
-        position: "R",
-        legUnderSponsor: leg,
-      };
-    }
-
-    const [leftChild, rightChild] = await Promise.all([
-      loadChild(node.binaryLeftChildId),
-      loadChild(node.binaryRightChildId),
-    ]);
-    const children = [leftChild, rightChild].filter(Boolean);
-    children.sort(
-      (a, b) => getMemberRegistrationTime(a) - getMemberRegistrationTime(b),
-    );
-    for (const child of children) queue.push(child);
-  }
-
-  return null;
+  return {
+    parentMembership: slot.parent,
+    position: slot.position,
+    legUnderSponsor: slot.legUnderSponsor,
+  };
 }
 
 /**
@@ -333,9 +282,8 @@ async function findRegistrationOrderedLegSlot(
  * Customer-MLM-rebuild Phase 4: pass `forceManualPlacement: true` from
  * the customer signup flow so the user's chosen L/R leg is always
  * honoured, regardless of the admin's `binaryPlacementStrategy`
- * setting. If multiple users pick the same leg under the same sponsor,
- * breadth-first search within that leg's subtree fills slots in
- * registration order (left before right at each node).
+ * setting. When multiple users pick the same leg under the same sponsor,
+ * each subsequent joiner extends the same-leg spine (L→L→… or R→R→…).
  */
 export async function placeInBinaryTree({
   newMembership,
@@ -357,10 +305,14 @@ export async function placeInBinaryTree({
       : null;
   let legUnderSponsor = null;
 
-  if (forceManualPlacement && position) {
-    const slot = await findRegistrationOrderedLegSlot(
+  // Leg choice is sacred: when L/R is provided (signup link, slot
+  // placement, pendingSponsorLeg), always spill within that leg's
+  // subtree — never cross to the opposite leg for auto-balance.
+  if (position || forceManualPlacement) {
+    const leg = position || "L";
+    const slot = await findSameLegSpineLegSlot(
       sponsorMembership,
-      position,
+      leg,
       { session },
     );
     if (!slot) return null;
@@ -375,7 +327,7 @@ export async function placeInBinaryTree({
     legUnderSponsor = slot.legUnderRoot;
   } else if (strategy === MLM_BINARY_PLACEMENT_STRATEGY.SPILLOVER) {
     const prefer = position || "L";
-    const slot = await findRegistrationOrderedLegSlot(
+    const slot = await findSameLegSpineLegSlot(
       sponsorMembership,
       prefer,
       { session },
@@ -386,7 +338,7 @@ export async function placeInBinaryTree({
     legUnderSponsor = slot.legUnderSponsor;
   } else {
     const prefer = position || "L";
-    const slot = await findRegistrationOrderedLegSlot(
+    const slot = await findSameLegSpineLegSlot(
       sponsorMembership,
       prefer,
       { session },

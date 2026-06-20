@@ -309,7 +309,9 @@ export const MLM_DEFAULTS = Object.freeze({
   dailyEarningCap: 10000,
 
   // Genealogy + behaviour toggles
-  binaryPlacementStrategy: MLM_BINARY_PLACEMENT_STRATEGY.BALANCED_AUTO,
+  // Default spillover: honour a chosen leg and fill deeper within it.
+  // Balanced auto only applies when no leg is specified (legacy rows).
+  binaryPlacementStrategy: MLM_BINARY_PLACEMENT_STRATEGY.SPILLOVER,
   bonusesOnReturn: MLM_RETURN_CLAWBACK_MODE.CLAWBACK,
 
   // Sponsor chain depth cap (denormalised on MlmMembership for fast upline reads)

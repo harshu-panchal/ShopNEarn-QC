@@ -5,6 +5,70 @@
  */
 
 /**
+ * Side pointer for a chosen leg (L → binaryLeftChildId, R → binaryRightChildId).
+ */
+export function legSideKey(leg) {
+  return leg === "L" ? "binaryLeftChildId" : "binaryRightChildId";
+}
+
+/**
+ * Same-leg spine spill: first joiner sits on the sponsor's chosen leg;
+ * each subsequent joiner on that leg extends the spine (L→L→… or R→R→…).
+ */
+export async function findSameLegSpineSlot(
+  sponsor,
+  leg,
+  getChild,
+  maxHops = 5000,
+) {
+  if (!sponsor || (leg !== "L" && leg !== "R")) return null;
+
+  const sideKey = legSideKey(leg);
+
+  if (!sponsor[sideKey]) {
+    return { parent: sponsor, position: leg, legUnderSponsor: leg };
+  }
+
+  let node = sponsor;
+  let hops = 0;
+  while (node[sideKey] && hops < maxHops) {
+    hops += 1;
+    const next = await getChild(node[sideKey]);
+    if (!next) break;
+    node = next;
+  }
+
+  return { parent: node, position: leg, legUnderSponsor: leg };
+}
+
+/** Sync variant for in-memory rebuild / repair scripts. */
+export function findSameLegSpineSlotSync(
+  sponsor,
+  leg,
+  getChild,
+  maxHops = 5000,
+) {
+  if (!sponsor || (leg !== "L" && leg !== "R")) return null;
+
+  const sideKey = legSideKey(leg);
+
+  if (!sponsor[sideKey]) {
+    return { parent: sponsor, position: leg, legUnderSponsor: leg };
+  }
+
+  let node = sponsor;
+  let hops = 0;
+  while (node[sideKey] && hops < maxHops) {
+    hops += 1;
+    const next = getChild(node[sideKey]);
+    if (!next) break;
+    node = next;
+  }
+
+  return { parent: node, position: leg, legUnderSponsor: leg };
+}
+
+/**
  * Canonical registration timestamp for a membership row.
  * Prefers the linked Customer.createdAt (account registration), then
  * membership.joinedAt as a fallback for legacy rows.

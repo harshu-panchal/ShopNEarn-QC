@@ -168,13 +168,12 @@ export async function activateMembershipFromJoiningPayment(
           membership,
           sponsorReferralCode: sponsorCodeForActivation,
           session,
-          // Legacy customers from the OTP-only signup never picked a
-          // leg, so honour the configured strategy (default
-          // BALANCED_AUTO). The new signup flow has already wired
-          // the sponsor edge before activation, so this branch only
-          // fires for those legacy rows.
-          preferredBinaryPosition: customer.pendingSponsorLeg || null,
-          forceManualPlacement: !!customer.pendingSponsorLeg,
+          // Legacy rows without pendingSponsorLeg fall back to spillover
+          // on the left leg. Current signup always captures L/R and
+          // wires the sponsor edge before activation, so this branch
+          // only fires for those legacy rows.
+          preferredBinaryPosition: customer.pendingSponsorLeg || "L",
+          forceManualPlacement: true,
         });
         if (updated && updated.sponsorId) {
           sponsorMembership = await MlmMembership.findOne(

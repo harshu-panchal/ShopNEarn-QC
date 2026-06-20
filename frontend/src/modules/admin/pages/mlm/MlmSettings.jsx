@@ -275,9 +275,9 @@ const MlmSettings = () => {
                         value={cfg.binaryPlacementStrategy}
                         onChange={(v) => setCfg({ ...cfg, binaryPlacementStrategy: v })}
                         options={[
-                            { value: 'balanced_auto', label: 'Balanced (auto weaker leg)' },
-                            { value: 'spillover', label: 'Spillover (preferred leg)' },
-                            { value: 'manual', label: 'Manual' },
+                            { value: 'spillover', label: 'Spillover — leg choice locked (recommended)' },
+                            { value: 'manual', label: 'Manual — same as spillover when leg chosen' },
+                            { value: 'balanced_auto', label: 'Balanced — weaker leg (legacy only, no leg link)' },
                         ]}
                     />
                     <SelectField

@@ -3,18 +3,18 @@
  * member's signup in registration order (Customer.createdAt).
  *
  * Uses each member's `pendingSponsorLeg` (captured at signup) and the same
- * breadth-first spill rules as `findRegistrationOrderedLegSlot` in production.
+ * same-leg spine spill rules as production (`findSameLegSpineLegSlot`).
  *
  * WHY THIS EXISTS
  * ---------------
  * `repairBinarySlotConflicts.js` only fixes two members claiming the SAME
- * slot. Most "wrong order" trees are structurally valid but were built with
- * the legacy same-leg spine walk (L→L→L) instead of registration-ordered BFS.
- * This script rewrites placement without needing slot conflicts.
+ * slot. Replays the entire subtree in registration order when placement
+ * drifted from the chosen-leg spine model.
  *
  * USAGE
  *   node scripts/rebuildBinaryTreeRegistrationOrder.js --root=SEW2YHR3Y6
  *   node scripts/rebuildBinaryTreeRegistrationOrder.js --root=SEW2YHR3Y6 --commit
+ *   node scripts/rebuildBinaryTreeRegistrationOrder.js --all-roots --commit
  *
  * SAFETY
  *   • Defaults to dry-run. Pass `--commit` to persist.
@@ -26,17 +26,27 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import MlmMembership from "../app/models/mlmMembership.js";
 import Customer from "../app/models/customer.js";
-import { getMemberRegistrationTime } from "../app/utils/mlmBinaryTreeOrder.js";
+import {
+  findSameLegSpineSlotSync,
+  getMemberRegistrationTime,
+  legSideKey,
+} from "../app/utils/mlmBinaryTreeOrder.js";
 
 dotenv.config();
 
 const COMMIT = process.argv.includes("--commit");
+const ALL_ROOTS = process.argv.includes("--all-roots");
 const ROOT_REF = (
   process.argv.find((a) => a.startsWith("--root=")) || ""
 ).slice("--root=".length);
 
-if (!ROOT_REF) {
-  console.error("Usage: node scripts/rebuildBinaryTreeRegistrationOrder.js --root=REF [--commit]");
+if (!ALL_ROOTS && !ROOT_REF) {
+  console.error(
+    "Usage: node scripts/rebuildBinaryTreeRegistrationOrder.js --root=REF [--commit]",
+  );
+  console.error(
+    "   or: node scripts/rebuildBinaryTreeRegistrationOrder.js --all-roots [--commit]",
+  );
   process.exit(1);
 }
 
@@ -45,8 +55,10 @@ function fmt(d) {
   return new Date(d).toISOString().replace("T", " ").slice(0, 19);
 }
 
-function legSideKey(leg) {
-  return leg === "L" ? "binaryLeftChildId" : "binaryRightChildId";
+function findSpineSlot(sponsor, leg, byUserId) {
+  return findSameLegSpineSlotSync(sponsor, leg, (uid) =>
+    byUserId.get(String(uid)),
+  );
 }
 
 function inferLegUnderSponsor(member, sponsor, snapshotByUserId) {
@@ -58,39 +70,6 @@ function inferLegUnderSponsor(member, sponsor, snapshotByUserId) {
   }
   if (!cur) return null;
   return cur.binaryPosition === "R" ? "R" : "L";
-}
-
-function findRegistrationOrderedSlot(sponsor, leg, byUserId) {
-  const sideKey = legSideKey(leg);
-  if (!sponsor[sideKey]) {
-    return { parent: sponsor, position: leg };
-  }
-
-  const legRoot = byUserId.get(String(sponsor[sideKey]));
-  if (!legRoot) {
-    return { parent: sponsor, position: leg };
-  }
-
-  const queue = [legRoot];
-  let hops = 0;
-  while (queue.length > 0 && hops < 5000) {
-    hops += 1;
-    const node = queue.shift();
-    if (!node.binaryLeftChildId) {
-      return { parent: node, position: "L" };
-    }
-    if (!node.binaryRightChildId) {
-      return { parent: node, position: "R" };
-    }
-    const children = [node.binaryLeftChildId, node.binaryRightChildId]
-      .map((uid) => byUserId.get(String(uid)))
-      .filter(Boolean)
-      .sort(
-        (a, b) => getMemberRegistrationTime(a) - getMemberRegistrationTime(b),
-      );
-    queue.push(...children);
-  }
-  return null;
 }
 
 function applyPlacement(child, parent, position) {
@@ -112,7 +91,7 @@ function printDirectLegChain(root, leg, byUserId, custByUserId, depth = 4) {
     lines.push(
       `  ${"  ".repeat(level - 1)}${leg} ${c?.userId || "?"} ${(c?.name || "").slice(0, 22)} reg ${fmt(c?.createdAt)}`,
     );
-    cur = byUserId.get(String(cur.binaryLeftChildId));
+    cur = byUserId.get(String(cur[sideKey]));
     level += 1;
   }
   if (lines.length === 0 && root[sideKey]) {
@@ -121,8 +100,173 @@ function printDirectLegChain(root, leg, byUserId, custByUserId, depth = 4) {
   return lines.join("\n") || "  (empty)";
 }
 
+async function rebuildNetwork({ commit }) {
+  const allMembersLean = await MlmMembership.find({}).lean();
+  const allCustomers = await Customer.find(
+    {},
+    "userId name createdAt pendingSponsorLeg pendingSponsorReferralCode",
+  ).lean();
+
+  const custByUserId = new Map(allCustomers.map((c) => [String(c._id), c]));
+  const memByReferral = new Map(
+    allMembersLean.map((m) => [String(m.referralCode).toUpperCase(), m]),
+  );
+
+  const byUserId = new Map();
+  for (const m of allMembersLean) {
+    const copy = { ...m, _uid: String(m.userId) };
+    byUserId.set(copy._uid, copy);
+    const c = custByUserId.get(copy._uid);
+    if (c) {
+      copy.userId = { _id: copy._uid, createdAt: c.createdAt };
+    }
+  }
+
+  const snapshotByUserId = new Map();
+  for (const m of byUserId.values()) {
+    snapshotByUserId.set(m._uid, { ...m, userId: m._uid });
+  }
+
+  const rootUids = new Set(
+    [...byUserId.values()]
+      .filter((m) => !m.binaryParentId)
+      .map((m) => m._uid),
+  );
+
+  const oldParent = new Map();
+  for (const [uid, m] of snapshotByUserId) {
+    oldParent.set(uid, String(m.binaryParentId || ""));
+  }
+
+  function resolvePlacementSponsor(member, cust) {
+    let sponsor = byUserId.get(String(member.sponsorId));
+    if (sponsor) return sponsor;
+
+    const pendingRef = String(cust?.pendingSponsorReferralCode || "").toUpperCase();
+    if (pendingRef) {
+      const sponsorLean = memByReferral.get(pendingRef);
+      if (sponsorLean) {
+        sponsor = byUserId.get(String(sponsorLean.userId));
+        if (sponsor) return sponsor;
+      }
+    }
+    return null;
+  }
+
+  for (const m of byUserId.values()) {
+    m.binaryLeftChildId = null;
+    m.binaryRightChildId = null;
+    if (!rootUids.has(m._uid)) {
+      m.binaryParentId = null;
+      m.binaryParentMembershipId = null;
+      m.binaryPosition = null;
+    }
+  }
+
+  const toPlace = [...byUserId.values()]
+    .filter((m) => !rootUids.has(m._uid))
+    .sort(
+      (a, b) => getMemberRegistrationTime(a) - getMemberRegistrationTime(b),
+    );
+
+  const skipped = [];
+  const placed = [];
+  let parentChanged = 0;
+
+  for (const member of toPlace) {
+    const cust = custByUserId.get(member._uid);
+    const sponsor = resolvePlacementSponsor(member, cust);
+    if (!sponsor) {
+      skipped.push({ referralCode: member.referralCode, reason: "no sponsor" });
+      continue;
+    }
+
+    let leg = cust?.pendingSponsorLeg;
+    if (leg !== "L" && leg !== "R") {
+      leg = inferLegUnderSponsor(
+        snapshotByUserId.get(member._uid),
+        snapshotByUserId.get(sponsor._uid),
+        snapshotByUserId,
+      );
+    }
+    if (leg !== "L" && leg !== "R") {
+      skipped.push({
+        referralCode: member.referralCode,
+        reason: "no pendingSponsorLeg and could not infer leg",
+      });
+      continue;
+    }
+
+    const slot = findSpineSlot(sponsor, leg, byUserId);
+    if (!slot) {
+      skipped.push({
+        referralCode: member.referralCode,
+        reason: "no empty slot found",
+      });
+      continue;
+    }
+
+    applyPlacement(member, slot.parent, slot.position);
+    placed.push(member.referralCode);
+    if (oldParent.get(member._uid) !== String(member.binaryParentId || "")) {
+      parentChanged += 1;
+    }
+  }
+
+  console.log(
+    `\nNetwork rebuild: roots=${rootUids.size} placed=${placed.length} skipped=${skipped.length} parentChanged=${parentChanged}`,
+  );
+  if (skipped.length) {
+    console.log("\nSkipped (first 25):");
+    for (const s of skipped.slice(0, 25)) {
+      console.log(`  ${s.referralCode}: ${s.reason}`);
+    }
+  }
+
+  if (!commit) {
+    console.log("\nDry-run only. Re-run with --commit to persist.");
+    return { placed: placed.length, skipped: skipped.length, parentChanged };
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      for (const m of byUserId.values()) {
+        await MlmMembership.updateOne(
+          { _id: m._id },
+          {
+            $set: {
+              binaryParentId: m.binaryParentId || null,
+              binaryParentMembershipId: m.binaryParentMembershipId || null,
+              binaryPosition: m.binaryPosition || null,
+              binaryLeftChildId: m.binaryLeftChildId || null,
+              binaryRightChildId: m.binaryRightChildId || null,
+            },
+          },
+          { session },
+        );
+      }
+    });
+    console.log(`\nCommitted ${byUserId.size} membership row(s).`);
+  } finally {
+    await session.endSession();
+  }
+
+  return { placed: placed.length, skipped: skipped.length, parentChanged };
+}
+
 async function main() {
   await mongoose.connect(process.env.MONGO_URI);
+
+  if (ALL_ROOTS) {
+    console.log(
+      `\n${COMMIT ? "[COMMIT]" : "[DRY-RUN]"} Rebuild entire network (same-leg spine spill)\n`,
+    );
+    await rebuildNetwork({ commit: COMMIT });
+    await mongoose.disconnect();
+    return;
+  }
+
   console.log(
     `\n${COMMIT ? "[COMMIT]" : "[DRY-RUN]"} Rebuild binary tree by registration order (root=${ROOT_REF})\n`,
   );
@@ -269,7 +413,7 @@ async function main() {
       continue;
     }
 
-    const slot = findRegistrationOrderedSlot(sponsor, leg, byUserId);
+    const slot = findSpineSlot(sponsor, leg, byUserId);
     if (!slot) {
       skipped.push({
         referralCode: member.referralCode,

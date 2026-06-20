@@ -128,45 +128,46 @@ function buildChildrenByParentMap(descendants, parentDocByUserId) {
 }
 
 /**
- * Breadth-first search within a leg subtree (using the winner-aware
- * bottom-up map) for the first empty slot. Matches runtime placement
- * in `findRegistrationOrderedLegSlot`.
+ * Same-leg spine walk on the winner-aware bottom-up map. Matches runtime
+ * placement in `findSameLegSpineLegSlot`.
  */
-function findFirstEmptySlotBfsByMap({
+function findFirstEmptySpineSlotByMap({
   parent,
   legEntryDirection,
   childrenByParent,
   excludeUserIdStr,
 }) {
-  const parentSlot = childrenByParent.get(String(parent.userId));
-  const legRoot = parentSlot ? parentSlot[legEntryDirection] : null;
-  if (!legRoot) {
-    return { cursor: parent, position: legEntryDirection };
-  }
+  const sideKey = legEntryDirection === "L" ? "L" : "R";
 
-  const queue = [legRoot];
-  for (let hops = 0; hops < MAX_SPILLOVER_HOPS && queue.length > 0; hops += 1) {
-    const node = queue.shift();
-    if (String(node.userId) === excludeUserIdStr) continue;
-
+  const childFromMap = (node) => {
+    if (!node) return null;
     const slot = childrenByParent.get(String(node.userId)) || {
       L: null,
       R: null,
     };
-    if (!slot.L) return { cursor: node, position: "L" };
-    if (!slot.R) return { cursor: node, position: "R" };
+    return slot[sideKey];
+  };
 
-    const children = [slot.L, slot.R].filter(
-      (child) => child && String(child.userId) !== excludeUserIdStr,
-    );
-    children.sort(
-      (a, b) => getMemberRegistrationTime(a) - getMemberRegistrationTime(b),
-    );
-    for (const child of children) queue.push(child);
+  const parentSlot = childrenByParent.get(String(parent.userId));
+  if (!parentSlot?.[sideKey]) {
+    return { cursor: parent, position: legEntryDirection };
+  }
+
+  let node = parentSlot[sideKey];
+  if (String(node.userId) === excludeUserIdStr) {
+    throw new Error(`Spine root is excluded member ${excludeUserIdStr}`);
+  }
+
+  for (let hops = 0; hops < MAX_SPILLOVER_HOPS; hops += 1) {
+    const next = childFromMap(node);
+    if (!next || String(next.userId) === excludeUserIdStr) {
+      return { cursor: node, position: legEntryDirection };
+    }
+    node = next;
   }
 
   throw new Error(
-    `BFS spillover exceeded ${MAX_SPILLOVER_HOPS} hops from parent ${parent._id}`,
+    `Spine spillover exceeded ${MAX_SPILLOVER_HOPS} hops from parent ${parent._id}`,
   );
 }
 
@@ -320,7 +321,7 @@ async function main() {
           throw new Error(`Original parent ${parentUserId} not found`);
         }
         const { cursor: newParentSeed, position: spillPosition } =
-          findFirstEmptySlotBfsByMap({
+          findFirstEmptySpineSlotByMap({
             parent: originalParent,
             legEntryDirection: position,
             childrenByParent,
