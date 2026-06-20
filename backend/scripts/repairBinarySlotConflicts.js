@@ -23,11 +23,10 @@
  * 1. Discovers all (parent, position) groups with more than one
  *    member that claims that slot — i.e. every drift the runtime
  *    builder is currently quietly resolving.
- * 2. Picks the same winner the builder does (largest subtree → wins;
- *    earliest joinedAt → tie-break; smallest _id → final tie-break).
- * 3. For every loser, walks DOWN the loser's declared leg from the
- *    contested parent (following same-direction children) until an
- *    empty slot is found, then atomically rewires
+ * 2. Picks the same winner the builder does (earliest registration
+ *    wins; top-down pointer → tie-break; smallest _id → final tie-break).
+ * 3. For every loser, breadth-first search within the contested leg's
+ *    subtree finds the first empty slot, then atomically rewires
  *      • loser.binaryParentId             → new parent's userId
  *      • loser.binaryParentMembershipId   → new parent's _id
  *      • loser.binaryPosition             → unchanged (still L/R)
@@ -69,6 +68,10 @@ import mongoose from "mongoose";
 
 import MlmMembership from "../app/models/mlmMembership.js";
 import "../app/models/customer.js";
+import {
+  getMemberRegistrationTime,
+  pickBinarySlotWinner,
+} from "../app/utils/mlmBinaryTreeOrder.js";
 
 const COMMIT = process.argv.includes("--commit");
 const ROOT_REF = (
@@ -79,38 +82,17 @@ const MAX_SPILLOVER_HOPS = 500;
 
 /**
  * Mirror the runtime builder's tie-break logic (see
- * `mlmBinaryTreeBuilder.js`):
- *   1. larger `totalDownlineCount` wins
- *   2. parent's denormalised top-down pointer (binaryLeftChildId /
- *      binaryRightChildId) matching the candidate wins — keeps the
- *      currently-rendered node in place when downlines tie
- *   3. earliest `joinedAt` wins
- *   4. smallest `_id` wins (deterministic)
- *
- * Mirroring is critical because the repair script must move the
- * SAME losers the runtime builder is currently hiding; otherwise we'd
- * silently swap which node appears in the tree.
+ * `mlmBinaryTreeBuilder.js` / `mlmBinaryTreeOrder.js`):
+ *   1. earliest account registration (`Customer.createdAt`) wins
+ *   2. parent's denormalised top-down pointer matching the candidate
+ *   3. smallest `_id` wins (deterministic)
  */
 function pickWinner(members, parentDoc, position) {
-  const topDownTarget = parentDoc
-    ? position === "L"
-      ? parentDoc.binaryLeftChildId
-      : parentDoc.binaryRightChildId
-    : null;
-  const topDownStr = topDownTarget ? String(topDownTarget) : null;
-
-  return [...members].sort((a, b) => {
-    const aDown = a.totalDownlineCount || 0;
-    const bDown = b.totalDownlineCount || 0;
-    if (aDown !== bDown) return bDown - aDown;
-    const aMatches = topDownStr && String(a.userId) === topDownStr;
-    const bMatches = topDownStr && String(b.userId) === topDownStr;
-    if (aMatches !== bMatches) return aMatches ? -1 : 1;
-    const aT = a.joinedAt ? new Date(a.joinedAt).getTime() : Infinity;
-    const bT = b.joinedAt ? new Date(b.joinedAt).getTime() : Infinity;
-    if (aT !== bT) return aT - bT;
-    return String(a._id) < String(b._id) ? -1 : 1;
-  })[0];
+  if (members.length === 0) return null;
+  if (members.length === 1) return members[0];
+  return members.reduce((best, candidate) =>
+    pickBinarySlotWinner(best, candidate, parentDoc, position),
+  );
 }
 
 /**
@@ -146,32 +128,45 @@ function buildChildrenByParentMap(descendants, parentDocByUserId) {
 }
 
 /**
- * Walk DOWN from `parent` following `direction` children, but use
- * the BOTTOM-UP `childrenByParent` map rather than the parent's
- * stale top-down pointers. Returns the first cursor whose `direction`
- * slot is empty in the map. Excludes the loser's own subtree so a
- * stale chain cannot make us try to place a loser under herself.
+ * Breadth-first search within a leg subtree (using the winner-aware
+ * bottom-up map) for the first empty slot. Matches runtime placement
+ * in `findRegistrationOrderedLegSlot`.
  */
-function findFirstEmptySlotDownByMap({
+function findFirstEmptySlotBfsByMap({
   parent,
-  direction,
+  legEntryDirection,
   childrenByParent,
   excludeUserIdStr,
 }) {
-  let cursor = parent;
-  for (let i = 0; i < MAX_SPILLOVER_HOPS; i += 1) {
-    if (String(cursor.userId) === excludeUserIdStr) {
-      throw new Error(
-        `Spillover walk hit the loser itself (${excludeUserIdStr}) — cycle in binary tree?`,
-      );
-    }
-    const slot = childrenByParent.get(String(cursor.userId));
-    const childMember = slot ? slot[direction] : null;
-    if (!childMember) return cursor;
-    cursor = childMember;
+  const parentSlot = childrenByParent.get(String(parent.userId));
+  const legRoot = parentSlot ? parentSlot[legEntryDirection] : null;
+  if (!legRoot) {
+    return { cursor: parent, position: legEntryDirection };
   }
+
+  const queue = [legRoot];
+  for (let hops = 0; hops < MAX_SPILLOVER_HOPS && queue.length > 0; hops += 1) {
+    const node = queue.shift();
+    if (String(node.userId) === excludeUserIdStr) continue;
+
+    const slot = childrenByParent.get(String(node.userId)) || {
+      L: null,
+      R: null,
+    };
+    if (!slot.L) return { cursor: node, position: "L" };
+    if (!slot.R) return { cursor: node, position: "R" };
+
+    const children = [slot.L, slot.R].filter(
+      (child) => child && String(child.userId) !== excludeUserIdStr,
+    );
+    children.sort(
+      (a, b) => getMemberRegistrationTime(a) - getMemberRegistrationTime(b),
+    );
+    for (const child of children) queue.push(child);
+  }
+
   throw new Error(
-    `Spillover walk exceeded ${MAX_SPILLOVER_HOPS} hops from parent ${parent._id}`,
+    `BFS spillover exceeded ${MAX_SPILLOVER_HOPS} hops from parent ${parent._id}`,
   );
 }
 
@@ -211,7 +206,9 @@ async function main() {
       totalDownlineCount: 1,
       joinedAt: 1,
     },
-  );
+  )
+    .populate("userId", "createdAt")
+    .lean();
   console.log(`Scope holds ${descendants.length} membership(s).`);
 
   // Build a userId → membership-doc map so we can pass the parent's
@@ -322,12 +319,15 @@ async function main() {
         if (!originalParent) {
           throw new Error(`Original parent ${parentUserId} not found`);
         }
-        const newParentSeed = findFirstEmptySlotDownByMap({
-          parent: originalParent,
-          direction: position,
-          childrenByParent,
-          excludeUserIdStr: String(loser.userId),
-        });
+        const { cursor: newParentSeed, position: spillPosition } =
+          findFirstEmptySlotBfsByMap({
+            parent: originalParent,
+            legEntryDirection: position,
+            childrenByParent,
+            excludeUserIdStr: String(loser.userId),
+          });
+        const spillChildField =
+          spillPosition === "L" ? "binaryLeftChildId" : "binaryRightChildId";
         // Resolve the seed to a populated doc for the label.
         const newParentDoc = await MlmMembership.findById(newParentSeed._id)
           .populate("userId", "name")
@@ -336,7 +336,7 @@ async function main() {
           newParentDoc?.referralCode || String(newParentSeed._id).slice(-6);
 
         console.log(
-          `         → new parent: ${newParentLabel}.${position} (was empty)`,
+          `         → new parent: ${newParentLabel}.${spillPosition} (was empty)`,
         );
 
         if (COMMIT) {
@@ -349,14 +349,14 @@ async function main() {
                   $set: {
                     binaryParentId: newParentSeed.userId,
                     binaryParentMembershipId: newParentSeed._id,
-                    binaryPosition: position,
+                    binaryPosition: spillPosition,
                   },
                 },
                 { session },
               );
               await MlmMembership.updateOne(
                 { _id: newParentSeed._id },
-                { $set: { [childField]: loser.userId } },
+                { $set: { [spillChildField]: loser.userId } },
                 { session },
               );
             });

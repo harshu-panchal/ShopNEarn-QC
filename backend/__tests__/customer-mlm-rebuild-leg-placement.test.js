@@ -6,9 +6,9 @@
  * membership is placed under the sponsor's right leg (i.e. the
  * sponsor's `binaryRightChildId` gets set to the new member's userId).
  *
- * Also verifies the deterministic spillover when the chosen leg's
- * direct slot is already occupied — placement walks DOWN the chosen
- * leg into the first vacant slot, never the opposite leg.
+ * Also verifies registration-ordered BFS spillover when the chosen
+ * leg's direct slot is already occupied — left slot fills before
+ * right at the next level, never the opposite leg under the sponsor.
  */
 import { jest } from "@jest/globals";
 
@@ -21,7 +21,7 @@ jest.unstable_mockModule("../app/services/mlm/mlmConfigService.js", () => ({
 
 jest.unstable_mockModule("../app/models/mlmMembership.js", () => {
   function MembershipMock() {}
-  MembershipMock.findOne = mockMembershipFindOne;
+  MembershipMock.findOne = (...args) => mockMembershipFindOne(...args);
   MembershipMock.find = jest.fn();
   MembershipMock.create = jest.fn();
   return { default: MembershipMock };
@@ -38,6 +38,9 @@ beforeEach(() => {
     binaryPlacementStrategy: "manual",
     sponsorChainMaxDepth: 10,
   });
+  mockMembershipFindOne.mockImplementation(() => ({
+    populate: jest.fn().mockResolvedValue(null),
+  }));
 });
 
 function makeMembership(overrides = {}) {
@@ -113,8 +116,8 @@ describe("placeInBinaryTree — manual placement (forceManualPlacement=true)", (
     expect(newMembership.binaryPosition).toBe("L");
   });
 
-  test("walks down the chosen leg into the first vacant slot when direct slot is full", async () => {
-    // Sponsor's right slot is occupied by grandchild "rl-user".
+  test("fills left-before-right via BFS when the direct leg slot is full", async () => {
+    // Sponsor's right slot is occupied by "rl-user".
     const sponsor = makeMembership({
       _id: "sponsor-mem",
       userId: "sponsor-user",
@@ -123,11 +126,13 @@ describe("placeInBinaryTree — manual placement (forceManualPlacement=true)", (
     const rightChild = makeMembership({
       _id: "rl-mem",
       userId: "rl-user",
-      binaryRightChildId: null, // vacant slot
+      binaryLeftChildId: null,
+      binaryRightChildId: null,
     });
 
-    // First lookup: sponsor's right child.
-    mockMembershipFindOne.mockResolvedValueOnce(rightChild);
+    mockMembershipFindOne.mockImplementation(() => ({
+      populate: jest.fn().mockResolvedValue(rightChild),
+    }));
 
     const newMembership = makeMembership({
       _id: "new-mem",
@@ -142,15 +147,11 @@ describe("placeInBinaryTree — manual placement (forceManualPlacement=true)", (
       forceManualPlacement: true,
     });
 
-    expect(result.position).toBe("R");
-    // The placement landed under the rightChild, not under the sponsor.
-    expect(rightChild.binaryRightChildId).toBe("new-user");
-    expect(sponsor.binaryRightChildId).toBe("rl-user"); // unchanged
+    expect(result.position).toBe("L");
+    expect(rightChild.binaryLeftChildId).toBe("new-user");
+    expect(sponsor.binaryRightChildId).toBe("rl-user");
     expect(rightChild.save).toHaveBeenCalledTimes(1);
     expect(sponsor.save).not.toHaveBeenCalled();
-
-    // New membership's parent is the grandchild, but the leg under the
-    // sponsor is still "R" — proves the leg choice was preserved.
     expect(newMembership.binaryParentId).toBe("rl-user");
     expect(result.legUnderSponsor).toBe("R");
   });

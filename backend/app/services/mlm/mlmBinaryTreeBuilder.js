@@ -38,6 +38,7 @@
  */
 
 import MlmMembership from "../../models/mlmMembership.js";
+import { pickBinarySlotWinner } from "../../utils/mlmBinaryTreeOrder.js";
 
 /**
  * @typedef {Object} BinaryTreeNode
@@ -107,23 +108,21 @@ export async function buildBinaryTreeBottomUp({ rootMembership, depthLeft }) {
   // $graphLookup doesn't populate refs, so we populate them manually.
   descendants = await MlmMembership.populate(descendants, {
     path: "userId",
-    select: "name phone userId",
+    select: "name phone userId createdAt",
   });
 
   // Ensure the root has its User populated for the per-node payload.
   let populatedRoot = rootMembership;
   if (!rootMembership.userId?.name && rootMembership._id) {
     populatedRoot = await MlmMembership.findById(rootMembership._id)
-      .populate("userId", "name phone userId")
+      .populate("userId", "name phone userId createdAt")
       .lean();
   }
 
   // Group children by their declared parent. When two members claim
-  // the same slot (a known data-integrity defect), pick the winner
-  // with the larger downline so we render as much of the real tree
-  // as possible. Tie-break in favour of the candidate the parent's
-  // top-down pointer agrees with, then by earliest `joinedAt`, then
-  // by smallest `_id` (deterministic).
+  // the same slot (a known data-integrity defect), keep the earliest
+  // registrant visible — the tree must reflect signup order under
+  // the sponsor's chosen leg.
   const drift = [];
   const childrenByParent = new Map(); // parentUserIdStr → { L, R }
 
@@ -133,42 +132,7 @@ export async function buildBinaryTreeBottomUp({ rootMembership, depthLeft }) {
     parentLookupForTopDownCheck.set(String(d.userId?._id || d.userId), d);
   }
 
-  const pickWinner = (existing, candidate, parentDoc, slotKey) => {
-    if (!existing) return candidate;
-    // Heuristics from strongest to weakest.
-    const candidateMatchesTopDown =
-      parentDoc &&
-      String(
-        slotKey === "L"
-          ? parentDoc.binaryLeftChildId
-          : parentDoc.binaryRightChildId,
-      ) === String(candidate.userId?._id || candidate.userId);
-    const existingMatchesTopDown =
-      parentDoc &&
-      String(
-        slotKey === "L"
-          ? parentDoc.binaryLeftChildId
-          : parentDoc.binaryRightChildId,
-      ) === String(existing.userId?._id || existing.userId);
-    const candidateDownline = candidate.totalDownlineCount || 0;
-    const existingDownline = existing.totalDownlineCount || 0;
-    if (candidateDownline !== existingDownline) {
-      return candidateDownline > existingDownline ? candidate : existing;
-    }
-    if (candidateMatchesTopDown !== existingMatchesTopDown) {
-      return candidateMatchesTopDown ? candidate : existing;
-    }
-    const candidateJoined = candidate.joinedAt
-      ? new Date(candidate.joinedAt).getTime()
-      : Infinity;
-    const existingJoined = existing.joinedAt
-      ? new Date(existing.joinedAt).getTime()
-      : Infinity;
-    if (candidateJoined !== existingJoined) {
-      return candidateJoined < existingJoined ? candidate : existing;
-    }
-    return String(candidate._id) < String(existing._id) ? candidate : existing;
-  };
+  const pickWinner = pickBinarySlotWinner;
 
   for (const m of descendants) {
     if (!m.binaryParentId) continue;
