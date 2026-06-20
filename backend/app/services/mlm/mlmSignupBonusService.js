@@ -9,259 +9,20 @@ import {
   MLM_BONUS_TYPE,
   MLM_COMMISSION_EVENT_STATUS,
   MLM_IDEMPOTENCY_PREFIX,
+  MLM_MEMBERSHIP_STATUS,
   MLM_PLAN_TYPE,
 } from "../../constants/mlm.js";
-import { creditWallet } from "../finance/walletService.js";
+import { creditWallet, debitWallet } from "../finance/walletService.js";
 import { getSignupBonusConfig } from "./mlmConfigService.js";
 
 /**
- * mlmSignupBonusService — signup bonus credits for the MLM program.
+ * Signup bonus credits for the MLM program.
  *
- * Two distinct credit moments, each with its own entry point:
- *
- *   1. `applyRegistrationBonusInSession` — fires the moment a new
- *      MlmMembership is minted (status = REGISTERED_UNPAID). Only
- *      credits the SPONSOR (₹50 by default) to their shopping wallet.
- *      The new customer does NOT receive a self-bonus at this stage —
- *      it is deferred to activation so the money is only granted once
- *      the customer has confirmed intent by paying the joining fee.
- *
- *   2. `applySelfSignupBonusAtActivation` — fires inside
- *      `mlmActivationService.activateMembershipFromJoiningPayment`
- *      after the joining payment is CAPTURED. Credits ₹100 (default)
- *      to the NEW CUSTOMER's shopping wallet as a welcome bonus.
- *
- * Both go to the `shopping` wallet bucket — usable at checkout but
- * NOT withdrawable as cash (per PO decision).
- *
- * Idempotency contract (same for both entry points):
- *   - `LedgerEntry.idempotencyKey` (partial unique index) is the real
- *     backstop — duplicate inserts collapse to no-ops at the DB.
- *   - `MlmCommissionEvent.idempotencyKey` (partial unique index) does
- *     the same for the audit row.
- *   - The membership-level `signupBonusCreditedAt` flag is the fast-
- *     path: when set we exit early without touching wallets.
+ * Rule (Jun 2026): when the direct sponsor is still REGISTERED_UNPAID,
+ * neither the sponsor nor the new referral receives the signup bonus in
+ * wallet/history. Both amounts are held until the sponsor activates.
  */
 
-/**
- * Credit the SPONSOR's signup acquisition bonus (₹50 by default) to
- * their shopping wallet. Called inside the membership-creation
- * transaction when a new customer registers with a referral code.
- *
- * The self-bonus (₹100) is NOT credited here — it fires later at
- * activation via `applySelfSignupBonusAtActivation`.
- *
- * @param {object} opts
- * @param {mongoose.Types.ObjectId} opts.newCustomerId
- * @param {MlmMembership}           opts.newMembership   - already saved, status REGISTERED_UNPAID
- * @param {mongoose.Types.ObjectId} [opts.sponsorUserId]
- * @param {MlmMembership}           [opts.sponsorMembership]
- * @param {mongoose.ClientSession}  opts.session
- * @param {string|null}             [opts.correlationId]
- *
- * @returns {Promise<{skipped: string|null, sponsorCredit: object|null}>}
- */
-export async function applyRegistrationBonusInSession({
-  newCustomerId,
-  newMembership,
-  sponsorUserId = null,
-  sponsorMembership = null,
-  session,
-  correlationId = null,
-}) {
-  if (!session) {
-    throw new Error(
-      "applyRegistrationBonusInSession requires an open mongoose session.",
-    );
-  }
-  if (!newCustomerId || !newMembership) {
-    throw new Error(
-      "applyRegistrationBonusInSession requires `newCustomerId` and `newMembership`.",
-    );
-  }
-
-  // Fast-path: already credited for this member (idempotency guard).
-  if (newMembership.signupBonusCreditedAt) {
-    return { skipped: "ALREADY_CREDITED", selfCredit: null, sponsorCredit: null };
-  }
-
-  const cfg = await getSignupBonusConfig();
-  if (!cfg.enabled) {
-    return { skipped: "DISABLED", selfCredit: null, sponsorCredit: null };
-  }
-  if (cfg.selfAmount <= 0 && cfg.sponsorAmount <= 0) {
-    return { skipped: "ZERO_AMOUNT", selfCredit: null, sponsorCredit: null };
-  }
-
-  // ── Self credit ────────────────────────────────────────────────────
-  // Credit ₹100 (or configured amount) to the NEW USER's shopping
-  // wallet immediately at account creation so they see a non-zero
-  // balance before paying the joining fee.
-  let selfCredit = null;
-  if (cfg.selfAmount > 0) {
-    const selfIdempotencyKey =
-      `${MLM_IDEMPOTENCY_PREFIX.SIGNUP_BONUS_SELF}-${String(newCustomerId)}`;
-    selfCredit = await creditMemberSignupBonus({
-      recipientUserId: newCustomerId,
-      recipientMembership: newMembership,
-      amount: cfg.selfAmount,
-      bonusType: MLM_BONUS_TYPE.SIGNUP_BONUS_SELF,
-      ledgerType: LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SELF,
-      ledgerReference: selfIdempotencyKey,
-      ledgerDescription: "MLM signup bonus — welcome credit",
-      idempotencyKey: selfIdempotencyKey,
-      correlationId,
-      meta: {
-        mlmEvent: "SIGNUP_BONUS_SELF",
-        newCustomerId: String(newCustomerId),
-        sponsorUserId: sponsorUserId ? String(sponsorUserId) : null,
-      },
-      sourceUserId: sponsorUserId || null,
-      session,
-    });
-  }
-
-  // ── Sponsor credit ─────────────────────────────────────────────────
-  // Credit ₹50 (or configured amount) to the SPONSOR's shopping wallet.
-  // Skip silently when there's no sponsor or the new customer is
-  // somehow their own sponsor.
-  let sponsorCredit = null;
-  const sameAsSelf =
-    sponsorUserId && String(sponsorUserId) === String(newCustomerId);
-
-  if (cfg.sponsorAmount > 0 && sponsorUserId && !sameAsSelf) {
-    const sponsorIdempotencyKey =
-      `${MLM_IDEMPOTENCY_PREFIX.SIGNUP_BONUS_SPONSOR}-${String(sponsorUserId)}-${String(newCustomerId)}`;
-
-    let sponsorMemDoc = sponsorMembership || null;
-    if (!sponsorMemDoc) {
-      sponsorMemDoc = await MlmMembership.findOne({
-        userId: sponsorUserId,
-      }).session(session);
-    }
-
-    sponsorCredit = await creditMemberSignupBonus({
-      recipientUserId: sponsorUserId,
-      recipientMembership: sponsorMemDoc,
-      amount: cfg.sponsorAmount,
-      bonusType: MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR,
-      ledgerType: LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SPONSOR,
-      ledgerReference: sponsorIdempotencyKey,
-      ledgerDescription: "MLM signup bonus — referral acquired",
-      idempotencyKey: sponsorIdempotencyKey,
-      correlationId,
-      meta: {
-        mlmEvent: "SIGNUP_BONUS_SPONSOR",
-        newCustomerId: String(newCustomerId),
-        sponsorUserId: String(sponsorUserId),
-      },
-      sourceUserId: newCustomerId,
-      session,
-    });
-  }
-
-  // Stamp the flag so re-runs short-circuit at the top of this function.
-  newMembership.signupBonusCreditedAt = new Date();
-  await newMembership.save({ session });
-
-  return {
-    skipped: null,
-    selfCredit,
-    sponsorCredit,
-  };
-}
-
-/**
- * Credit the NEW CUSTOMER's self signup bonus (₹100 by default) to
- * their shopping wallet. Must be called AFTER the joining payment is
- * CAPTURED (inside `mlmActivationService.activateMembershipFromJoiningPayment`).
- *
- * This is intentionally separate from `applyRegistrationBonusInSession`
- * so the customer only receives the bonus once they've confirmed intent
- * by paying the joining fee — preventing abuse where someone registers
- * under a sponsor code just to grab the ₹100 without ever paying.
- *
- * Idempotent: re-running after `signupBonusCreditedAt` is set returns
- * `{ skipped: "ALREADY_CREDITED" }` without touching the wallet.
- *
- * @param {object} opts
- * @param {mongoose.Types.ObjectId} opts.newCustomerId
- * @param {MlmMembership}           opts.newMembership   - status ACTIVE at this point
- * @param {mongoose.ClientSession}  opts.session
- * @param {string|null}             [opts.correlationId]
- *
- * @returns {Promise<{skipped: string|null, selfCredit: object|null}>}
- */
-export async function applySelfSignupBonusAtActivation({
-  newCustomerId,
-  newMembership,
-  session,
-  correlationId = null,
-}) {
-  if (!session) {
-    throw new Error(
-      "applySelfSignupBonusAtActivation requires an open mongoose session.",
-    );
-  }
-  if (!newCustomerId || !newMembership) {
-    throw new Error(
-      "applySelfSignupBonusAtActivation requires `newCustomerId` and `newMembership`.",
-    );
-  }
-
-  // Fast-path: already credited for this member (idempotency guard).
-  if (newMembership.signupBonusCreditedAt) {
-    return { skipped: "ALREADY_CREDITED", selfCredit: null };
-  }
-
-  const cfg = await getSignupBonusConfig();
-  if (!cfg.enabled) {
-    return { skipped: "DISABLED", selfCredit: null };
-  }
-  if (cfg.selfAmount <= 0) {
-    return { skipped: "ZERO_SELF_AMOUNT", selfCredit: null };
-  }
-
-  const selfIdempotencyKey =
-    `${MLM_IDEMPOTENCY_PREFIX.SIGNUP_BONUS_SELF}-${String(newCustomerId)}`;
-
-  // Credit ₹100 (or configured amount) to the NEW USER's shopping wallet.
-  const selfCredit = await creditMemberSignupBonus({
-    recipientUserId: newCustomerId,
-    recipientMembership: newMembership,
-    amount: cfg.selfAmount,
-    bonusType: MLM_BONUS_TYPE.SIGNUP_BONUS_SELF,
-    ledgerType: LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SELF,
-    ledgerReference: selfIdempotencyKey,
-    ledgerDescription: "MLM signup bonus — welcome credit on plan activation",
-    idempotencyKey: selfIdempotencyKey,
-    correlationId,
-    meta: {
-      mlmEvent: "SIGNUP_BONUS_SELF",
-      newCustomerId: String(newCustomerId),
-    },
-    sourceUserId: null,
-    session,
-  });
-
-  // Stamp the flag so re-runs short-circuit at the top of this function.
-  // Done last so an error in the credit path leaves the flag null and
-  // the transaction rolls back cleanly.
-  newMembership.signupBonusCreditedAt = new Date();
-  await newMembership.save({ session });
-
-  return {
-    skipped: null,
-    selfCredit,
-  };
-}
-
-/**
- * Internal helper — one wallet credit + matching commission event.
- *
- * Credits to the `shopping` bucket so the amount is spendable at
- * checkout but NOT withdrawable as cash.
- */
 async function creditMemberSignupBonus({
   recipientUserId,
   recipientMembership,
@@ -280,7 +41,6 @@ async function creditMemberSignupBonus({
     ownerType: OWNER_TYPE.CUSTOMER,
     ownerId: recipientUserId,
     amount,
-    // Shopping bucket: spendable at checkout, NOT withdrawable.
     bucket: "shopping",
     session,
     ledgerType,
@@ -304,7 +64,6 @@ async function creditMemberSignupBonus({
         bonusAmount: amount,
         cappedAmount: amount,
         rolloverAmount: 0,
-        // Matches the actual bucket used above.
         walletBucket: "shopping",
         ledgerEntryId: creditResult?.ledgerEntry?._id || null,
         status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
@@ -325,14 +84,398 @@ async function creditMemberSignupBonus({
   };
 }
 
+async function emitHeldSignupBonusEvent({
+  recipientUserId,
+  recipientMembershipId,
+  sourceUserId,
+  bonusType,
+  amount,
+  idempotencyKey,
+  correlationId,
+  unpaidSponsorUserId,
+  referralUserId,
+  session,
+}) {
+  const existing = await MlmCommissionEvent.findOne(
+    { idempotencyKey },
+    null,
+    session ? { session } : {},
+  );
+  if (existing) return existing;
+
+  const description =
+    bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
+      ? "MLM signup bonus — referral acquired (held until sponsor activates)"
+      : "MLM signup bonus — welcome credit (held until sponsor activates)";
+
+  const [eventDoc] = await MlmCommissionEvent.create(
+    [
+      {
+        recipientId: recipientUserId,
+        recipientMembershipId: recipientMembershipId || null,
+        sourceUserId: sourceUserId || null,
+        bonusType,
+        planType: MLM_PLAN_TYPE.A,
+        baseAmount: amount,
+        bonusAmount: amount,
+        cappedAmount: 0,
+        rolloverAmount: 0,
+        walletBucket: "shopping",
+        ledgerEntryId: null,
+        status: MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
+        idempotencyKey,
+        correlationId,
+        description,
+        meta: {
+          unpaidSponsorUserId: String(unpaidSponsorUserId),
+          heldReferralUserId: String(referralUserId),
+          mlmEvent:
+            bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
+              ? "SIGNUP_BONUS_SPONSOR_HELD"
+              : "SIGNUP_BONUS_SELF_HELD",
+        },
+      },
+    ],
+    session ? { session } : {},
+  );
+
+  return eventDoc;
+}
+
 /**
- * Convenience wrapper that owns its own transaction. Useful for the
- * backfill script and any future admin "re-issue signup bonus" tool
- * — both of which run OUTSIDE an existing session.
- *
- * Returns the same shape as `applyRegistrationBonusInSession`. Any
- * thrown error rolls the credits back at the DB.
+ * Credit signup bonuses when a new customer registers with a referral code.
+ * Defers both sponsor and self credits when the sponsor is unpaid.
  */
+export async function applyRegistrationBonusInSession({
+  newCustomerId,
+  newMembership,
+  sponsorUserId = null,
+  sponsorMembership = null,
+  session,
+  correlationId = null,
+}) {
+  if (!session) {
+    throw new Error(
+      "applyRegistrationBonusInSession requires an open mongoose session.",
+    );
+  }
+  if (!newCustomerId || !newMembership) {
+    throw new Error(
+      "applyRegistrationBonusInSession requires `newCustomerId` and `newMembership`.",
+    );
+  }
+
+  if (newMembership.signupBonusCreditedAt) {
+    return { skipped: "ALREADY_CREDITED", selfCredit: null, sponsorCredit: null };
+  }
+
+  const cfg = await getSignupBonusConfig();
+  if (!cfg.enabled) {
+    return { skipped: "DISABLED", selfCredit: null, sponsorCredit: null };
+  }
+  if (cfg.selfAmount <= 0 && cfg.sponsorAmount <= 0) {
+    return { skipped: "ZERO_AMOUNT", selfCredit: null, sponsorCredit: null };
+  }
+
+  let sponsorMemDoc = sponsorMembership || null;
+  if (!sponsorMemDoc && sponsorUserId) {
+    sponsorMemDoc = await MlmMembership.findOne({ userId: sponsorUserId }).session(
+      session,
+    );
+  }
+
+  const sponsorUnpaid =
+    sponsorMemDoc?.status === MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID;
+  const sameAsSelf =
+    sponsorUserId && String(sponsorUserId) === String(newCustomerId);
+
+  if (sponsorUnpaid && sponsorUserId && !sameAsSelf) {
+    if (cfg.selfAmount > 0) {
+      await emitHeldSignupBonusEvent({
+        recipientUserId: newCustomerId,
+        recipientMembershipId: newMembership._id,
+        sourceUserId: sponsorUserId,
+        bonusType: MLM_BONUS_TYPE.SIGNUP_BONUS_SELF,
+        amount: cfg.selfAmount,
+        idempotencyKey: `${MLM_IDEMPOTENCY_PREFIX.SIGNUP_BONUS_SELF}-${String(newCustomerId)}`,
+        correlationId,
+        unpaidSponsorUserId: sponsorUserId,
+        referralUserId: newCustomerId,
+        session,
+      });
+    }
+    if (cfg.sponsorAmount > 0) {
+      await emitHeldSignupBonusEvent({
+        recipientUserId: sponsorUserId,
+        recipientMembershipId: sponsorMemDoc?._id || null,
+        sourceUserId: newCustomerId,
+        bonusType: MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR,
+        amount: cfg.sponsorAmount,
+        idempotencyKey: `${MLM_IDEMPOTENCY_PREFIX.SIGNUP_BONUS_SPONSOR}-${String(sponsorUserId)}-${String(newCustomerId)}`,
+        correlationId,
+        unpaidSponsorUserId: sponsorUserId,
+        referralUserId: newCustomerId,
+        session,
+      });
+    }
+    return {
+      skipped: "HELD_UNTIL_SPONSOR_ACTIVATION",
+      selfCredit: null,
+      sponsorCredit: null,
+    };
+  }
+
+  let selfCredit = null;
+  if (cfg.selfAmount > 0) {
+    const selfIdempotencyKey = `${MLM_IDEMPOTENCY_PREFIX.SIGNUP_BONUS_SELF}-${String(newCustomerId)}`;
+    selfCredit = await creditMemberSignupBonus({
+      recipientUserId: newCustomerId,
+      recipientMembership: newMembership,
+      amount: cfg.selfAmount,
+      bonusType: MLM_BONUS_TYPE.SIGNUP_BONUS_SELF,
+      ledgerType: LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SELF,
+      ledgerReference: selfIdempotencyKey,
+      ledgerDescription: "MLM signup bonus — welcome credit",
+      idempotencyKey: selfIdempotencyKey,
+      correlationId,
+      meta: {
+        mlmEvent: "SIGNUP_BONUS_SELF",
+        newCustomerId: String(newCustomerId),
+        sponsorUserId: sponsorUserId ? String(sponsorUserId) : null,
+      },
+      sourceUserId: sponsorUserId || null,
+      session,
+    });
+  }
+
+  let sponsorCredit = null;
+  if (cfg.sponsorAmount > 0 && sponsorUserId && !sameAsSelf) {
+    const sponsorIdempotencyKey = `${MLM_IDEMPOTENCY_PREFIX.SIGNUP_BONUS_SPONSOR}-${String(sponsorUserId)}-${String(newCustomerId)}`;
+    sponsorCredit = await creditMemberSignupBonus({
+      recipientUserId: sponsorUserId,
+      recipientMembership: sponsorMemDoc,
+      amount: cfg.sponsorAmount,
+      bonusType: MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR,
+      ledgerType: LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SPONSOR,
+      ledgerReference: sponsorIdempotencyKey,
+      ledgerDescription: "MLM signup bonus — referral acquired",
+      idempotencyKey: sponsorIdempotencyKey,
+      correlationId,
+      meta: {
+        mlmEvent: "SIGNUP_BONUS_SPONSOR",
+        newCustomerId: String(newCustomerId),
+        sponsorUserId: String(sponsorUserId),
+      },
+      sourceUserId: newCustomerId,
+      session,
+    });
+  }
+
+  newMembership.signupBonusCreditedAt = new Date();
+  await newMembership.save({ session });
+
+  return {
+    skipped: null,
+    selfCredit,
+    sponsorCredit,
+  };
+}
+
+/**
+ * Release signup bonuses held while this member was REGISTERED_UNPAID.
+ * Called when the sponsor activates Plan A (paid or admin approval).
+ */
+export async function releaseHeldSignupBonusesForSponsorActivation({
+  sponsorUserId,
+  session,
+  correlationId = null,
+}) {
+  if (!session) {
+    throw new Error(
+      "releaseHeldSignupBonusesForSponsorActivation requires an open mongoose session.",
+    );
+  }
+  if (!sponsorUserId) return [];
+
+  const heldEvents = await MlmCommissionEvent.find({
+    status: MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
+    "meta.unpaidSponsorUserId": String(sponsorUserId),
+  }).session(session);
+
+  if (!heldEvents.length) return [];
+
+  const released = [];
+  for (const event of heldEvents) {
+    const recipientMembership = event.recipientMembershipId
+      ? await MlmMembership.findById(event.recipientMembershipId).session(session)
+      : await MlmMembership.findOne({ userId: event.recipientId }).session(session);
+
+    const ledgerType =
+      event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
+        ? LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SPONSOR
+        : LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SELF;
+
+    const creditResult = await creditWallet({
+      ownerType: OWNER_TYPE.CUSTOMER,
+      ownerId: event.recipientId,
+      amount: event.bonusAmount,
+      bucket: "shopping",
+      session,
+      ledgerType,
+      ledgerReference: event.idempotencyKey,
+      ledgerDescription:
+        event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
+          ? "MLM signup bonus — referral acquired"
+          : "MLM signup bonus — welcome credit",
+      metadata: {
+        ...(event.meta || {}),
+        releasedOnSponsorActivation: String(sponsorUserId),
+      },
+      idempotencyKey: event.idempotencyKey,
+      correlationId,
+      syncUserWalletBalance: false,
+    });
+
+    event.status = MLM_COMMISSION_EVENT_STATUS.CREDITED;
+    event.cappedAmount = event.bonusAmount;
+    event.ledgerEntryId = creditResult?.ledgerEntry?._id || null;
+    event.releasedAt = new Date();
+    event.description =
+      event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
+        ? "MLM signup bonus — referral acquired"
+        : "MLM signup bonus — welcome credit";
+    await event.save({ session });
+
+    if (
+      event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SELF &&
+      recipientMembership &&
+      !recipientMembership.signupBonusCreditedAt
+    ) {
+      recipientMembership.signupBonusCreditedAt = new Date();
+      await recipientMembership.save({ session });
+    }
+
+    released.push({
+      eventId: event._id,
+      bonusType: event.bonusType,
+      recipientId: event.recipientId,
+      amount: event.bonusAmount,
+    });
+  }
+
+  return released;
+}
+
+/**
+ * Claw back signup bonuses that were incorrectly credited while the
+ * sponsor was still unpaid, and re-create HELD commission events.
+ */
+export async function reclawSignupBonusesForUnpaidSponsor({
+  referralUserId,
+  referralMembership,
+  sponsorUserId,
+  sponsorMembership,
+  session,
+  correlationId = null,
+}) {
+  const cfg = await getSignupBonusConfig();
+  if (!cfg.enabled) return { clawed: 0 };
+
+  let clawed = 0;
+  const referralId = String(referralUserId);
+  const sponsorId = String(sponsorUserId);
+
+  const pairs = [
+    {
+      idempotencyKey: `${MLM_IDEMPOTENCY_PREFIX.SIGNUP_BONUS_SELF}-${referralId}`,
+      recipientUserId: referralUserId,
+      bonusType: MLM_BONUS_TYPE.SIGNUP_BONUS_SELF,
+      amount: cfg.selfAmount,
+      recipientMembershipId: referralMembership?._id,
+      sourceUserId: sponsorUserId,
+    },
+    {
+      idempotencyKey: `${MLM_IDEMPOTENCY_PREFIX.SIGNUP_BONUS_SPONSOR}-${sponsorId}-${referralId}`,
+      recipientUserId: sponsorUserId,
+      bonusType: MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR,
+      amount: cfg.sponsorAmount,
+      recipientMembershipId: sponsorMembership?._id,
+      sourceUserId: referralUserId,
+    },
+  ];
+
+  for (const row of pairs) {
+    if (row.amount <= 0) continue;
+
+    const credited = await MlmCommissionEvent.findOne({
+      idempotencyKey: row.idempotencyKey,
+      status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+    }).session(session);
+
+    if (credited?.ledgerEntryId) {
+      await debitWallet({
+        ownerType: OWNER_TYPE.CUSTOMER,
+        ownerId: row.recipientUserId,
+        amount: credited.cappedAmount || credited.bonusAmount || row.amount,
+        bucket: "shopping",
+        session,
+        ledgerType: LEDGER_TRANSACTION_TYPE.MLM_MANUAL_ADJUSTMENT,
+        ledgerReference: `${row.idempotencyKey}-CLAW`,
+        ledgerDescription:
+          "Signup bonus reversed — sponsor was unpaid at referral time",
+        idempotencyKey: `${row.idempotencyKey}-CLAW`,
+        correlationId,
+        syncUserWalletBalance: false,
+      });
+      credited.status = MLM_COMMISSION_EVENT_STATUS.CLAWED_BACK;
+      credited.clawbackAt = new Date();
+      credited.clawbackAmount = credited.cappedAmount || credited.bonusAmount;
+      await credited.save({ session });
+      clawed += 1;
+    }
+
+    const held = await MlmCommissionEvent.findOne({
+      idempotencyKey: row.idempotencyKey,
+      status: MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
+    }).session(session);
+
+    if (!held) {
+      await emitHeldSignupBonusEvent({
+        recipientUserId: row.recipientUserId,
+        recipientMembershipId: row.recipientMembershipId,
+        sourceUserId: row.sourceUserId,
+        bonusType: row.bonusType,
+        amount: row.amount,
+        idempotencyKey: row.idempotencyKey,
+        correlationId,
+        unpaidSponsorUserId: sponsorUserId,
+        referralUserId: referralUserId,
+        session,
+      });
+    }
+  }
+
+  if (referralMembership?.signupBonusCreditedAt) {
+    referralMembership.signupBonusCreditedAt = null;
+    await referralMembership.save({ session });
+  }
+
+  return { clawed };
+}
+
+/** @deprecated Self bonus at activation is unused; kept for API compat. */
+export async function applySelfSignupBonusAtActivation({
+  newCustomerId,
+  newMembership,
+  session,
+  correlationId = null,
+}) {
+  if (newMembership.signupBonusCreditedAt) {
+    return { skipped: "ALREADY_CREDITED", selfCredit: null };
+  }
+  return { skipped: "DEFERRED_TO_REGISTRATION_OR_SPONSOR_RELEASE", selfCredit: null };
+}
+
 export async function applyRegistrationBonusStandalone({
   newCustomerId,
   newMembership,

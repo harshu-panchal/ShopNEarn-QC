@@ -91,7 +91,8 @@ export async function getMembershipByReferralCode(code, { session } = {}) {
 async function buildSponsorChain(sponsorMembership, { session } = {}) {
   if (!sponsorMembership) return [];
   const cfg = await getMlmConfig();
-  const maxDepth = Number(cfg.sponsorChainMaxDepth) || MLM_DEFAULTS.sponsorChainMaxDepth;
+  const maxDepth =
+    Number(cfg.sponsorChainMaxDepth) || MLM_DEFAULTS.sponsorChainMaxDepth;
 
   const chain = [sponsorMembership.userId];
   for (const upline of sponsorMembership.sponsorChain || []) {
@@ -217,8 +218,10 @@ async function findBalancedBinarySlot(rootMembership, { session } = {}) {
         session ? { session } : {},
       ),
     ]);
-    if (!leftChild) return { parentMembership: node, position: "L", legUnderRoot };
-    if (!rightChild) return { parentMembership: node, position: "R", legUnderRoot };
+    if (!leftChild)
+      return { parentMembership: node, position: "L", legUnderRoot };
+    if (!rightChild)
+      return { parentMembership: node, position: "R", legUnderRoot };
 
     const lc = leftChild.totalDownlineCount || 0;
     const rc = rightChild.totalDownlineCount || 0;
@@ -240,7 +243,11 @@ async function findBalancedBinarySlot(rootMembership, { session } = {}) {
  * the chosen leg; later joiners fill left-before-right at each level,
  * then spill deeper in registration order among sibling subtrees.
  */
-async function findRegistrationOrderedLegSlot(sponsorMembership, leg, { session } = {}) {
+async function findRegistrationOrderedLegSlot(
+  sponsorMembership,
+  leg,
+  { session } = {},
+) {
   if (leg !== "L" && leg !== "R") return null;
 
   const sideKey = leg === "L" ? "binaryLeftChildId" : "binaryRightChildId";
@@ -340,10 +347,14 @@ export async function placeInBinaryTree({
   if (!sponsorMembership) return null;
 
   const cfg = await getMlmConfig();
-  const strategy = cfg.binaryPlacementStrategy || MLM_DEFAULTS.binaryPlacementStrategy;
+  const strategy =
+    cfg.binaryPlacementStrategy || MLM_DEFAULTS.binaryPlacementStrategy;
 
   let parentMembership = sponsorMembership;
-  let position = preferredPosition && ["L", "R"].includes(preferredPosition) ? preferredPosition : null;
+  let position =
+    preferredPosition && ["L", "R"].includes(preferredPosition)
+      ? preferredPosition
+      : null;
   let legUnderSponsor = null;
 
   if (forceManualPlacement && position) {
@@ -426,9 +437,7 @@ export async function incrementSponsorLegDirectCount({
 }) {
   if (!sponsorUserId || (leg !== "L" && leg !== "R")) return null;
   const inc =
-    leg === "L"
-      ? { leftLegDirectCount: 1 }
-      : { rightLegDirectCount: 1 };
+    leg === "L" ? { leftLegDirectCount: 1 } : { rightLegDirectCount: 1 };
   return MlmMembership.findOneAndUpdate(
     { userId: sponsorUserId },
     { $inc: inc },
@@ -441,7 +450,10 @@ export async function incrementSponsorLegDirectCount({
  * Returns the post-increment count (used by the caller to evaluate
  * milestone bonuses).
  */
-export async function incrementDirectReferralCount(sponsorUserId, { session, status } = {}) {
+export async function incrementDirectReferralCount(
+  sponsorUserId,
+  { session, status } = {},
+) {
   if (!sponsorUserId) return 0;
 
   const incPayload = { directReferralsCount: 1, totalDownlineCount: 1 };
@@ -463,7 +475,10 @@ export async function incrementDirectReferralCount(sponsorUserId, { session, sta
  * Increment totalDownlineCount on every ancestor in the chain. Bounded
  * by the sponsor chain length (already capped at `sponsorChainMaxDepth`).
  */
-export async function incrementUplineDownlineCounts(sponsorChain, { session, status } = {}) {
+export async function incrementUplineDownlineCounts(
+  sponsorChain,
+  { session, status } = {},
+) {
   if (!Array.isArray(sponsorChain) || sponsorChain.length === 0) return;
   // Skip index 0 — that's the direct sponsor, already bumped by
   // incrementDirectReferralCount above. Bump only further upline.
@@ -488,9 +503,12 @@ export async function incrementUplineDownlineCounts(sponsorChain, { session, sta
  * When a member's status changes from REGISTERED_UNPAID to ACTIVE,
  * flip their count in all ancestors' downline counters.
  */
-export async function transitionUplineDownlineStatus(sponsorChain, { session } = {}) {
+export async function transitionUplineDownlineStatus(
+  sponsorChain,
+  { session } = {},
+) {
   if (!Array.isArray(sponsorChain) || sponsorChain.length === 0) return;
-  
+
   await MlmMembership.updateMany(
     { userId: { $in: sponsorChain } },
     { $inc: { activeDownlineCount: 1, inactiveDownlineCount: -1 } },
@@ -526,11 +544,15 @@ export async function createOrGetMembership(
   // signup. Loads the Customer row inside the same session so a
   // race between userId assignment (in `issueCustomerOtp`) and
   // membership creation never produces an empty referralCode.
-  const customer = await Customer.findById(userId, { userId: 1 }, {
-    ...(session ? { session } : {}),
-    // Customer's pre-find filter hides tombstoned rows; we definitely
-    // don't want to attach a membership to a deleted customer.
-  });
+  const customer = await Customer.findById(
+    userId,
+    { userId: 1 },
+    {
+      ...(session ? { session } : {}),
+      // Customer's pre-find filter hides tombstoned rows; we definitely
+      // don't want to attach a membership to a deleted customer.
+    },
+  );
   if (!customer) {
     const err = new Error(`Customer ${userId} not found`);
     err.statusCode = 404;
@@ -601,10 +623,14 @@ export async function assignSponsor({
     throw new Error("Membership already has a sponsor");
   }
 
-  const code = String(sponsorReferralCode || "").trim().toUpperCase();
+  const code = String(sponsorReferralCode || "")
+    .trim()
+    .toUpperCase();
   if (!code) return membership; // silent no-op for missing code
 
-  const sponsorMembership = await getMembershipByReferralCode(code, { session });
+  const sponsorMembership = await getMembershipByReferralCode(code, {
+    session,
+  });
   if (!sponsorMembership) return membership; // silent no-op for unknown code
 
   if (String(sponsorMembership.userId) === String(membership.userId)) {
@@ -613,7 +639,9 @@ export async function assignSponsor({
 
   membership.sponsorId = sponsorMembership.userId;
   membership.sponsorMembershipId = sponsorMembership._id;
-  membership.sponsorChain = await buildSponsorChain(sponsorMembership, { session });
+  membership.sponsorChain = await buildSponsorChain(sponsorMembership, {
+    session,
+  });
 
   const placement = await placeInBinaryTree({
     newMembership: membership,
@@ -625,8 +653,14 @@ export async function assignSponsor({
 
   await membership.save({ session });
 
-  await incrementDirectReferralCount(sponsorMembership.userId, { session, status: membership.status });
-  await incrementUplineDownlineCounts(membership.sponsorChain, { session, status: membership.status });
+  await incrementDirectReferralCount(sponsorMembership.userId, {
+    session,
+    status: membership.status,
+  });
+  await incrementUplineDownlineCounts(membership.sponsorChain, {
+    session,
+    status: membership.status,
+  });
 
   // Plan A binary pair bonus: bump the sponsor's leg-direct counter
   // for whichever subtree of the sponsor the new member landed in.
@@ -658,7 +692,10 @@ export async function assignSponsor({
 export async function getUplineChain(userId, maxDepth, { session } = {}) {
   const membership = await getMembershipByUserId(userId, { session });
   if (!membership) return [];
-  const chain = (membership.sponsorChain || []).slice(0, Math.max(0, maxDepth || 0));
+  const chain = (membership.sponsorChain || []).slice(
+    0,
+    Math.max(0, maxDepth || 0),
+  );
   if (chain.length === 0) return [];
   const memberships = await MlmMembership.find(
     { userId: { $in: chain }, status: MLM_MEMBERSHIP_STATUS.ACTIVE },
@@ -716,8 +753,9 @@ export async function recordLifetimeEarning({
 }) {
   if (!userId || !amount || amount <= 0) return null;
   const inc = {
-    [planType === MLM_PLAN_TYPE.B ? "lifetimePlanBEarnings" : "lifetimePlanAEarnings"]:
-      amount,
+    [planType === MLM_PLAN_TYPE.B
+      ? "lifetimePlanBEarnings"
+      : "lifetimePlanAEarnings"]: amount,
   };
   const updated = await MlmMembership.findOneAndUpdate(
     { userId },

@@ -311,20 +311,43 @@ export const getEarningsSummary = async (req, res) => {
 
     const [totalCredited, totalThisMonth, byType, wallet] = await Promise.all([
       MlmCommissionEvent.aggregate([
-        { $match: { recipientId: new mongoose.Types.ObjectId(userId) } },
+        {
+          $match: {
+            recipientId: new mongoose.Types.ObjectId(userId),
+            status: {
+              $nin: [
+                MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
+              ],
+            },
+          },
+        },
         { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
       ]),
       MlmCommissionEvent.aggregate([
         {
           $match: {
             recipientId: new mongoose.Types.ObjectId(userId),
+            status: {
+              $nin: [
+                MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
+              ],
+            },
             createdAt: { $gte: new Date(today.getFullYear(), today.getMonth(), 1) },
           },
         },
         { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
       ]),
       MlmCommissionEvent.aggregate([
-        { $match: { recipientId: new mongoose.Types.ObjectId(userId) } },
+        {
+          $match: {
+            recipientId: new mongoose.Types.ObjectId(userId),
+            status: {
+              $nin: [
+                MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
+              ],
+            },
+          },
+        },
         {
           $group: {
             _id: "$bonusType",
@@ -365,7 +388,14 @@ export const getEarningsHistory = async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
     const skip = (page - 1) * limit;
 
-    const query = { recipientId: userId };
+    const query = {
+      recipientId: userId,
+      status: {
+        $nin: [
+          MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
+        ],
+      },
+    };
     if (req.query.bonusType) query.bonusType = req.query.bonusType;
     if (req.query.status) query.status = req.query.status;
 

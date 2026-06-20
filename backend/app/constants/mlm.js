@@ -90,6 +90,10 @@ export const MLM_COMMISSION_EVENT_STATUS = {
   // downline activates and `releaseHeldPairBonusesForDownlineActivation`
   // flips it to `CREDITED` inside the activation transaction.
   HELD_AWAITING_DOWNLINE_ACTIVATION: "held_awaiting_downline_activation",
+  // Signup bonus held while the direct sponsor is still
+  // REGISTERED_UNPAID. Neither sponsor nor referral sees the amount
+  // until the sponsor activates Plan A.
+  HELD_AWAITING_SPONSOR_ACTIVATION: "held_awaiting_sponsor_activation",
 };
 export const ALL_MLM_COMMISSION_EVENT_STATUSES = Object.values(MLM_COMMISSION_EVENT_STATUS);
 
