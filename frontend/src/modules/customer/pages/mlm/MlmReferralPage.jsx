@@ -4,6 +4,8 @@ import { Menu, Copy, Share2, Users, MessageCircle, Download, QrCode, ArrowLeft, 
 import { toast } from 'sonner';
 import { mlmApi } from '../../services/mlmApi';
 import { useMlmDrawer } from './MlmLayout';
+import TeamMemberSearch, { filterTeamMembersByQuery } from '../../../../shared/components/mlm/TeamMemberSearch';
+import MemberJoinedSubtitle from '../../../../shared/components/mlm/MemberJoinedSubtitle';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -20,6 +22,7 @@ const MlmReferralPage = () => {
     const [referrals, setReferrals] = useState([]);
     const [loading, setLoading] = useState(true);
     const [leg, setLeg] = useState('L');
+    const [searchInput, setSearchInput] = useState('');
 
     useEffect(() => {
         let mounted = true;
@@ -45,6 +48,11 @@ const MlmReferralPage = () => {
         })();
         return () => { mounted = false; };
     }, []);
+
+    const filteredReferrals = useMemo(
+        () => filterTeamMembersByQuery(referrals, searchInput),
+        [referrals, searchInput],
+    );
 
     if (loading) {
         return (
@@ -201,24 +209,41 @@ const MlmReferralPage = () => {
                         </div>
 
                         <div className="bg-white rounded-2xl border border-slate-200">
-                            <div className="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                            <div className="px-4 sm:px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                                     <Users size={18} /> Direct Referrals ({referrals.length})
                                 </h3>
+                                {referrals.length > 0 && (
+                                    <TeamMemberSearch
+                                        value={searchInput}
+                                        onChange={setSearchInput}
+                                        className="w-full sm:max-w-xs"
+                                    />
+                                )}
                             </div>
                             {referrals.length === 0 ? (
                                 <div className="px-5 py-10 text-center text-sm text-slate-500">
                                     No referrals yet. Share your code to start earning.
                                 </div>
+                            ) : filteredReferrals.length === 0 ? (
+                                <div className="px-5 py-10 text-center text-sm text-slate-500">
+                                    No referrals match your search.
+                                </div>
                             ) : (
                                 <ul className="divide-y divide-slate-100">
-                                    {referrals.map((r) => (
+                                    {filteredReferrals.map((r) => (
                                         <li key={r.userId} className="px-4 sm:px-5 py-3 flex items-center justify-between gap-3">
                                             <div className="min-w-0 flex-1">
                                                 <p className="text-sm font-semibold text-slate-900 truncate">{r.name || 'New member'}</p>
+                                                <MemberJoinedSubtitle joinedAt={r.joinedAt} className="text-[11px] text-slate-500 truncate" />
                                                 <p className="text-[11px] text-slate-500 truncate">
-                                                    Joined {new Date(r.joinedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                                                    {' · '}{referralPlanLabel(r)}
+                                                    {(r.publicUserId || r.referralCode) && (
+                                                        <>
+                                                            {r.publicUserId || r.referralCode}
+                                                            {' · '}
+                                                        </>
+                                                    )}
+                                                    {referralPlanLabel(r)}
                                                 </p>
                                             </div>
                                             <div className="text-right shrink-0">

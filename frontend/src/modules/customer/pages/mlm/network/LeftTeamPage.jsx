@@ -4,6 +4,9 @@ import { Menu, ArrowLeft, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import mlmApi from '../../../services/mlmApi';
 import { useMlmDrawer } from '../MlmLayout';
+import TeamMemberSearch from '../../../../../shared/components/mlm/TeamMemberSearch';
+import MemberJoinedSubtitle from '../../../../../shared/components/mlm/MemberJoinedSubtitle';
+import { formatMemberJoinedAt } from '../../../../../shared/utils/mlmMemberDisplay';
 
 const LeftTeamPage = () => {
     const navigate = useNavigate();
@@ -14,14 +17,30 @@ const LeftTeamPage = () => {
     const [total, setTotal] = useState(0);
     const [stats, setStats] = useState({ planA: 0, planB: 0, inactive: 0 });
     const [filter, setFilter] = useState('ALL');
+    const [searchInput, setSearchInput] = useState('');
+    const [search, setSearch] = useState('');
     const limit = 20;
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setSearch(searchInput.trim());
+            setPage(1);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchInput]);
 
     useEffect(() => {
         let mounted = true;
         (async () => {
             setLoading(true);
             try {
-                const res = await mlmApi.getLegTeam({ leg: 'L', page, limit, filter: filter !== 'ALL' ? filter : undefined });
+                const res = await mlmApi.getLegTeam({
+                    leg: 'L',
+                    page,
+                    limit,
+                    filter: filter !== 'ALL' ? filter : undefined,
+                    search: search || undefined,
+                });
                 const data = res.data?.result ?? res.data?.data ?? res.data;
                 if (mounted) {
                     setTeam(data.items || []);
@@ -40,7 +59,7 @@ const LeftTeamPage = () => {
             }
         })();
         return () => { mounted = false; };
-    }, [page, filter]);
+    }, [page, filter, search]);
 
     return (
         <div className="min-h-screen bg-slate-50 pb-24 md:pb-12">
@@ -72,6 +91,12 @@ const LeftTeamPage = () => {
                     </button>
                 </div>
 
+                <TeamMemberSearch
+                    value={searchInput}
+                    onChange={setSearchInput}
+                    className="max-w-md"
+                />
+
                 <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm whitespace-nowrap">
@@ -96,15 +121,16 @@ const LeftTeamPage = () => {
                                         <tr key={row.userId} className="hover:bg-slate-50/50 transition-colors">
                                             <td className="px-5 py-4">
                                                 <div className="font-semibold text-slate-900">{row.name || 'Unknown'}</div>
-                                                <div className="text-xs text-slate-500 font-mono mt-0.5">{row.referralCode}</div>
+                                                <div className="text-xs text-slate-500 font-mono mt-0.5">{row.publicUserId || row.referralCode}</div>
+                                                <MemberJoinedSubtitle joinedAt={row.joinedAt} className="text-[10px] text-slate-400 mt-0.5" />
                                             </td>
                                             <td className="px-5 py-4">
                                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${row.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                                                     {row.status === 'active' ? (row.planType === 'B' ? 'Plan B' : 'Plan A') : 'Member'}
                                                 </span>
                                             </td>
-                                            <td className="px-5 py-4 text-right text-slate-600">
-                                                {row.joinedAt ? new Date(row.joinedAt).toLocaleDateString() : '—'}
+                                            <td className="px-5 py-4 text-right text-slate-600 text-xs">
+                                                {formatMemberJoinedAt(row.joinedAt)}
                                             </td>
                                         </tr>
                                     ))

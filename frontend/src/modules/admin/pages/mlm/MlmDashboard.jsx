@@ -66,8 +66,8 @@ const MlmDashboard = () => {
                 <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <Kpi label="Total Members" value={data.totalMembers} icon={Users} color="bg-indigo-50 text-indigo-600" />
-                        <Kpi label="Plan A" value={data.planACount} icon={Award} color="bg-violet-50 text-violet-600" />
-                        <Kpi label="Plan B" value={data.planBCount} icon={Award} color="bg-amber-50 text-amber-600" />
+                        <Kpi label="Active Plan A" value={data.planACount} icon={Award} color="bg-violet-50 text-violet-600" />
+                        <Kpi label="Active Plan B" value={data.planBCount} icon={Award} color="bg-amber-50 text-amber-600" />
                         <Kpi label="Lifetime Payouts" value={formatINR(data.totalLifetimePayouts)} icon={Wallet} color="bg-emerald-50 text-emerald-600" />
                         <Kpi label="Pending Withdrawals" value={data.pendingWithdrawals} icon={Send} color="bg-orange-50 text-orange-600" />
                         <Kpi label="Pending Amount" value={formatINR(data.pendingWithdrawalsAmount)} icon={Wallet} color="bg-rose-50 text-rose-600" />

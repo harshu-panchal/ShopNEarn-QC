@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../../services/mlmApi";
+import MemberJoinedSubtitle from "../../../../shared/components/mlm/MemberJoinedSubtitle";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -177,6 +178,12 @@ const WalletHistoryPage = () => {
                               ? ` · ${row.metadata.referralUserId}`
                               : ""}
                           </span>
+                          {row.metadata.referralJoinedAt && (
+                            <MemberJoinedSubtitle
+                              joinedAt={row.metadata.referralJoinedAt}
+                              className="text-[10px] text-slate-500 mt-0.5"
+                            />
+                          )}
                         </p>
                       ) : (
                         row.description && (

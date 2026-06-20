@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw, Eye, EyeOff, Copy, LogIn, Trash2, X, Pencil, PauseCircle } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
 import GenealogyTreeCanvas from '@shared/components/mlm/GenealogyTreeCanvas';
+import MemberJoinedSubtitle from '@shared/components/mlm/MemberJoinedSubtitle';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDate = (d) => new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -697,6 +698,7 @@ const MlmMemberDetail = () => {
                     {data.sponsor && (
                         <Card title="Sponsor (L1 Upline)">
                             <Row label="Name" value={data.sponsor.name || '—'} />
+                            <Row label="Joined" value={formatDate(data.sponsor.joinedAt)} />
                             <Row label="Phone" value={data.sponsor.phone || '—'} />
                             <Row label="Email" value={data.sponsor.email || '—'} />
                             <Row label="Code" value={<code className="font-bold">{data.sponsor.referralCode || '—'}</code>} />
@@ -919,6 +921,7 @@ const MlmMemberDetail = () => {
                         <li key={row._id} className="py-2 flex items-center justify-between">
                             <div>
                                 <p className="font-semibold text-slate-800">{row.userId?.name || 'Unknown'} <span className="text-xs text-slate-500">· {row.userId?.phone || ''}</span></p>
+                                <MemberJoinedSubtitle joinedAt={row.joinedAt} className="text-[10px] text-slate-500" />
                                 <p className="text-[11px] text-slate-500">{row.referralCode} · {row.isMember ? `Plan ${row.planType}` : 'Member'}</p>
                             </div>
                             <Link to={`/admin/mlm/members/${row._id}`} className="text-xs font-bold text-indigo-600">View</Link>

@@ -44,6 +44,7 @@ import {
   createWithdrawalRequestSchema,
   validateMlmSchema,
 } from "../validation/mlmValidation.js";
+import { lookupMembershipJoinedAtByUserIds } from "../utils/mlmMemberJoinedAt.js";
 
 /* ===============================
    Customer-MLM-rebuild Phase 5 — helpers
@@ -251,12 +252,14 @@ export const getMyDirectReferrals = async (req, res) => {
       list.map(async (m) => {
         const customer = await mongoose
           .model("User")
-          .findById(m.userId, { name: 1, phone: 1, email: 1 })
+          .findById(m.userId, { name: 1, phone: 1, email: 1, userId: 1 })
           .lean();
         return {
           userId: m.userId,
           name: customer?.name || null,
           phone: customer?.phone || null,
+          referralCode: m.referralCode,
+          publicUserId: customer?.userId || m.referralCode || null,
           joinedAt: m.joinedAt,
           status: m.status,
           planType: m.planType,
@@ -376,8 +379,25 @@ export const getEarningsHistory = async (req, res) => {
       MlmCommissionEvent.countDocuments(query),
     ]);
 
+    const sourceIds = items
+      .map((row) => row.sourceUserId?._id || row.sourceUserId)
+      .filter(Boolean);
+    const joinedAtByUser = await lookupMembershipJoinedAtByUserIds(sourceIds);
+    const enrichedItems = items.map((row) => {
+      const source = row.sourceUserId;
+      if (!source || typeof source !== "object") return row;
+      const uid = String(source._id || source);
+      return {
+        ...row,
+        sourceUserId: {
+          ...source,
+          joinedAt: joinedAtByUser.get(uid) || null,
+        },
+      };
+    });
+
     return handleResponse(res, 200, "Earnings history", {
-      items,
+      items: enrichedItems,
       page,
       limit,
       total,
@@ -933,6 +953,12 @@ function shapeCustomerNode(member, position) {
     leftLegDirectCount: member.leftLegDirectCount || 0,
     rightLegDirectCount: member.rightLegDirectCount || 0,
     pairsCompleted: member.pairsCompleted || 0,
+    lastPaidPairIndex: member.lastPaidPairIndex || 0,
+    leftLegTeamActiveCount: member.leftLegTeamActiveCount || 0,
+    rightLegTeamActiveCount: member.rightLegTeamActiveCount || 0,
+    binaryPairsEligible: member.binaryPairsEligible || 0,
+    binaryLeftBalance: member.binaryLeftBalance || 0,
+    binaryRightBalance: member.binaryRightBalance || 0,
     lifetimePlanAEarnings: member.lifetimePlanAEarnings || 0,
     lifetimePlanBEarnings: member.lifetimePlanBEarnings || 0,
     left: null,
@@ -956,8 +982,13 @@ function shapeCustomerTree(node) {
   shaped.totalDownlineCount = shaped.leftLegTotalDownlineCount + shaped.rightLegTotalDownlineCount;
   shaped.activeDownlineCount = node.raw.trueBinaryActiveDownlineCount || 0;
   shaped.inactiveDownlineCount = node.raw.trueBinaryInactiveDownlineCount || 0;
-  shaped.pairsCompleted = node.raw.trueBinaryPairsCount || 0;
-  
+  // Pair stats come from the membership snapshot (team-active volumes +
+  // paid/eligible pair counters maintained by
+  // `mlmBinaryPairIncomeService`). Do NOT overwrite with
+  // `trueBinaryPairsCount` — that legacy tree-walk counts "both children
+  // exist" nodes and diverges wildly from the PHP-spec 2:1 / 1:1
+  // pairing algorithm the wallet engine actually uses.
+
   shaped.left = shapeCustomerTree(node.left);
   shaped.right = shapeCustomerTree(node.right);
   return shaped;
@@ -1169,6 +1200,7 @@ export const getMyBinaryGenealogy = async (req, res) => {
         name: u?.name || null,
         phone: maskPhoneForDownline(u?.phone || null),
         referralCode: m.referralCode,
+        publicUserId: u?.userId || m.referralCode || null,
         status: m.status,
         // `position` here is leg-of-root (matches the tree view).
         position: actualLeg || null,
@@ -1285,6 +1317,9 @@ export const getMyMatchingReport = async (req, res) => {
           .lean()
       : [];
     const userById = new Map(users.map((u) => [String(u._id), u]));
+    const joinedAtByUser = await lookupMembershipJoinedAtByUserIds(
+      Array.from(contributorIds),
+    );
 
     const shaped = items.map((ev) => {
       const left = ev.meta?.leftContributorUserId
@@ -1304,10 +1339,20 @@ export const getMyMatchingReport = async (req, res) => {
         createdAt: ev.createdAt,
         releasedAt: ev.releasedAt || null,
         left: left
-          ? { userId: left._id, name: left.name, phone: maskPhoneForDownline(left.phone) }
+          ? {
+              userId: left._id,
+              name: left.name,
+              phone: maskPhoneForDownline(left.phone),
+              joinedAt: joinedAtByUser.get(String(left._id)) || null,
+            }
           : null,
         right: right
-          ? { userId: right._id, name: right.name, phone: maskPhoneForDownline(right.phone) }
+          ? {
+              userId: right._id,
+              name: right.name,
+              phone: maskPhoneForDownline(right.phone),
+              joinedAt: joinedAtByUser.get(String(right._id)) || null,
+            }
           : null,
       };
     });
@@ -1565,9 +1610,10 @@ async function enrichWalletHistoryWithReferralDetails(items) {
   if (!referralIds.length) return items;
 
   const users = await Customer.find({ _id: { $in: referralIds } })
-    .select("name userId phone")
+    .select("name userId phone createdAt")
     .lean();
   const userById = new Map(users.map((u) => [String(u._id), u]));
+  const joinedAtByUser = await lookupMembershipJoinedAtByUserIds(referralIds);
 
   return items.map((row) => {
     if (row.type !== LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SPONSOR) {
@@ -1588,6 +1634,8 @@ async function enrichWalletHistoryWithReferralDetails(items) {
         referralName: referral.name || "Member",
         referralUserId: referral.userId || "",
         referralPhone: referral.phone || "",
+        referralJoinedAt:
+          joinedAtByUser.get(referralObjectId) || referral.createdAt || null,
       },
     };
   });
@@ -1671,6 +1719,43 @@ export const getMyWalletHistory = async (req, res) => {
  * GET /api/customer/mlm/network/leg-team
  * Fetch paginated members for a specific leg (L or R).
  */
+
+/** Minimum length before a team-list search is applied server-side. */
+const TEAM_SEARCH_MIN_LEN = 2;
+
+function parseTeamSearchQuery(raw) {
+  const term = String(raw || "").trim();
+  if (!term || term.length < TEAM_SEARCH_MIN_LEN) return "";
+  return term.toLowerCase();
+}
+
+async function loadCustomerRowsForMembers(members) {
+  if (!members.length) return new Map();
+  const userRows = await mongoose
+    .model("User")
+    .find(
+      { _id: { $in: members.map((d) => d.userId) } },
+      { name: 1, phone: 1, userId: 1 },
+    )
+    .lean();
+  return new Map(userRows.map((u) => [String(u._id), u]));
+}
+
+function filterMembersBySearch(members, userById, searchTerm) {
+  if (!searchTerm) return members;
+  return members.filter((m) => {
+    const u = userById.get(String(m.userId));
+    const name = (u?.name || "").toLowerCase();
+    const publicId = (u?.userId || "").toLowerCase();
+    const referralCode = (m.referralCode || "").toLowerCase();
+    return (
+      name.includes(searchTerm) ||
+      publicId.includes(searchTerm) ||
+      referralCode.includes(searchTerm)
+    );
+  });
+}
+
 export const getMyLegTeam = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -1752,14 +1837,22 @@ export const getMyLegTeam = async (req, res) => {
       filteredMembers = legMembers.filter(m => m.status !== 'active');
     }
 
+    const searchTerm = parseTeamSearchQuery(req.query.search);
+    let userByIdPrefetched = null;
+    if (searchTerm) {
+      userByIdPrefetched = await loadCustomerRowsForMembers(filteredMembers);
+      filteredMembers = filterMembersBySearch(
+        filteredMembers,
+        userByIdPrefetched,
+        searchTerm,
+      );
+    }
+
     const total = filteredMembers.length;
     const paginated = filteredMembers.slice((page - 1) * limit, page * limit);
 
-    const userRows = await mongoose
-      .model("User")
-      .find({ _id: { $in: paginated.map((d) => d.userId) } }, { name: 1, phone: 1 })
-      .lean();
-    const userById = new Map(userRows.map((u) => [String(u._id), u]));
+    const userById =
+      userByIdPrefetched || (await loadCustomerRowsForMembers(paginated));
 
     const items = paginated.map((m) => {
       const u = userById.get(String(m.userId));
@@ -1768,6 +1861,7 @@ export const getMyLegTeam = async (req, res) => {
         name: u?.name || null,
         phone: u?.phone || null,
         referralCode: m.referralCode,
+        publicUserId: u?.userId || m.referralCode || null,
         status: m.status,
         planType: m.planType,
         joinedAt: m.joinedAt || m.createdAt || null,
@@ -1859,14 +1953,22 @@ export const getMyLevelTeam = async (req, res) => {
       filteredMembers = levelMembers.filter(m => m.status !== 'active');
     }
 
+    const searchTerm = parseTeamSearchQuery(req.query.search);
+    let userByIdPrefetched = null;
+    if (searchTerm) {
+      userByIdPrefetched = await loadCustomerRowsForMembers(filteredMembers);
+      filteredMembers = filterMembersBySearch(
+        filteredMembers,
+        userByIdPrefetched,
+        searchTerm,
+      );
+    }
+
     const total = filteredMembers.length;
     const paginated = filteredMembers.slice((page - 1) * limit, page * limit);
 
-    const userRows = await mongoose
-      .model("User")
-      .find({ _id: { $in: paginated.map((d) => d.userId) } }, { name: 1, phone: 1 })
-      .lean();
-    const userById = new Map(userRows.map((u) => [String(u._id), u]));
+    const userById =
+      userByIdPrefetched || (await loadCustomerRowsForMembers(paginated));
 
     const items = paginated.map((m) => {
       const u = userById.get(String(m.userId));
@@ -1875,6 +1977,7 @@ export const getMyLevelTeam = async (req, res) => {
         name: u?.name || null,
         phone: u?.phone || null,
         referralCode: m.referralCode,
+        publicUserId: u?.userId || m.referralCode || null,
         status: m.status,
         planType: m.planType,
         joinedAt: m.joinedAt || m.createdAt || null,

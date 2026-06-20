@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { adminMlmApi } from "../../services/api/mlmApi";
+import MemberJoinedSubtitle from "../../../../shared/components/mlm/MemberJoinedSubtitle";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", {
@@ -235,6 +236,11 @@ const MlmJoiningReviews = () => {
                     <p className="text-xs text-slate-500">
                       {row.customer?.phone || "—"}
                     </p>
+                    <MemberJoinedSubtitle
+                      joinedAt={row.customer?.registeredAt}
+                      prefix="Registered "
+                      className="text-[10px] text-slate-400 mt-0.5"
+                    />
                   </td>
                   <td className="px-4 py-3 text-right font-bold">
                     {formatINR(row.amount)}
@@ -450,6 +456,11 @@ const ReviewModal = ({
               <p className="text-xs text-slate-500">
                 {row.customer?.phone || "—"}
               </p>
+              <MemberJoinedSubtitle
+                joinedAt={row.customer?.registeredAt}
+                prefix="Registered "
+                className="text-[10px] text-slate-400"
+              />
               {row.customer?.email && (
                 <p className="text-xs text-slate-500">{row.customer.email}</p>
               )}

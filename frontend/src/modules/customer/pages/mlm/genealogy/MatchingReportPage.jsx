@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Loader2, ChevronLeft, ChevronRight, ArrowLeft, ArrowRight, Hourglass, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../../services/mlmApi";
+import MemberJoinedSubtitle from "../../../../shared/components/mlm/MemberJoinedSubtitle";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -150,15 +151,21 @@ const ContributorChip = ({ label, icon, accent, contributor }) => {
   };
   return (
     <div
-      className={`flex items-center gap-1.5 border rounded-lg px-2 py-1.5 ${accents[accent]}`}
+      className={`flex flex-col gap-0.5 border rounded-lg px-2 py-1.5 min-w-0 ${accents[accent]}`}
     >
-      {icon}
-      <span className="text-[10px] font-bold uppercase tracking-wider">
-        {label}
-      </span>
-      <span className="text-xs font-bold truncate flex-1 text-slate-900">
-        {contributor?.name || "—"}
-      </span>
+      <div className="flex items-center gap-1.5 min-w-0">
+        {icon}
+        <span className="text-[10px] font-bold uppercase tracking-wider shrink-0">
+          {label}
+        </span>
+        <span className="text-xs font-bold truncate text-slate-900">
+          {contributor?.name || "—"}
+        </span>
+      </div>
+      <MemberJoinedSubtitle
+        joinedAt={contributor?.joinedAt}
+        className="text-[9px] text-slate-500 truncate pl-5"
+      />
     </div>
   );
 };

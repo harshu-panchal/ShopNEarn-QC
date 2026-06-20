@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Payout from "../../models/payout.js";
 import MlmWithdrawalRequest from "../../models/mlmWithdrawalRequest.js";
+import { lookupMembershipJoinedAtByUserIds } from "../../utils/mlmMemberJoinedAt.js";
 import MlmMembership from "../../models/mlmMembership.js";
 import {
   LEDGER_TRANSACTION_TYPE,
@@ -490,8 +491,21 @@ export async function listWithdrawalsForAdmin({ page = 1, limit = 25, status, q 
       })
     : itemsRaw;
 
+  const userIds = filtered
+    .map((row) => row.userId?._id || row.userId)
+    .filter(Boolean);
+  const joinedAtByUser = await lookupMembershipJoinedAtByUserIds(userIds);
+
+  const items = filtered.map((row) => {
+    const uid = String(row.userId?._id || row.userId || "");
+    return {
+      ...row,
+      memberJoinedAt: joinedAtByUser.get(uid) || null,
+    };
+  });
+
   return {
-    items: filtered,
+    items,
     page: safePage,
     limit: safeLimit,
     total,

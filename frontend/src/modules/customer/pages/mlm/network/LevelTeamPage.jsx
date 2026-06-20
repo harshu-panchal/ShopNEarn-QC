@@ -4,6 +4,9 @@ import { Menu, ArrowLeft, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import mlmApi from '../../../services/mlmApi';
 import { useMlmDrawer } from '../MlmLayout';
+import TeamMemberSearch from '../../../../../shared/components/mlm/TeamMemberSearch';
+import MemberJoinedSubtitle from '../../../../../shared/components/mlm/MemberJoinedSubtitle';
+import { formatMemberJoinedAt } from '../../../../../shared/utils/mlmMemberDisplay';
 
 const MAX_LEVEL = 15;
 
@@ -32,7 +35,17 @@ const LevelTeamPage = () => {
     const [levelCounts, setLevelCounts] = useState({});
     const [filter, setFilter] = useState('ALL');
     const [level, setLevel] = useState('ALL');
+    const [searchInput, setSearchInput] = useState('');
+    const [search, setSearch] = useState('');
     const limit = 20;
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setSearch(searchInput.trim());
+            setPage(1);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchInput]);
 
     useEffect(() => {
         let mounted = true;
@@ -44,6 +57,7 @@ const LevelTeamPage = () => {
                     page,
                     limit,
                     filter: filter !== 'ALL' ? filter : undefined,
+                    search: search || undefined,
                 });
                 const data = res.data?.result ?? res.data?.data ?? res.data;
                 if (mounted) {
@@ -64,7 +78,7 @@ const LevelTeamPage = () => {
             }
         })();
         return () => { mounted = false; };
-    }, [page, level, filter]);
+    }, [page, level, filter, search]);
 
     const levelsWithMembers = [...Array(MAX_LEVEL)]
         .map((_, i) => i + 1)
@@ -151,6 +165,12 @@ const LevelTeamPage = () => {
                     </div>
                 </div>
 
+                <TeamMemberSearch
+                    value={searchInput}
+                    onChange={setSearchInput}
+                    className="max-w-md"
+                />
+
                 <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm whitespace-nowrap">
@@ -178,7 +198,8 @@ const LevelTeamPage = () => {
                                         <tr key={row.userId} className="hover:bg-slate-50/50 transition-colors">
                                             <td className="px-5 py-4">
                                                 <div className="font-semibold text-slate-900">{row.name || 'Unknown'}</div>
-                                                <div className="text-xs text-slate-500 font-mono mt-0.5">{row.referralCode}</div>
+                                                <div className="text-xs text-slate-500 font-mono mt-0.5">{row.publicUserId || row.referralCode}</div>
+                                                <MemberJoinedSubtitle joinedAt={row.joinedAt} className="text-[10px] text-slate-400 mt-0.5" />
                                             </td>
                                             <td className="px-5 py-4">
                                                 <div className="inline-flex items-center justify-center min-w-[2rem] h-6 px-2 rounded-full bg-slate-100 text-xs font-bold text-slate-700">
@@ -190,8 +211,8 @@ const LevelTeamPage = () => {
                                                     {referralPlanLabel(row)}
                                                 </span>
                                             </td>
-                                            <td className="px-5 py-4 text-right text-slate-600">
-                                                {row.joinedAt ? new Date(row.joinedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                                            <td className="px-5 py-4 text-right text-slate-600 text-xs">
+                                                {formatMemberJoinedAt(row.joinedAt)}
                                             </td>
                                         </tr>
                                     ))

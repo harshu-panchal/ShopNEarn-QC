@@ -18,6 +18,7 @@ import {
   MLM_PLAN_TYPE,
 } from "../../constants/mlm.js";
 import { LEDGER_TRANSACTION_TYPE, OWNER_TYPE } from "../../constants/finance.js";
+import { lookupMembershipJoinedAtByUserIds } from "../../utils/mlmMemberJoinedAt.js";
 import {
   approveWithdrawalRequest,
   listWithdrawalsForAdmin,
@@ -55,6 +56,7 @@ const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "10", 10);
  * GET /api/admin/mlm/dashboard
  * Top-level KPIs for the MLM module: member counts, lifetime payouts,
  * pending withdrawals, and today's daily-cap usage.
+ * Plan A / Plan B counts include only ACTIVE memberships.
  */
 export const getMlmDashboard = async (req, res) => {
   try {
@@ -74,8 +76,14 @@ export const getMlmDashboard = async (req, res) => {
       pendingClawbackAgg,
     ] = await Promise.all([
       MlmMembership.countDocuments({}),
-      MlmMembership.countDocuments({ planType: MLM_PLAN_TYPE.A }),
-      MlmMembership.countDocuments({ planType: MLM_PLAN_TYPE.B }),
+      MlmMembership.countDocuments({
+        planType: MLM_PLAN_TYPE.A,
+        status: MLM_MEMBERSHIP_STATUS.ACTIVE,
+      }),
+      MlmMembership.countDocuments({
+        planType: MLM_PLAN_TYPE.B,
+        status: MLM_MEMBERSHIP_STATUS.ACTIVE,
+      }),
       MlmCommissionEvent.aggregate([
         { $match: { status: "credited" } },
         { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
@@ -248,7 +256,7 @@ export const listMlmMembers = async (req, res) => {
       const sponsors = await MlmMembership.find({
         userId: { $in: sponsorIds },
       })
-        .select({ userId: 1, referralCode: 1 })
+        .select({ userId: 1, referralCode: 1, joinedAt: 1, createdAt: 1 })
         .populate("userId", "name phone userId")
         .lean();
       sponsorMap = new Map(
@@ -266,6 +274,7 @@ export const listMlmMembers = async (req, res) => {
               phone: sp.userId?.phone || null,
               userId: sp.userId?.userId || null,
               referralCode: sp.referralCode || null,
+              joinedAt: sp.joinedAt || sp.createdAt || null,
             };
           })()
         : null,
@@ -371,6 +380,7 @@ export const getMlmMemberDetail = async (req, res) => {
             referralCode: sponsorMembership.referralCode || null,
             planType: sponsorMembership.planType || null,
             status: sponsorMembership.status || null,
+            joinedAt: sponsorMembership.joinedAt || sponsorMembership.createdAt || null,
           }
         : null,
       heldBonusEvents,
@@ -1112,6 +1122,12 @@ function shapeAdminNode(member, position) {
     leftLegDirectCount: member.leftLegDirectCount || 0,
     rightLegDirectCount: member.rightLegDirectCount || 0,
     pairsCompleted: member.pairsCompleted || 0,
+    lastPaidPairIndex: member.lastPaidPairIndex || 0,
+    leftLegTeamActiveCount: member.leftLegTeamActiveCount || 0,
+    rightLegTeamActiveCount: member.rightLegTeamActiveCount || 0,
+    binaryPairsEligible: member.binaryPairsEligible || 0,
+    binaryLeftBalance: member.binaryLeftBalance || 0,
+    binaryRightBalance: member.binaryRightBalance || 0,
     lifetimePlanAEarnings: member.lifetimePlanAEarnings || 0,
     lifetimePlanBEarnings: member.lifetimePlanBEarnings || 0,
     left: null,
@@ -1124,12 +1140,15 @@ function shapeAdminTree(node) {
   const shaped = shapeAdminNode(node.raw, node.position);
   shaped.leftLegTotalDownlineCount = node.raw.trueLeftLegTotalDownlineCount || 0;
   shaped.rightLegTotalDownlineCount = node.raw.trueRightLegTotalDownlineCount || 0;
-  
+  shaped.leftLegActiveDownlineCount = node.raw.trueLeftLegActiveDownlineCount || 0;
+  shaped.rightLegActiveDownlineCount = node.raw.trueRightLegActiveDownlineCount || 0;
+
   shaped.totalDownlineCount = shaped.leftLegTotalDownlineCount + shaped.rightLegTotalDownlineCount;
   shaped.activeDownlineCount = node.raw.trueBinaryActiveDownlineCount || 0;
   shaped.inactiveDownlineCount = node.raw.trueBinaryInactiveDownlineCount || 0;
-  shaped.pairsCompleted = node.raw.trueBinaryPairsCount || 0;
-  
+  // See customer `shapeCustomerTree` — pair counters stay on the
+  // membership snapshot; do not replace with `trueBinaryPairsCount`.
+
   shaped.left = shapeAdminTree(node.left);
   shaped.right = shapeAdminTree(node.right);
   return shaped;
@@ -1452,7 +1471,7 @@ export const listJoiningReviews = async (req, res) => {
     const customers = customerIds.length
       ? await Customer.find(
           { _id: { $in: customerIds } },
-          { name: 1, phone: 1, email: 1 },
+          { name: 1, phone: 1, email: 1, createdAt: 1 },
         ).lean()
       : [];
     const customerMap = new Map(customers.map((c) => [String(c._id), c]));
@@ -1487,6 +1506,7 @@ export const listJoiningReviews = async (req, res) => {
           name: c.name || null,
           phone: c.phone || null,
           email: c.email || null,
+          registeredAt: c.createdAt || null,
         },
         sponsorReferralCode: row.sponsorReferralCodeSnapshot || null,
         amount: row.joiningPriceSnapshot,

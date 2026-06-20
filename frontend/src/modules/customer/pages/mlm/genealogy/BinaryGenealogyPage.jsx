@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Loader2, ArrowLeft, ArrowRight, User, ChevronDown, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../../services/mlmApi";
+import MemberJoinedSubtitle from "../../../../shared/components/mlm/MemberJoinedSubtitle";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -173,6 +174,7 @@ const LegList = ({ title, accentColor, icon, items }) => {
                     </p>
                     <StatusBadge status={item.status} />
                   </div>
+                  <MemberJoinedSubtitle joinedAt={item.joinedAt} className="text-[10px] text-slate-400" />
                   <p className="text-[11px] text-slate-500 truncate">
                     {item.phone || "—"} • code{" "}
                     <code className="font-mono">{item.referralCode}</code>

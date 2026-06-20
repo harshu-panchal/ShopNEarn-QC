@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { TrendingUp, ArrowDownLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../../services/mlmApi";
+import MemberJoinedSubtitle from "../../../../shared/components/mlm/MemberJoinedSubtitle";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -222,6 +223,12 @@ const MyEarningsPage = () => {
                           From: {row.sourceUserId.name || "User"}{" "}
                           {row.sourceUserId.userId ? `(${row.sourceUserId.userId})` : ""}
                         </p>
+                      )}
+                      {row.sourceUserId?.joinedAt && (
+                        <MemberJoinedSubtitle
+                          joinedAt={row.sourceUserId.joinedAt}
+                          className="text-[10px] text-slate-500"
+                        />
                       )}
                       <p className="text-[11px] text-slate-500 mt-0.5">
                         {formatDate(row.createdAt)}

@@ -31,6 +31,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
+import { formatMemberJoinedAt } from "../../utils/mlmMemberDisplay";
 
 /**
  * GenealogyTreeCanvas — reusable interactive binary-tree canvas.
@@ -1384,11 +1385,12 @@ const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
   const status = data.status || "unknown";
   const planType = data.planType || "—";
   const joinedAt = data.planAJoinedAt || data.joinedAt || null;
+  const leftActive = Number(data.leftLegActiveDownlineCount ?? 0);
+  const rightActive = Number(data.rightLegActiveDownlineCount ?? 0);
   const left = Number(data.leftLegTotalDownlineCount || 0);
-  const leftActive = Number(data.leftLegActiveDownlineCount || 0);
   const right = Number(data.rightLegTotalDownlineCount || 0);
-  const rightActive = Number(data.rightLegActiveDownlineCount || 0);
-  const pairs = Number(data.pairsCompleted || 0);
+  const pairsPaid = Number(data.pairsCompleted || 0);
+  const pairsEligible = Number(data.binaryPairsEligible ?? pairsPaid);
   const totalDownline = Number(data.totalDownlineCount || 0);
   const activeDownline = Number(data.activeDownlineCount || 0);
   const inactiveDownline = Number(data.inactiveDownlineCount || 0);
@@ -1412,18 +1414,6 @@ const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
 
   const fmtMoney = (n) =>
     `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
-  const fmtDate = (d) => {
-    if (!d) return "—";
-    try {
-      return new Date(d).toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
-    } catch {
-      return "—";
-    }
-  };
 
   return (
     <div
@@ -1497,7 +1487,7 @@ const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
           <TooltipRow
             icon={<Calendar size={13} className="text-slate-400" />}
             label="Joined"
-            value={fmtDate(joinedAt)}
+            value={formatMemberJoinedAt(joinedAt)}
           />
           {phone && (
             <TooltipRow
@@ -1515,24 +1505,44 @@ const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
           )}
         </div>
 
-        {/* Leg stats. */}
+        {/* Leg stats — total downline with active count in parentheses
+            (same format as the Binary Network dashboard). */}
         <div className="px-4 py-3 border-t border-slate-100 grid grid-cols-3 gap-1.5">
           <Stat
             icon={<ChevronLeft size={11} />}
-            label="Left"
-            value={<>{left} <span className="opacity-70 text-[10px]">({leftActive})</span></>}
+            label="Left Leg"
+            value={
+              <>
+                {left}{" "}
+                <span className="opacity-70 text-[10px]">({leftActive})</span>
+              </>
+            }
             tone="emerald"
           />
           <Stat
             icon={<ChevronRight size={11} />}
-            label="Right"
-            value={<>{right} <span className="opacity-70 text-[10px]">({rightActive})</span></>}
+            label="Right Leg"
+            value={
+              <>
+                {right}{" "}
+                <span className="opacity-70 text-[10px]">({rightActive})</span>
+              </>
+            }
             tone="indigo"
           />
           <Stat
             icon={<Users size={11} />}
             label="Pairs"
-            value={pairs}
+            value={
+              pairsEligible > pairsPaid ? (
+                <>
+                  {pairsPaid}{" "}
+                  <span className="opacity-70 text-[10px]">/ {pairsEligible}</span>
+                </>
+              ) : (
+                pairsPaid
+              )
+            }
             tone="amber"
           />
         </div>

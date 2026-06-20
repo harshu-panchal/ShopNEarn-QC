@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
+import MemberJoinedSubtitle from '../../../../shared/components/mlm/MemberJoinedSubtitle';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDate = (d) => new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -111,6 +112,7 @@ const MlmWithdrawals = () => {
                                 <td className="px-4 py-3">
                                     <p className="font-semibold text-slate-900">{row.userId?.name || 'Unknown'}</p>
                                     <p className="text-xs text-slate-500">{row.userId?.phone || '-'}</p>
+                                    <MemberJoinedSubtitle joinedAt={row.memberJoinedAt} className="text-[10px] text-slate-400 mt-0.5" />
                                 </td>
                                 <td className="px-4 py-3 text-right font-bold">{formatINR(row.amount)}</td>
                                 <td className="px-4 py-3 text-right font-bold text-emerald-700">{formatINR(row.netPayoutAmount)}</td>

@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { Search, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminMlmApi } from '../../services/api/mlmApi';
+import { formatMemberJoinedAt } from '../../../../shared/utils/mlmMemberDisplay';
+import MemberJoinedSubtitle from '../../../../shared/components/mlm/MemberJoinedSubtitle';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -164,6 +166,7 @@ const MlmMembers = () => {
                                 <td className="px-4 py-3">
                                     <p className="font-semibold text-slate-900">{m.userId?.name || 'Unknown'}</p>
                                     <p className="text-xs text-slate-500">{m.userId?.phone || '-'}</p>
+                                    <MemberJoinedSubtitle joinedAt={m.joinedAt} className="text-[10px] text-slate-400 mt-0.5" />
                                 </td>
                                 <td className="px-4 py-3 text-xs text-slate-600 truncate max-w-[180px]">
                                     {m.userId?.email || <span className="text-slate-400">—</span>}
@@ -188,6 +191,12 @@ const MlmMembers = () => {
                                         <>
                                             <p className="font-semibold text-slate-800 truncate max-w-[140px]">{m.sponsor.name || 'Unknown'}</p>
                                             <code className="text-[10px] text-slate-500">{m.sponsor.referralCode || '—'}</code>
+                                            {m.sponsor.joinedAt && (
+                                                <MemberJoinedSubtitle
+                                                    joinedAt={m.sponsor.joinedAt}
+                                                    className="text-[9px] text-slate-400"
+                                                />
+                                            )}
                                         </>
                                     ) : (
                                         <span className="text-slate-400">—</span>
@@ -197,8 +206,8 @@ const MlmMembers = () => {
                                 <td className="px-4 py-3 text-right font-semibold">
                                     {formatINR((m.lifetimePlanAEarnings || 0) + (m.lifetimePlanBEarnings || 0))}
                                 </td>
-                                <td className="px-4 py-3 text-xs text-slate-600">
-                                    {new Date(m.joinedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
+                                    {formatMemberJoinedAt(m.joinedAt)}
                                 </td>
                                 <td className="px-4 py-3 text-right">
                                     <div className="flex items-center justify-end gap-2">
