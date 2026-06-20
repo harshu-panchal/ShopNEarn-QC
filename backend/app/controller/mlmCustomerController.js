@@ -44,7 +44,10 @@ import {
   createWithdrawalRequestSchema,
   validateMlmSchema,
 } from "../validation/mlmValidation.js";
-import { lookupMembershipJoinedAtByUserIds } from "../utils/mlmMemberJoinedAt.js";
+import {
+  lookupMembershipJoinedAtByUserIds,
+  resolveMemberRegistrationAt,
+} from "../utils/mlmMemberJoinedAt.js";
 
 /* ===============================
    Customer-MLM-rebuild Phase 5 — helpers
@@ -81,7 +84,7 @@ function todayIstDateString(now = new Date()) {
 export const getMyMembership = async (req, res) => {
   try {
     const userId = req.user.id;
-    const [membership, wallet, cfg] = await Promise.all([
+    const [membership, wallet, cfg, registeredAtMap] = await Promise.all([
       getMembershipByUserId(userId),
       Wallet.findOne(
         { ownerType: OWNER_TYPE.CUSTOMER, ownerId: userId },
@@ -93,7 +96,9 @@ export const getMyMembership = async (req, res) => {
         },
       ).lean(),
       getMlmConfig(),
+      lookupMembershipJoinedAtByUserIds([userId]),
     ]);
+    const registeredAt = registeredAtMap.get(String(userId)) || null;
 
     // Compute the next-pair payout preview so the dashboard can show
     // "complete your next pair to earn ₹X" without the frontend having
@@ -135,7 +140,8 @@ export const getMyMembership = async (req, res) => {
             referralCode: membership.referralCode,
             planType: membership.planType,
             status: membership.status,
-            joinedAt: membership.joinedAt,
+            joinedAt: registeredAt,
+            registeredAt,
             planAJoinedAt: membership.planAJoinedAt,
             planBJoinedAt: membership.planBJoinedAt,
             directReferralsCount: membership.directReferralsCount || 0,
@@ -252,7 +258,7 @@ export const getMyDirectReferrals = async (req, res) => {
       list.map(async (m) => {
         const customer = await mongoose
           .model("User")
-          .findById(m.userId, { name: 1, phone: 1, email: 1, userId: 1 })
+          .findById(m.userId, { name: 1, phone: 1, email: 1, userId: 1, createdAt: 1 })
           .lean();
         return {
           userId: m.userId,
@@ -260,7 +266,7 @@ export const getMyDirectReferrals = async (req, res) => {
           phone: customer?.phone || null,
           referralCode: m.referralCode,
           publicUserId: customer?.userId || m.referralCode || null,
-          joinedAt: m.joinedAt,
+          joinedAt: customer?.createdAt || m.createdAt || null,
           status: m.status,
           planType: m.planType,
           directReferralsCount: m.directReferralsCount || 0,
@@ -685,7 +691,7 @@ export const getDashboardOverview = async (req, res) => {
     monthStart.setUTCHours(0, 0, 0, 0);
     monthStart.setUTCDate(1);
 
-    const [membership, wallet, cfg] = await Promise.all([
+    const [membership, wallet, cfg, registeredAtMap] = await Promise.all([
       getMembershipByUserId(userId),
       Wallet.findOne(
         { ownerType: OWNER_TYPE.CUSTOMER, ownerId: userId },
@@ -697,7 +703,9 @@ export const getDashboardOverview = async (req, res) => {
         },
       ).lean(),
       getMlmConfig(),
+      lookupMembershipJoinedAtByUserIds([userId]),
     ]);
+    const registeredAt = registeredAtMap.get(String(userId)) || null;
 
     const pairsCompleted = membership?.pairsCompleted || 0;
     const nextPairBonusAmount = membership
@@ -872,7 +880,8 @@ export const getDashboardOverview = async (req, res) => {
             isActive: membership.status === MLM_MEMBERSHIP_STATUS.ACTIVE,
             isRegisteredUnpaid:
               membership.status === MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
-            joinedAt: membership.joinedAt,
+            joinedAt: registeredAt,
+            registeredAt,
             planAJoinedAt: membership.planAJoinedAt,
             planBJoinedAt: membership.planBJoinedAt,
             sponsorId: membership.sponsorId || null,
@@ -974,7 +983,8 @@ function shapeCustomerNode(member, position) {
     planType: member.planType,
     status: member.status,
     position,
-    joinedAt: member.joinedAt,
+    joinedAt: resolveMemberRegistrationAt(member),
+    registeredAt: resolveMemberRegistrationAt(member),
     planAJoinedAt: member.planAJoinedAt || null,
     directReferralsCount: member.directReferralsCount || 0,
     totalDownlineCount: member.totalDownlineCount || 0,
@@ -1211,7 +1221,7 @@ export const getMyBinaryGenealogy = async (req, res) => {
 
     const userRows = await mongoose
       .model("User")
-      .find({ _id: { $in: descendants.map((d) => d.userId) } }, { name: 1, phone: 1 })
+      .find({ _id: { $in: descendants.map((d) => d.userId) } }, { name: 1, phone: 1, userId: 1, createdAt: 1 })
       .lean();
     const userById = new Map(userRows.map((u) => [String(u._id), u]));
 
@@ -1234,7 +1244,7 @@ export const getMyBinaryGenealogy = async (req, res) => {
         status: m.status,
         // `position` here is leg-of-root (matches the tree view).
         position: actualLeg || null,
-        joinedAt: m.joinedAt || m.createdAt || null,
+        joinedAt: u?.createdAt || m.createdAt || null,
         subtreeCount: m.totalDownlineCount || 0,
         activeDownlineCount: m.activeDownlineCount || 0,
         inactiveDownlineCount: m.inactiveDownlineCount || 0,
@@ -1425,7 +1435,7 @@ export const getMyDirectSponsor = async (req, res) => {
       }
       const sponsorUser = await mongoose
         .model("User")
-        .findById(sponsorMembership.userId, { name: 1, phone: 1 })
+        .findById(sponsorMembership.userId, { name: 1, phone: 1, createdAt: 1 })
         .lean();
       return handleResponse(res, 200, "Direct sponsor", {
         sponsor: {
@@ -1435,14 +1445,15 @@ export const getMyDirectSponsor = async (req, res) => {
           referralCode: sponsorMembership.referralCode,
           status: sponsorMembership.status,
           planType: sponsorMembership.planType,
-          joinedAt: sponsorMembership.joinedAt,
+          joinedAt:
+            sponsorUser?.createdAt || sponsorMembership.createdAt || null,
         },
       });
     }
     const sponsor = chain[0];
     const sponsorUser = await mongoose
       .model("User")
-      .findById(sponsor.userId, { name: 1, phone: 1 })
+      .findById(sponsor.userId, { name: 1, phone: 1, createdAt: 1 })
       .lean();
     return handleResponse(res, 200, "Direct sponsor", {
       sponsor: {
@@ -1452,7 +1463,7 @@ export const getMyDirectSponsor = async (req, res) => {
         referralCode: sponsor.referralCode,
         status: sponsor.status,
         planType: sponsor.planType,
-        joinedAt: sponsor.joinedAt,
+        joinedAt: sponsorUser?.createdAt || sponsor.createdAt || null,
       },
     });
   } catch (error) {
@@ -1765,7 +1776,7 @@ async function loadCustomerRowsForMembers(members) {
     .model("User")
     .find(
       { _id: { $in: members.map((d) => d.userId) } },
-      { name: 1, phone: 1, userId: 1 },
+      { name: 1, phone: 1, userId: 1, createdAt: 1 },
     )
     .lean();
   return new Map(userRows.map((u) => [String(u._id), u]));
@@ -1894,7 +1905,7 @@ export const getMyLegTeam = async (req, res) => {
         publicUserId: u?.userId || m.referralCode || null,
         status: m.status,
         planType: m.planType,
-        joinedAt: m.joinedAt || m.createdAt || null,
+        joinedAt: u?.createdAt || m.createdAt || null,
         leftLegDirectCount: m.leftLegDirectCount || 0,
         rightLegDirectCount: m.rightLegDirectCount || 0,
         isMember: m.status === 'active',
@@ -2010,7 +2021,7 @@ export const getMyLevelTeam = async (req, res) => {
         publicUserId: u?.userId || m.referralCode || null,
         status: m.status,
         planType: m.planType,
-        joinedAt: m.joinedAt || m.createdAt || null,
+        joinedAt: u?.createdAt || m.createdAt || null,
         level: m.level,
         isMember: m.status === 'active',
       };

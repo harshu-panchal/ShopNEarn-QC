@@ -3,6 +3,7 @@ import { formatMemberJoinedAt } from '../../utils/mlmMemberDisplay';
 
 /**
  * Small "Joined …" line for member list rows (name block or table cell).
+ * `joinedAt` is account registration date-time from the API.
  */
 export default function MemberJoinedSubtitle({
   joinedAt,

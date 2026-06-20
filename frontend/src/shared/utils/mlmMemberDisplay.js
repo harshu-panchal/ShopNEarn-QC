@@ -1,5 +1,6 @@
 /**
- * Consistent join date+time formatting for MLM member list rows.
+ * Consistent registration date+time formatting for MLM member list rows.
+ * The API `joinedAt` field carries account registration time (not plan activation).
  */
 export function formatMemberJoinedAt(value) {
   if (!value) return '—';

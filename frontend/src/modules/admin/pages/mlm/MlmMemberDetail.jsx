@@ -767,6 +767,9 @@ const MlmMemberDetail = () => {
                         re-typing. */}
                     <Row label="Password" value={<PasswordCell value={u._signupPasswordPlaintext} />} />
                     <Row label="Joined" value={formatDate(m.joinedAt)} />
+                    {m.planAJoinedAt && (
+                        <Row label="Plan A activated" value={formatDate(m.planAJoinedAt)} />
+                    )}
                     {m.planBJoinedAt && <Row label="Plan B Since" value={formatDate(m.planBJoinedAt)} />}
                 </Card>
 

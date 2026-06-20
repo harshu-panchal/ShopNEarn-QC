@@ -1384,7 +1384,8 @@ const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
   const referralCode = data.referralCode || null;
   const status = data.status || "unknown";
   const planType = data.planType || "—";
-  const joinedAt = data.planAJoinedAt || data.joinedAt || null;
+  const joinedAt =
+    data.registeredAt || data.joinedAt || null;
   const leftActive = Number(data.leftLegActiveDownlineCount ?? 0);
   const rightActive = Number(data.rightLegActiveDownlineCount ?? 0);
   const left = Number(data.leftLegTotalDownlineCount || 0);

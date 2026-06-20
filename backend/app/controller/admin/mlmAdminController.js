@@ -18,7 +18,10 @@ import {
   MLM_PLAN_TYPE,
 } from "../../constants/mlm.js";
 import { LEDGER_TRANSACTION_TYPE, OWNER_TYPE } from "../../constants/finance.js";
-import { lookupMembershipJoinedAtByUserIds } from "../../utils/mlmMemberJoinedAt.js";
+import {
+  lookupMembershipJoinedAtByUserIds,
+  resolveMemberRegistrationAt,
+} from "../../utils/mlmMemberJoinedAt.js";
 import {
   approveWithdrawalRequest,
   listWithdrawalsForAdmin,
@@ -237,7 +240,7 @@ export const listMlmMembers = async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate("userId", "name phone email mlm userId")
+      .populate("userId", "name phone email mlm userId createdAt")
       .lean();
 
     // Customer-MLM-rebuild Phase 10 — enrich rows with sponsor name +
@@ -257,8 +260,8 @@ export const listMlmMembers = async (req, res) => {
       const sponsors = await MlmMembership.find({
         userId: { $in: sponsorIds },
       })
-        .select({ userId: 1, referralCode: 1, joinedAt: 1, createdAt: 1 })
-        .populate("userId", "name phone userId")
+        .select({ userId: 1, referralCode: 1, createdAt: 1 })
+        .populate("userId", "name phone userId createdAt")
         .lean();
       sponsorMap = new Map(
         sponsors.map((s) => [String(s.userId?._id || s.userId), s]),
@@ -266,6 +269,7 @@ export const listMlmMembers = async (req, res) => {
     }
     items = items.map((row) => ({
       ...row,
+      joinedAt: resolveMemberRegistrationAt(row),
       sponsor: row.sponsorId
         ? (() => {
             const sp = sponsorMap.get(String(row.sponsorId));
@@ -275,7 +279,7 @@ export const listMlmMembers = async (req, res) => {
               phone: sp.userId?.phone || null,
               userId: sp.userId?.userId || null,
               referralCode: sp.referralCode || null,
-              joinedAt: sp.joinedAt || sp.createdAt || null,
+              joinedAt: resolveMemberRegistrationAt(sp),
             };
           })()
         : null,
@@ -318,7 +322,7 @@ export const getMlmMemberDetail = async (req, res) => {
     const membership = await MlmMembership.findById(req.params.id)
       .populate(
         "userId",
-        "name phone email mlm walletBalance userId +_signupPasswordPlaintext",
+        "name phone email mlm walletBalance userId createdAt +_signupPasswordPlaintext",
       )
       .lean();
     if (!membership) return handleResponse(res, 404, "Member not found");
@@ -333,7 +337,7 @@ export const getMlmMemberDetail = async (req, res) => {
       heldBonusEvents,
     ] = await Promise.all([
       MlmMembership.find({ sponsorId: memberUserId })
-        .populate("userId", "name phone email userId")
+        .populate("userId", "name phone email userId createdAt")
         .lean(),
       MlmCommissionEvent.find({ recipientId: memberUserId })
         .sort({ createdAt: -1 })
@@ -345,8 +349,8 @@ export const getMlmMemberDetail = async (req, res) => {
         .lean(),
       membership.sponsorId
         ? MlmMembership.findOne({ userId: membership.sponsorId })
-            .select({ userId: 1, referralCode: 1, planType: 1, status: 1 })
-            .populate("userId", "name phone email userId")
+            .select({ userId: 1, referralCode: 1, planType: 1, status: 1, createdAt: 1 })
+            .populate("userId", "name phone email userId createdAt")
             .lean()
         : null,
       // Customer-MLM-rebuild Phase 10 — held pair bonuses sitting on
@@ -367,8 +371,15 @@ export const getMlmMemberDetail = async (req, res) => {
     ]);
 
     return handleResponse(res, 200, "Member detail", {
-      membership,
-      directReferrals,
+      membership: {
+        ...membership,
+        joinedAt: resolveMemberRegistrationAt(membership),
+        registeredAt: resolveMemberRegistrationAt(membership),
+      },
+      directReferrals: directReferrals.map((row) => ({
+        ...row,
+        joinedAt: resolveMemberRegistrationAt(row),
+      })),
       commissionHistory,
       withdrawals,
       sponsor: sponsorMembership
@@ -381,7 +392,7 @@ export const getMlmMemberDetail = async (req, res) => {
             referralCode: sponsorMembership.referralCode || null,
             planType: sponsorMembership.planType || null,
             status: sponsorMembership.status || null,
-            joinedAt: sponsorMembership.joinedAt || sponsorMembership.createdAt || null,
+            joinedAt: resolveMemberRegistrationAt(sponsorMembership),
           }
         : null,
       heldBonusEvents,
@@ -1114,7 +1125,8 @@ function shapeAdminNode(member, position) {
     planType: member.planType,
     status: member.status,
     position,
-    joinedAt: member.joinedAt || null,
+    joinedAt: resolveMemberRegistrationAt(member),
+    registeredAt: resolveMemberRegistrationAt(member),
     planAJoinedAt: member.planAJoinedAt || null,
     directReferralsCount: member.directReferralsCount || 0,
     totalDownlineCount: member.totalDownlineCount || 0,
