@@ -75,6 +75,9 @@ export const MLM_BONUS_TYPE = {
   // sponsor-credit at a glance.
   SIGNUP_BONUS_SELF: "SIGNUP_BONUS_SELF",
   SIGNUP_BONUS_SPONSOR: "SIGNUP_BONUS_SPONSOR",
+  // One-time earnings credit to the direct sponsor when a referral
+  // activates Plan A (REGISTERED_UNPAID → ACTIVE).
+  DIRECT_REFERRAL_ACTIVATION: "DIRECT_REFERRAL_ACTIVATION",
 };
 export const ALL_MLM_BONUS_TYPES = Object.values(MLM_BONUS_TYPE);
 
@@ -193,6 +196,11 @@ export const MLM_DEFAULTS = Object.freeze({
   signupBonusEnabled: true,
   signupBonusSelfAmount: 100,
   signupBonusSponsorAmount: 50,
+
+  // Direct referral activation income: when a sponsored member activates
+  // Plan A, their direct sponsor receives a one-time earnings credit.
+  directReferralActivationBonusEnabled: true,
+  directReferralActivationSponsorAmount: 200,
 
   // Joining package — direct payment + activation (no Product/Order).
   // Lifecycle lives in `MlmJoiningPayment`; price + credit are
@@ -362,4 +370,6 @@ export const MLM_IDEMPOTENCY_PREFIX = {
   //              sponsor accumulating many referrals never collides)
   SIGNUP_BONUS_SELF: "MLM-SBS",
   SIGNUP_BONUS_SPONSOR: "MLM-SBR",
+  // `MLM-DRA-<sponsorUserId>-<activatedReferralUserId>`
+  DIRECT_REFERRAL_ACTIVATION: "MLM-DRA",
 };

@@ -35,6 +35,12 @@ export const adminMlmApi = {
             data,
         ),
 
+    previewMoveBinary: (membershipId, data) =>
+        axiosInstance.post(`/admin/mlm/members/${membershipId}/move-binary/preview`, data),
+
+    moveBinary: (membershipId, data) =>
+        axiosInstance.post(`/admin/mlm/members/${membershipId}/move-binary`, data),
+
     /**
      * Admin support tool (PO-request Jun 2026): mint a short-lived
      * customer JWT for the member identified by `membershipId`. The
@@ -115,6 +121,12 @@ export const adminMlmApi = {
     // methods, causing every AdminSettings save to hit the MLM endpoint).
     getMlmSettings: () => axiosInstance.get('/admin/mlm/settings'),
     updateMlmSettings: (data) => axiosInstance.put('/admin/mlm/settings', data),
+
+    listMaintenanceJobs: () => axiosInstance.get('/admin/mlm/maintenance/jobs'),
+    runMaintenanceJob: (jobId, data) =>
+        axiosInstance.post(`/admin/mlm/maintenance/jobs/${jobId}/run`, data, {
+            timeout: 10 * 60 * 1000,
+        }),
 
     listMilestoneRules: () => axiosInstance.get('/admin/mlm/milestone-rules'),
     createMilestoneRule: (data) => axiosInstance.post('/admin/mlm/milestone-rules', data),

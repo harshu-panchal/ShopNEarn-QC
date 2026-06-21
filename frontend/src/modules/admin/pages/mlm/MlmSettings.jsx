@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Plus, Trash2, Save, Upload, ImageOff, Loader2, Smartphone, CreditCard } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
 import axiosInstance from '@core/api/axios';
+import MlmMaintenanceTools from './MlmMaintenanceTools';
 
 /**
  * MLM Settings — admin-editable rate sheet driving every runtime
@@ -291,6 +292,15 @@ const MlmSettings = () => {
                     />
                     <NumField label="Sponsor chain max depth" value={cfg.sponsorChainMaxDepth} onChange={(v) => setCfg({ ...cfg, sponsorChainMaxDepth: v })} min={1} max={50} />
                 </div>
+            </Section>
+
+            <Section title="Maintenance Tools">
+                <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                    Run backend maintenance scripts to repair the binary tree, refresh counters,
+                    and backfill or recalculate member incomes. Preview runs are safe (no writes);
+                    Apply commits changes to the database.
+                </p>
+                <MlmMaintenanceTools />
             </Section>
         </div>
     );

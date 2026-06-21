@@ -24,7 +24,10 @@ import {
 import {
   releaseHeldPairBonusesForDownlineActivation,
 } from "./mlmBonusEngineService.js";
-import { releaseHeldSignupBonusesForSponsorActivation } from "./mlmSignupBonusService.js";
+import {
+  releaseHeldSignupBonusesForSponsorActivation,
+  applyDirectReferralActivationBonusInSession,
+} from "./mlmSignupBonusService.js";
 import { getMlmConfig } from "./mlmConfigService.js";
 import { emitNotificationEvent } from "../../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.constants.js";
@@ -241,6 +244,13 @@ export async function activateMembershipFromJoiningPayment(
         session,
         correlationId,
       });
+
+      await applyDirectReferralActivationBonusInSession({
+        activatedUserId: customerId,
+        activatedMembership: membership,
+        session,
+        correlationId,
+      });
     }
 
     payment.activationApplied = true;
@@ -415,6 +425,13 @@ export async function adminActivateMembership({
 
     pairBonusEvents = await propagateBinaryTeamPairIncome({
       activatedUserId: customerId,
+      session,
+      correlationId,
+    });
+
+    await applyDirectReferralActivationBonusInSession({
+      activatedUserId: customerId,
+      activatedMembership: membership,
       session,
       correlationId,
     });

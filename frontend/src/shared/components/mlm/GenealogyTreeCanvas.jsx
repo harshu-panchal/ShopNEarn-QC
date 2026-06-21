@@ -323,6 +323,12 @@ const GenealogyTreeCanvas = ({
   // promise that resolves when the member has been persisted (the
   // canvas waits for that promise before closing the modal).
   onAddMember = null,
+  // Admin rearrange — when true, filled nodes expose "Move in tree"
+  // and empty addable slots accept a move destination.
+  rearrangeMode = false,
+  onMoveInTree = null,
+  onMoveToSlot = null,
+  moveSourceMembershipId = null,
   // How many EMPTY levels to render below every filled leaf. Default
   // 2 matches the reference design (one blue level + one grey
   // placeholder level beneath).
@@ -646,6 +652,22 @@ const GenealogyTreeCanvas = ({
   // Empty-slot tap (only fires for ADDABLE empties).
   const handleEmptyClick = useCallback(
     (emptyNode) => {
+      if (rearrangeMode && onMoveToSlot && emptyNode?.data?.__addable) {
+        const parentId = emptyNode.data.__parentFilledId;
+        const parent = filledById.get(parentId);
+        if (!parent) return;
+        const parentUser = parent.userId;
+        onMoveToSlot({
+          parentMembershipId: String(parent._id),
+          parentReferralCode: parent.referralCode,
+          parentName:
+            (typeof parentUser === "object" && parentUser?.name) ||
+            parent.name ||
+            "Member",
+          leg: emptyNode.data.__leg,
+        });
+        return;
+      }
       if (!onAddMember) return;
       if (!emptyNode?.data?.__addable) return;
       const parentId = emptyNode.data.__parentFilledId;
@@ -673,7 +695,7 @@ const GenealogyTreeCanvas = ({
         siblingFilled: !!siblingIsFilled,
       });
     },
-    [onAddMember, filledById],
+    [onAddMember, filledById, rearrangeMode, onMoveToSlot],
   );
 
   const handleAddSubmit = useCallback(
@@ -879,7 +901,11 @@ const GenealogyTreeCanvas = ({
               <EmptyNodeCard
                 key={n.id}
                 node={n}
-                canAdd={!!onAddMember && n.data.__addable}
+                canAdd={
+                  !!n.data.__addable &&
+                  (!!onAddMember || (rearrangeMode && !!onMoveToSlot))
+                }
+                rearrangeMode={rearrangeMode && !!onMoveToSlot}
                 onClick={handleEmptyClick}
               />
             ) : (
@@ -930,6 +956,26 @@ const GenealogyTreeCanvas = ({
           node={selectedFilledNode}
           onClose={handleCloseDetailModal}
           onShowGenealogy={handleShowGenealogy}
+          rearrangeMode={rearrangeMode}
+          onMoveInTree={
+            onMoveInTree
+              ? () => {
+                  const data = selectedFilledNode?.data || {};
+                  const u = data.userId;
+                  onMoveInTree({
+                    membershipId: String(data._id),
+                    referralCode: data.referralCode,
+                    name:
+                      (typeof u === "object" && u?.name) || data.name || "Member",
+                  });
+                  handleCloseDetailModal();
+                }
+              : null
+          }
+          isMoveSource={
+            moveSourceMembershipId &&
+            String(selectedFilledNode?.data?._id) === String(moveSourceMembershipId)
+          }
         />
       )}
     </div>
@@ -1013,7 +1059,7 @@ const NodeCard = ({ node, onTap, isSelected, highlightViewerSelf }) => {
  * slot so the icon sits exactly under the connecting edge from the
  * parent, regardless of how much horizontal padding the slot has.
  */
-const EmptyNodeCard = ({ node, canAdd, onClick }) => {
+const EmptyNodeCard = ({ node, canAdd, rearrangeMode = false, onClick }) => {
   const handleClick = useCallback(
     (e) => {
       e.stopPropagation();
@@ -1027,9 +1073,15 @@ const EmptyNodeCard = ({ node, canAdd, onClick }) => {
     ? "cursor-pointer group"
     : "cursor-default";
 
-  const iconColor = canAdd ? "text-sky-500" : "text-slate-300";
+  const iconColor = canAdd
+    ? rearrangeMode
+      ? "text-amber-500"
+      : "text-sky-500"
+    : "text-slate-300";
   const ringClass = canAdd
-    ? "border-2 border-dashed border-sky-300 group-hover:border-sky-500 group-hover:bg-sky-50/60"
+    ? rearrangeMode
+      ? "border-2 border-dashed border-amber-300 group-hover:border-amber-500 group-hover:bg-amber-50/60"
+      : "border-2 border-dashed border-sky-300 group-hover:border-sky-500 group-hover:bg-sky-50/60"
     : "border-2 border-dashed border-slate-200 bg-slate-50/40";
 
   return (
@@ -1043,7 +1095,13 @@ const EmptyNodeCard = ({ node, canAdd, onClick }) => {
         height: NODE_HEIGHT,
       }}
       className={`flex flex-col items-center justify-start select-none ${wrapperClass}`}
-      title={canAdd ? "Add a new member to this slot" : "Future slot — fill the parent first"}
+      title={
+        canAdd
+          ? rearrangeMode
+            ? "Move selected member to this slot"
+            : "Add a new member to this slot"
+          : "Future slot — fill the parent first"
+      }
     >
       <div
         className={`w-9 h-9 rounded-full bg-white flex items-center justify-center transition-colors ${ringClass}`}
@@ -1052,10 +1110,14 @@ const EmptyNodeCard = ({ node, canAdd, onClick }) => {
       </div>
       <span
         className={`mt-1 text-[9px] font-bold uppercase tracking-wider text-center ${
-          canAdd ? "text-sky-600" : "text-slate-300"
+          canAdd
+            ? rearrangeMode
+              ? "text-amber-700"
+              : "text-sky-600"
+            : "text-slate-300"
         }`}
       >
-        {canAdd ? "Open Slot" : "Future"}
+        {canAdd ? (rearrangeMode ? "Move Here" : "Open Slot") : "Future"}
       </span>
     </div>
   );
@@ -1373,7 +1435,14 @@ const LegToggle = ({ active, disabled, onClick, icon, label }) => (
  * struct: `{ id, x, y, data: <membership-with-populated-user> }`)
  * plus close + show-genealogy callbacks from the canvas.
  */
-const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
+const MemberDetailModal = ({
+  node,
+  onClose,
+  onShowGenealogy,
+  rearrangeMode = false,
+  onMoveInTree = null,
+  isMoveSource = false,
+}) => {
   const data = node?.data || {};
   const u = data.userId;
   const publicUserId =
@@ -1569,7 +1638,21 @@ const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
             member's downline on the same canvas. Hidden when the
             user is already viewing this member (root) because
             re-rooting onto yourself is a no-op. */}
-        <div className="px-4 py-3 border-t border-slate-100 flex items-center gap-2 bg-white">
+        <div className="px-4 py-3 border-t border-slate-100 flex flex-col gap-2 bg-white">
+          {rearrangeMode && onMoveInTree && (
+            <button
+              type="button"
+              onClick={onMoveInTree}
+              className={`w-full px-3 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider inline-flex items-center justify-center gap-1.5 ${
+                isMoveSource
+                  ? "bg-amber-100 text-amber-800 border border-amber-300"
+                  : "bg-amber-500 text-white hover:bg-amber-600"
+              }`}
+            >
+              {isMoveSource ? "Selected — tap empty slot" : "Move in tree…"}
+            </button>
+          )}
+          <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={onClose}
@@ -1591,6 +1674,7 @@ const MemberDetailModal = ({ node, onClose, onShowGenealogy }) => {
               Current root
             </span>
           )}
+          </div>
         </div>
       </div>
     </div>

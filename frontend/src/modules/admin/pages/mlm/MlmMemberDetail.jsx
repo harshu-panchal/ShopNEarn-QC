@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw, Eye, EyeOff, Copy, LogIn, Trash2, X, Pencil, PauseCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw, Eye, EyeOff, Copy, LogIn, Trash2, X, Pencil, PauseCircle, Move } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
 import GenealogyTreeCanvas from '@shared/components/mlm/GenealogyTreeCanvas';
 import MemberJoinedSubtitle from '@shared/components/mlm/MemberJoinedSubtitle';
+import MoveMemberWizard from './MoveMemberWizard';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDate = (d) => new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -29,6 +30,7 @@ const STATUS_LABEL = {
 const BONUS_TYPE_LABEL = {
     BINARY_PAIR_MATCH: 'Binary pair match',
     DIRECT_REFERRAL_MILESTONE: 'Matching Income',
+    DIRECT_REFERRAL_ACTIVATION: 'Referral Activation Income',
     REPURCHASE_BONUS: 'Repurchase',
     MENTOR_ROYALTY: 'Mentor royalty',
     HOME_SHOPPING_SALES: 'Home shopping sales',
@@ -67,6 +69,10 @@ const MlmMemberDetail = () => {
     // URL-anchored member without touching the browser URL.
     const [downlineRootId, setDownlineRootId] = useState(id);
     const [downlineStack, setDownlineStack] = useState([]);
+    const [rearrangeMode, setRearrangeMode] = useState(false);
+    const [moveSource, setMoveSource] = useState(null);
+    const [moveDestination, setMoveDestination] = useState(null);
+    const [moveWizardOpen, setMoveWizardOpen] = useState(false);
     const [loading, setLoading] = useState(true);
     const [adjustForm, setAdjustForm] = useState({ direction: 'CREDIT', amount: '', bucket: 'earnings', reason: '' });
     const [adjusting, setAdjusting] = useState(false);
@@ -505,6 +511,37 @@ const MlmMemberDetail = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [downlineDepth, downlineRootId]);
 
+    const handleMoveInTree = useCallback((member) => {
+        setMoveSource(member);
+        setMoveDestination(null);
+        setMoveWizardOpen(false);
+        toast.message(`Selected ${member.name} — tap an empty blue slot as destination`);
+    }, []);
+
+    const handleMoveToSlot = useCallback(
+        (destination) => {
+            if (!moveSource) {
+                toast.error('Select a member first (Rearrange mode → Move in tree…)');
+                return;
+            }
+            if (String(moveSource.membershipId) === String(destination.parentMembershipId)) {
+                toast.error('Cannot move a member under themselves');
+                return;
+            }
+            setMoveDestination(destination);
+            setMoveWizardOpen(true);
+        },
+        [moveSource],
+    );
+
+    const handleMoveDone = useCallback(async () => {
+        setRearrangeMode(false);
+        setMoveSource(null);
+        setMoveDestination(null);
+        await loadDownline(downlineDepth, downlineRootId);
+        await load();
+    }, [downlineDepth, downlineRootId]);
+
     const isViewingAnchor = String(downlineRootId) === String(id);
 
     // Current root's display info — pulled from the loaded sub-tree
@@ -934,7 +971,8 @@ const MlmMemberDetail = () => {
             </Card>
 
             <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                <div className="px-5 pt-5 pb-3 border-b border-slate-100">
+                <div className="px-5 pt-5 pb-3 border-b border-slate-100 flex flex-wrap items-start justify-between gap-3">
+                    <div>
                     <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide flex items-center gap-2">
                         <GitBranch size={16} /> Binary Downline Tree
                     </h3>
@@ -944,6 +982,24 @@ const MlmMemberDetail = () => {
                         change) · use Back / Reset in the toolbar to walk up · drag the
                         background to pan · hold ⌘/Ctrl + scroll to zoom.
                     </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setRearrangeMode((v) => !v);
+                            setMoveSource(null);
+                            setMoveDestination(null);
+                            setMoveWizardOpen(false);
+                        }}
+                        className={`shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center gap-1.5 border ${
+                            rearrangeMode
+                                ? 'bg-amber-100 border-amber-300 text-amber-900'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                    >
+                        <Move size={14} />
+                        {rearrangeMode ? 'Rearrange on' : 'Rearrange'}
+                    </button>
                 </div>
                 {/* Fixed-height canvas frame. The shared component
                     expects to live inside a `flex-1 min-h-0` parent
@@ -957,7 +1013,11 @@ const MlmMemberDetail = () => {
                         depth={downlineDepth}
                         onDepthChange={setDownlineDepth}
                         onNodeTap={handleNodeTap}
-                        onAddMember={handleAddMember}
+                        onAddMember={rearrangeMode ? null : handleAddMember}
+                        rearrangeMode={rearrangeMode}
+                        onMoveInTree={handleMoveInTree}
+                        onMoveToSlot={handleMoveToSlot}
+                        moveSourceMembershipId={moveSource?.membershipId}
                         emptySlotMaxDepth={2}
                         breadcrumb={downlineBreadcrumb}
                         highlightViewerSelf={false}
@@ -970,12 +1030,24 @@ const MlmMemberDetail = () => {
                         footerHint={
                             <>
                                 <span className="hidden sm:inline">
-                                    Click a member to open their detail card — use “Show
-                                    Genealogy” inside to re-render the tree rooted on that
-                                    member · tap a <span className="text-sky-600 font-bold">blue</span> open
-                                    slot to add a new member directly under that parent · use
-                                    Back / Reset to walk up · drag the background to pan · hold
-                                    ⌘/Ctrl + scroll to zoom.
+                                    {rearrangeMode ? (
+                                        <>
+                                            <span className="text-amber-700 font-bold">Rearrange mode:</span>{' '}
+                                            open a member → Move in tree… → tap an{' '}
+                                            <span className="text-amber-700 font-bold">amber</span> Move
+                                            Here slot (directly under a filled parent) ·
+                                            Back / Reset to walk up · drag to pan · ⌘/Ctrl + scroll to zoom.
+                                        </>
+                                    ) : (
+                                        <>
+                                            Click a member to open their detail card — use “Show
+                                            Genealogy” inside to re-render the tree rooted on that
+                                            member · tap a <span className="text-sky-600 font-bold">blue</span> open
+                                            slot to add a new member directly under that parent · use
+                                            Back / Reset to walk up · drag the background to pan · hold
+                                            ⌘/Ctrl + scroll to zoom.
+                                        </>
+                                    )}
                                 </span>
                                 <span className="sm:hidden">
                                     Tap a member to open details · Show Genealogy to drill in ·
@@ -1318,6 +1390,17 @@ const MlmMemberDetail = () => {
                     </div>
                 </div>
             )}
+
+            <MoveMemberWizard
+                open={moveWizardOpen}
+                onClose={() => {
+                    setMoveWizardOpen(false);
+                    setMoveDestination(null);
+                }}
+                sourceMember={moveSource}
+                destination={moveDestination}
+                onMoved={handleMoveDone}
+            />
         </div>
     );
 };

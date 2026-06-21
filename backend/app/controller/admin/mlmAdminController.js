@@ -53,6 +53,14 @@ import { softDeleteMlmMember } from "../../services/mlm/mlmMemberSoftDeleteServi
 import { verifyMlmMemberWallet } from "../../jobs/mlmWalletLedgerVerifierJob.js";
 import { USER_ID_PATTERN } from "../../utils/userIdGenerator.js";
 import { normalizePhoneNumber } from "../../utils/phone.js";
+import {
+  listMlmMaintenanceJobs as getMaintenanceJobCatalog,
+  runMlmMaintenanceJob as executeMaintenanceJob,
+} from "../../services/mlm/mlmMaintenanceRunner.js";
+import {
+  previewBinaryMove,
+  executeBinaryMove,
+} from "../../services/mlm/mlmBinaryMoveService.js";
 
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "10", 10);
 
@@ -1090,6 +1098,69 @@ export const addChildMember = async (req, res) => {
   }
 };
 
+/** POST /api/admin/mlm/members/:id/move-binary/preview */
+export const previewMoveBinaryMember = async (req, res) => {
+  try {
+    const { newParentMembershipId, leg, changeSponsorToNewParent = false } =
+      req.body || {};
+    if (!newParentMembershipId) {
+      return handleResponse(res, 422, "newParentMembershipId is required");
+    }
+    if (!leg) {
+      return handleResponse(res, 422, "leg is required (L or R)");
+    }
+    const preview = await previewBinaryMove({
+      membershipId: req.params.id,
+      newParentMembershipId,
+      leg,
+      changeSponsorToNewParent: Boolean(changeSponsorToNewParent),
+    });
+    return handleResponse(res, 200, "Move preview", preview);
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+/** POST /api/admin/mlm/members/:id/move-binary */
+export const moveBinaryMember = async (req, res) => {
+  try {
+    const adminId = req.user?.id || null;
+    const {
+      newParentMembershipId,
+      leg,
+      changeSponsorToNewParent = false,
+      reason,
+    } = req.body || {};
+    if (!newParentMembershipId) {
+      return handleResponse(res, 422, "newParentMembershipId is required");
+    }
+    if (!leg) {
+      return handleResponse(res, 422, "leg is required (L or R)");
+    }
+    const result = await executeBinaryMove({
+      membershipId: req.params.id,
+      newParentMembershipId,
+      leg,
+      changeSponsorToNewParent: Boolean(changeSponsorToNewParent),
+      adminId,
+      reason: reason ? String(reason).trim().slice(0, 500) : null,
+    });
+    return handleResponse(res, 200, "Member moved in binary tree", result);
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
 /**
  * Shape a single membership doc into the admin tree payload. Admin
  * view does NOT mask phone numbers (compare with the customer
@@ -1218,6 +1289,37 @@ export const rejectWithdrawal = async (req, res) => {
     return handleResponse(res, 200, "Withdrawal rejected", { id: request._id });
   } catch (error) {
     return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+/** GET /api/admin/mlm/maintenance/jobs */
+export const listMlmMaintenanceJobs = async (req, res) => {
+  try {
+    const jobs = getMaintenanceJobCatalog();
+    return handleResponse(res, 200, "MLM maintenance jobs", { jobs });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/** POST /api/admin/mlm/maintenance/jobs/:jobId/run */
+export const runMlmMaintenanceJob = async (req, res) => {
+  try {
+    const { apply = false, options = {} } = req.body || {};
+    const result = await executeMaintenanceJob(req.params.jobId, {
+      apply: Boolean(apply),
+      options: options && typeof options === "object" ? options : {},
+      adminId: req.user?.id || null,
+    });
+    const status = result.success ? 200 : 502;
+    return handleResponse(
+      res,
+      status,
+      result.success ? "Maintenance job completed" : "Maintenance job failed",
+      result,
+    );
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
   }
 };
 

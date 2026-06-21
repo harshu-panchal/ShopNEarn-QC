@@ -24,6 +24,10 @@ import {
   updateMilestoneRule,
   updateMlmSettings,
   verifyMemberWalletEndpoint,
+  listMlmMaintenanceJobs,
+  runMlmMaintenanceJob,
+  previewMoveBinaryMember,
+  moveBinaryMember,
 } from "../controller/admin/mlmAdminController.js";
 import { allowRoles, verifyToken } from "../middleware/authMiddleware.js";
 
@@ -47,6 +51,13 @@ router.post("/members/:id/approve", ...adminGuard, approveMlmMember);
 // `POST /api/customer/mlm/genealogy/add-member` but bypasses the
 // downline-ownership check (admins can place anywhere).
 router.post("/members/:id/add-child", ...adminGuard, addChildMember);
+
+router.post(
+  "/members/:id/move-binary/preview",
+  ...adminGuard,
+  previewMoveBinaryMember,
+);
+router.post("/members/:id/move-binary", ...adminGuard, moveBinaryMember);
 
 // Admin support tool (PO-request Jun 2026): mint a short-lived
 // customer JWT so the admin can open a new tab pre-authenticated
@@ -100,6 +111,9 @@ router.post("/joining-reviews/:id/reject", ...adminGuard, rejectJoiningReview);
 
 router.get("/settings", ...adminGuard, getMlmSettings);
 router.put("/settings", ...adminGuard, updateMlmSettings);
+
+router.get("/maintenance/jobs", ...adminGuard, listMlmMaintenanceJobs);
+router.post("/maintenance/jobs/:jobId/run", ...adminGuard, runMlmMaintenanceJob);
 
 router.get("/milestone-rules", ...adminGuard, listMilestoneRules);
 router.post("/milestone-rules", ...adminGuard, createMilestoneRule);

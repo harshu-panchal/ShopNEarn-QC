@@ -13,7 +13,9 @@ import {
   MLM_PLAN_TYPE,
 } from "../../constants/mlm.js";
 import { creditWallet, debitWallet } from "../finance/walletService.js";
-import { getSignupBonusConfig } from "./mlmConfigService.js";
+import { getSignupBonusConfig, getDirectReferralActivationConfig } from "./mlmConfigService.js";
+import { recordLifetimeEarning } from "./mlmMembershipService.js";
+import { roundCurrency } from "../../utils/money.js";
 
 /**
  * Signup bonus credits for the MLM program.
@@ -282,6 +284,115 @@ export async function applyRegistrationBonusInSession({
 }
 
 /**
+ * One-time earnings credit to the direct sponsor when a referral
+ * activates Plan A. Idempotent per (sponsor, activated referral).
+ */
+export async function applyDirectReferralActivationBonusInSession({
+  activatedUserId,
+  activatedMembership,
+  session,
+  correlationId = null,
+}) {
+  if (!session) {
+    throw new Error(
+      "applyDirectReferralActivationBonusInSession requires an open mongoose session.",
+    );
+  }
+  if (!activatedUserId || !activatedMembership?.sponsorId) {
+    return { skipped: "NO_SPONSOR", event: null };
+  }
+
+  const sponsorUserId = activatedMembership.sponsorId;
+  if (String(sponsorUserId) === String(activatedUserId)) {
+    return { skipped: "SELF_REFERRAL", event: null };
+  }
+
+  const cfg = await getDirectReferralActivationConfig();
+  if (!cfg.enabled || cfg.sponsorAmount <= 0) {
+    return { skipped: "DISABLED", event: null };
+  }
+
+  const idempotencyKey = `${MLM_IDEMPOTENCY_PREFIX.DIRECT_REFERRAL_ACTIVATION}-${String(sponsorUserId)}-${String(activatedUserId)}`;
+  const existing = await MlmCommissionEvent.findOne(
+    { idempotencyKey },
+    null,
+    { session },
+  );
+  if (existing) {
+    return { skipped: "ALREADY_CREDITED", event: existing };
+  }
+
+  const sponsorMembership = await MlmMembership.findOne({
+    userId: sponsorUserId,
+  }).session(session);
+  if (!sponsorMembership) {
+    return { skipped: "SPONSOR_NOT_FOUND", event: null };
+  }
+  if (
+    sponsorMembership.status === MLM_MEMBERSHIP_STATUS.SUSPENDED ||
+    sponsorMembership.status === MLM_MEMBERSHIP_STATUS.TERMINATED
+  ) {
+    return { skipped: "SPONSOR_INELIGIBLE", event: null };
+  }
+
+  const amount = roundCurrency(cfg.sponsorAmount);
+  const creditResult = await creditWallet({
+    ownerType: OWNER_TYPE.CUSTOMER,
+    ownerId: sponsorUserId,
+    amount,
+    bucket: "earnings",
+    session,
+    ledgerType: LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_ACTIVATION,
+    ledgerReference: idempotencyKey,
+    ledgerDescription: "Direct referral activation income",
+    metadata: {
+      mlmEvent: "DIRECT_REFERRAL_ACTIVATION",
+      activatedUserId: String(activatedUserId),
+      sponsorUserId: String(sponsorUserId),
+    },
+    idempotencyKey,
+    correlationId,
+    syncUserWalletBalance: false,
+  });
+
+  const [eventDoc] = await MlmCommissionEvent.create(
+    [
+      {
+        recipientId: sponsorUserId,
+        recipientMembershipId: sponsorMembership._id,
+        sourceUserId: activatedUserId,
+        bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION,
+        planType: MLM_PLAN_TYPE.A,
+        baseAmount: amount,
+        bonusAmount: amount,
+        cappedAmount: amount,
+        rolloverAmount: 0,
+        walletBucket: "earnings",
+        ledgerEntryId: creditResult?.ledgerEntry?._id || null,
+        status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+        idempotencyKey,
+        correlationId,
+        description: "Direct referral activation income",
+        meta: {
+          mlmEvent: "DIRECT_REFERRAL_ACTIVATION",
+          activatedUserId: String(activatedUserId),
+        },
+      },
+    ],
+    { session },
+  );
+
+  await recordLifetimeEarning({
+    userId: sponsorUserId,
+    amount,
+    planType: MLM_PLAN_TYPE.A,
+    session,
+  });
+
+  return { skipped: null, event: eventDoc, amount };
+}
+
+/**
  * Release signup bonuses held while this member was REGISTERED_UNPAID.
  * Called when the sponsor activates Plan A (paid or admin approval).
  */
@@ -492,6 +603,28 @@ export async function applyRegistrationBonusStandalone({
         newMembership,
         sponsorUserId,
         sponsorMembership,
+        session,
+        correlationId,
+      });
+    });
+  } finally {
+    await session.endSession();
+  }
+  return result;
+}
+
+export async function applyDirectReferralActivationBonusStandalone({
+  activatedUserId,
+  activatedMembership,
+  correlationId = null,
+}) {
+  const session = await mongoose.startSession();
+  let result;
+  try {
+    await session.withTransaction(async () => {
+      result = await applyDirectReferralActivationBonusInSession({
+        activatedUserId,
+        activatedMembership,
         session,
         correlationId,
       });

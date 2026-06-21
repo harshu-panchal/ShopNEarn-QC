@@ -125,6 +125,8 @@ function ledgerTypeForBonusType(bonusType) {
       return LEDGER_TRANSACTION_TYPE.MLM_GIFT_VOUCHER_MILESTONE;
     case MLM_BONUS_TYPE.MANUAL_ADJUSTMENT:
       return LEDGER_TRANSACTION_TYPE.MLM_MANUAL_ADJUSTMENT;
+    case MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION:
+      return LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_ACTIVATION;
     default:
       throw new Error(`Unknown MLM bonus type: ${bonusType}`);
   }

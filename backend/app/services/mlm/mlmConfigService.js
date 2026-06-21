@@ -230,3 +230,15 @@ export async function getSignupBonusConfig(opts) {
     sponsorAmount: clampNonNegative(cfg.signupBonusSponsorAmount),
   };
 }
+
+export async function getDirectReferralActivationConfig(opts) {
+  const cfg = await getMlmConfig(opts);
+  const clampNonNegative = (n) => {
+    const v = Number(n);
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  };
+  return {
+    enabled: cfg.directReferralActivationBonusEnabled !== false,
+    sponsorAmount: clampNonNegative(cfg.directReferralActivationSponsorAmount),
+  };
+}
