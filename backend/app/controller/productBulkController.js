@@ -41,13 +41,95 @@ function makeProductSku(name, index = 1) {
   return `${prefix}-${String(index).padStart(3, "0")}-${randomSuffix}`;
 }
 
+// ExcelJS stores hyperlinks / rich text as objects — String() yields "[object Object]".
+function normalizeHyperlink(hyperlink) {
+  if (!hyperlink) return "";
+  if (typeof hyperlink === "string") return hyperlink.trim();
+  if (typeof hyperlink === "object" && hyperlink.target) {
+    return String(hyperlink.target).trim();
+  }
+  return "";
+}
+
+export function parseCommaSeparatedUrls(str) {
+  if (!str) return [];
+  const trimmed = String(str).trim();
+  if (!trimmed || trimmed === "[object Object]") return [];
+
+  // Pull every http(s) URL from the cell regardless of delimiter (comma, semicolon, newline, space).
+  const fromRegex = trimmed.match(/https?:\/\/[^\s,;|"']+/gi);
+  if (fromRegex && fromRegex.length > 0) {
+    const cleaned = fromRegex.map((u) =>
+      u.trim().replace(/[)\].]+$/, ""),
+    );
+    return [...new Set(cleaned.filter((u) => /^https?:\/\//i.test(u)))];
+  }
+
+  return trimmed
+    .split(/[,;\r\n]+/)
+    .map((u) => u.trim())
+    .filter((u) => u && /^https?:\/\//i.test(u));
+}
+
+export function getCellStringValue(cell, options = {}) {
+  const { preferTextForUrls = false } = options;
+  if (!cell) return "";
+  const value = cell.value;
+  if (value === null || value === undefined) {
+    return normalizeHyperlink(cell.hyperlink);
+  }
+
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value).trim();
+  }
+
+  if (typeof value === "object") {
+    const link = typeof value.hyperlink === "string" ? value.hyperlink.trim() : "";
+    const text =
+      value.text !== undefined && value.text !== null
+        ? String(value.text).trim()
+        : "";
+
+    if (preferTextForUrls && text && /https?:\/\//i.test(text)) {
+      const textUrlCount = parseCommaSeparatedUrls(text).length;
+      const linkUrlCount = link ? parseCommaSeparatedUrls(link).length : 0;
+      if (
+        textUrlCount > linkUrlCount ||
+        text.includes(",") ||
+        text.includes(";") ||
+        /\r?\n/.test(text)
+      ) {
+        return text;
+      }
+    }
+
+    if (link) return link;
+    if (text && text !== "[object Object]") return text;
+    if (Array.isArray(value.richText)) {
+      const joined = value.richText.map((part) => part?.text ?? "").join("").trim();
+      if (joined) return joined;
+    }
+    if (value.result !== undefined && value.result !== null) {
+      return getCellStringValue({ ...cell, value: value.result }, options);
+    }
+  }
+
+  const cellLink = normalizeHyperlink(cell.hyperlink);
+  if (cellLink) return cellLink;
+
+  const fallback = String(value).trim();
+  return fallback === "[object Object]" ? "" : fallback;
+}
+
 // Helper to download an external image URL and upload it to Cloudinary
 async function downloadAndUploadToCloudinary(url) {
-  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+  const normalized = String(url || "").trim();
+  if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
     throw new Error("Invalid URL protocol. Must start with http:// or https://");
   }
 
-  const response = await axios.get(url, {
+  const response = await axios.get(normalized, {
     responseType: "arraybuffer",
     timeout: 10000, // 10s timeout
   });
@@ -249,7 +331,7 @@ export const getBulkUploadTemplate = async (req, res) => {
       sampleSubCategory,
       "Active",
       "https://images.unsplash.com/photo-1586201375761-83865001e31c?q=80&w=600",
-      "https://images.unsplash.com/photo-1586201375761-83865001e31c?q=80&w=600",
+      "https://images.unsplash.com/photo-1586201375761-83865001e31c?q=80&w=600, https://images.unsplash.com/photo-1536304993881-ff6ae9dfb3b0?q=80&w=600, https://images.unsplash.com/photo-1516684669134-549d3ec99894?q=80&w=600",
       "1kg Pack",
       250,
       220,
@@ -425,8 +507,10 @@ export const bulkUploadProducts = async (req, res) => {
         const categoryName = row.getCell(8).value ? String(row.getCell(8).value).trim() : "";
         const subcategoryName = row.getCell(9).value ? String(row.getCell(9).value).trim() : "";
         const statusVal = row.getCell(10).value ? String(row.getCell(10).value).trim().toLowerCase() : "active";
-        const mainImageUrl = row.getCell(11).value ? String(row.getCell(11).value).trim() : "";
-        const galleryUrlsStr = row.getCell(12).value ? String(row.getCell(12).value).trim() : "";
+        const mainImageUrl = getCellStringValue(row.getCell(11));
+        const galleryUrlsStr = getCellStringValue(row.getCell(12), {
+          preferTextForUrls: true,
+        });
 
         // Row valid check
         if (!name) throw new Error("Product Title is required");
@@ -525,7 +609,7 @@ export const bulkUploadProducts = async (req, res) => {
         }
 
         if (galleryUrlsStr) {
-          const urls = galleryUrlsStr.split(",").map((u) => u.trim()).filter(Boolean);
+          const urls = parseCommaSeparatedUrls(galleryUrlsStr);
           for (const url of urls) {
             try {
               const uploadedUrl = await downloadAndUploadToCloudinary(url);

@@ -43,7 +43,7 @@ jest.unstable_mockModule("../app/services/productModerationService.js", () => ({
   getProductApprovalConfig: () => ({ sellerCreateRequiresApproval: false })
 }));
 
-const { getBulkUploadTemplate } = await import("../app/controller/productBulkController.js");
+const { getBulkUploadTemplate, getCellStringValue, parseCommaSeparatedUrls } = await import("../app/controller/productBulkController.js");
 
 describe("Bulk Product Upload Controller", () => {
   beforeEach(() => {
@@ -87,5 +87,65 @@ describe("Bulk Product Upload Controller", () => {
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
     expect(res.end).toHaveBeenCalled();
+  });
+
+  test("getCellStringValue extracts hyperlink URLs from ExcelJS objects", () => {
+    expect(
+      getCellStringValue({
+        value: {
+          text: "View image",
+          hyperlink: "https://cdn.example.com/main.jpg",
+        },
+      }),
+    ).toBe("https://cdn.example.com/main.jpg");
+
+    expect(
+      getCellStringValue({
+        value: { richText: [{ text: "https://cdn.example.com/a.jpg" }] },
+      }),
+    ).toBe("https://cdn.example.com/a.jpg");
+
+    expect(
+      getCellStringValue({
+        value: null,
+        hyperlink: "https://cdn.example.com/from-cell-link",
+      }),
+    ).toBe("https://cdn.example.com/from-cell-link");
+
+    expect(getCellStringValue({ value: "https://plain.example.com/x.png" })).toBe(
+      "https://plain.example.com/x.png",
+    );
+  });
+
+  test("parseCommaSeparatedUrls extracts multiple gallery URLs", () => {
+    expect(
+      parseCommaSeparatedUrls(
+        "https://a.com/1.jpg, https://b.com/2.jpg; https://c.com/3.jpg",
+      ),
+    ).toEqual([
+      "https://a.com/1.jpg",
+      "https://b.com/2.jpg",
+      "https://c.com/3.jpg",
+    ]);
+
+    expect(
+      parseCommaSeparatedUrls(
+        "https://a.com/1.jpg https://b.com/2.jpg",
+      ),
+    ).toEqual(["https://a.com/1.jpg", "https://b.com/2.jpg"]);
+  });
+
+  test("getCellStringValue prefers multi-URL text over single hyperlink", () => {
+    expect(
+      getCellStringValue(
+        {
+          value: {
+            text: "https://a.com/1.jpg, https://b.com/2.jpg",
+            hyperlink: "https://a.com/1.jpg",
+          },
+        },
+        { preferTextForUrls: true },
+      ),
+    ).toBe("https://a.com/1.jpg, https://b.com/2.jpg");
   });
 });

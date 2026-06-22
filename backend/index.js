@@ -41,6 +41,11 @@ import {
   isMlmWalletLedgerVerifierJobEnabled,
 } from "./app/jobs/mlmWalletLedgerVerifierJob.js";
 import {
+  getMlmDailyPayoutReportJobHandler,
+  getMlmDailyPayoutReportJobIntervalMs,
+  isMlmDailyPayoutReportJobEnabled,
+} from "./app/jobs/mlmDailyPayoutReportJob.js";
+import {
   getMlmJoiningCooldownReleaseJobHandler,
   getMlmJoiningCooldownReleaseJobIntervalMs,
   isMlmJoiningCooldownReleaseJobEnabled,
@@ -386,7 +391,17 @@ async function startScheduler() {
     );
   }
 
-  // Firebase RTDB tracking cleanup — safety net for rider-presence nodes
+  // MLM daily payout reconciliation report — generates yesterday's report
+  // after IST midnight (runs every 15m by default).
+  if (isMlmDailyPayoutReportJobEnabled()) {
+    registerScheduledJob(
+      'mlmDailyPayoutReportJob',
+      getMlmDailyPayoutReportJobIntervalMs(),
+      getMlmDailyPayoutReportJobHandler()
+    );
+  }
+
+  // Firebase RTDB tracking cleanup
   // that escape the synchronous lifecycle hooks (force-quit, network drop).
   // Per-order tracking is cleaned by hooks; this job only sweeps stale
   // /fleet/active and /deliveries/*/current entries. Toggle via env.
@@ -408,6 +423,7 @@ async function startScheduler() {
   if (isMlmDailyCapRolloverJobEnabled()) scheduledJobs.push('mlmDailyCapRolloverJob');
   if (isMlmWalletLedgerVerifierJobEnabled()) scheduledJobs.push('mlmWalletLedgerVerifierJob');
   if (isMlmJoiningCooldownReleaseJobEnabled()) scheduledJobs.push('mlmJoiningCooldownReleaseJob');
+  if (isMlmDailyPayoutReportJobEnabled()) scheduledJobs.push('mlmDailyPayoutReportJob');
   if (isFirebaseTrackingCleanupJobEnabled()) scheduledJobs.push('firebaseTrackingCleanupJob');
   logger.info('Scheduler started', {
     jobs: scheduledJobs,

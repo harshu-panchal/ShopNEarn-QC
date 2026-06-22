@@ -46,6 +46,12 @@ const MlmDashboard = () => {
                         Withdrawals
                     </Link>
                     <Link
+                        to="/admin/mlm/payout-reports"
+                        className="px-3 py-1.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
+                    >
+                        Payout Reports
+                    </Link>
+                    <Link
                         to="/admin/mlm/settings"
                         className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                     >

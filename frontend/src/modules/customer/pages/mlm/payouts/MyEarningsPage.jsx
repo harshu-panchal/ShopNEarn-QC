@@ -20,7 +20,7 @@ const bonusTypeLabel = (t) => {
   const map = {
     SIGNUP_BONUS_SPONSOR: "Referral Signup Bonus",
     DIRECT_REFERRAL_MILESTONE: "Matching Income",
-    DIRECT_REFERRAL_ACTIVATION: "Referral Activation Income",
+    DIRECT_REFERRAL_ACTIVATION: "First Direct Pair Income",
     BINARY_PAIR_MATCH: "Pair Match Bonus",
     REPURCHASE_BONUS: "Repurchase Bonus",
     MENTOR_ROYALTY: "Mentor Royalty",

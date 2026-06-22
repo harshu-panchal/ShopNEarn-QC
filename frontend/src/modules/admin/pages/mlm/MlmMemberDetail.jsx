@@ -30,7 +30,7 @@ const STATUS_LABEL = {
 const BONUS_TYPE_LABEL = {
     BINARY_PAIR_MATCH: 'Binary pair match',
     DIRECT_REFERRAL_MILESTONE: 'Matching Income',
-    DIRECT_REFERRAL_ACTIVATION: 'Referral Activation Income',
+    DIRECT_REFERRAL_ACTIVATION: 'First Direct Pair Income',
     REPURCHASE_BONUS: 'Repurchase',
     MENTOR_ROYALTY: 'Mentor royalty',
     HOME_SHOPPING_SALES: 'Home shopping sales',

@@ -134,6 +134,26 @@ export const adminMlmApi = {
     deleteMilestoneRule: (id) => axiosInstance.delete(`/admin/mlm/milestone-rules/${id}`),
 
     verifyMemberWallet: (id) => axiosInstance.get(`/admin/mlm/members/${id}/wallet-verification`),
+
+    listPayoutReports: (params) =>
+        axiosInstance.get('/admin/mlm/payout-reports', { params }),
+    getPayoutReport: (date) =>
+        axiosInstance.get(`/admin/mlm/payout-reports/${date}`),
+    generatePayoutReport: (date, data) =>
+        axiosInstance.post(`/admin/mlm/payout-reports/${date}/generate`, data || {}),
+    patchPayoutReportLineItem: (date, lineItemId, data) =>
+        axiosInstance.patch(`/admin/mlm/payout-reports/${date}/line-items/${lineItemId}`, data),
+    applyPayoutReportCorrection: (date, lineItemId, data) =>
+        axiosInstance.post(
+            `/admin/mlm/payout-reports/${date}/line-items/${lineItemId}/apply-correction`,
+            data,
+        ),
+    finalizePayoutReport: (date, data) =>
+        axiosInstance.post(`/admin/mlm/payout-reports/${date}/finalize`, data || {}),
+    exportPayoutReport: (date) =>
+        axiosInstance.get(`/admin/mlm/payout-reports/${date}/export`, {
+            responseType: 'blob',
+        }),
 };
 
 export default adminMlmApi;

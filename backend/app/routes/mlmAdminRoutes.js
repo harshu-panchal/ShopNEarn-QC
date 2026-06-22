@@ -28,6 +28,13 @@ import {
   runMlmMaintenanceJob,
   previewMoveBinaryMember,
   moveBinaryMember,
+  listMlmPayoutReports,
+  getMlmPayoutReport,
+  generateMlmPayoutReport,
+  patchMlmPayoutReportLineItem,
+  applyMlmPayoutReportCorrection,
+  finalizeMlmPayoutReport,
+  exportMlmPayoutReport,
 } from "../controller/admin/mlmAdminController.js";
 import { allowRoles, verifyToken } from "../middleware/authMiddleware.js";
 
@@ -119,5 +126,21 @@ router.get("/milestone-rules", ...adminGuard, listMilestoneRules);
 router.post("/milestone-rules", ...adminGuard, createMilestoneRule);
 router.put("/milestone-rules/:id", ...adminGuard, updateMilestoneRule);
 router.delete("/milestone-rules/:id", ...adminGuard, deleteMilestoneRule);
+
+router.get("/payout-reports", ...adminGuard, listMlmPayoutReports);
+router.get("/payout-reports/:date/export", ...adminGuard, exportMlmPayoutReport);
+router.get("/payout-reports/:date", ...adminGuard, getMlmPayoutReport);
+router.post("/payout-reports/:date/generate", ...adminGuard, generateMlmPayoutReport);
+router.patch(
+  "/payout-reports/:date/line-items/:lineItemId",
+  ...adminGuard,
+  patchMlmPayoutReportLineItem,
+);
+router.post(
+  "/payout-reports/:date/line-items/:lineItemId/apply-correction",
+  ...adminGuard,
+  applyMlmPayoutReportCorrection,
+);
+router.post("/payout-reports/:date/finalize", ...adminGuard, finalizeMlmPayoutReport);
 
 export default router;

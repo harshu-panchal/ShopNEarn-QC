@@ -197,8 +197,10 @@ export const MLM_DEFAULTS = Object.freeze({
   signupBonusSelfAmount: 100,
   signupBonusSponsorAmount: 50,
 
-  // Direct referral activation income: when a sponsored member activates
-  // Plan A, their direct sponsor receives a one-time earnings credit.
+  // Direct referral activation income: when a sponsor's direct referrals
+  // complete their first binary pair (one active direct on L leg and one on
+  // R leg under the sponsor), the sponsor receives a one-time ₹200 earnings
+  // credit — not per referral activation.
   directReferralActivationBonusEnabled: true,
   directReferralActivationSponsorAmount: 200,
 

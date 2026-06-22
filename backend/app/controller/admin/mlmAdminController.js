@@ -61,6 +61,16 @@ import {
   previewBinaryMove,
   executeBinaryMove,
 } from "../../services/mlm/mlmBinaryMoveService.js";
+import MlmDailyPayoutReport, {
+  MLM_DAILY_PAYOUT_REPORT_STATUS,
+} from "../../models/mlmDailyPayoutReport.js";
+import {
+  generateDailyPayoutReport,
+  getDailyPayoutReportByDate,
+  listDailyPayoutReports,
+  serializeReportForExport,
+} from "../../services/mlm/mlmDailyPayoutReportService.js";
+import { istDayBounds, todayIstDateString } from "../../utils/mlmIstDate.js";
 
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "10", 10);
 
@@ -72,8 +82,7 @@ const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "10", 10);
  */
 export const getMlmDashboard = async (req, res) => {
   try {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const { startUtc: todayStart } = istDayBounds(todayIstDateString());
 
     const [
       totalMembers,
@@ -1728,6 +1737,248 @@ export const verifyMemberWalletEndpoint = async (req, res) => {
     const result = await verifyMlmMemberWallet(membership.userId);
     if (!result) return handleResponse(res, 404, "Wallet not found");
     return handleResponse(res, 200, "Verification complete", result);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+const PAYOUT_REPORT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function assertValidReportDate(date) {
+  if (!PAYOUT_REPORT_DATE_RE.test(String(date || ""))) {
+    const err = new Error("date must be YYYY-MM-DD (IST)");
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
+/** GET /api/admin/mlm/payout-reports */
+export const listMlmPayoutReports = async (req, res) => {
+  try {
+    const { from, to, status, page = 1, limit = 30 } = req.query || {};
+    const result = await listDailyPayoutReports({
+      from: from || null,
+      to: to || null,
+      status: status || null,
+      page: Number(page) || 1,
+      limit: Math.min(Number(limit) || 30, 100),
+    });
+    return handleResponse(res, 200, "Payout reports", result);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+/** GET /api/admin/mlm/payout-reports/:date */
+export const getMlmPayoutReport = async (req, res) => {
+  try {
+    assertValidReportDate(req.params.date);
+    const report = await getDailyPayoutReportByDate(req.params.date);
+    if (!report) return handleResponse(res, 404, "Report not found");
+    return handleResponse(res, 200, "Payout report", report);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+/** POST /api/admin/mlm/payout-reports/:date/generate */
+export const generateMlmPayoutReport = async (req, res) => {
+  try {
+    assertValidReportDate(req.params.date);
+    const force = Boolean(req.body?.force);
+    const result = await generateDailyPayoutReport(req.params.date, { force });
+    return handleResponse(res, 200, "Report generated", {
+      skipped: result.skipped,
+      report: result.report,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+/** PATCH /api/admin/mlm/payout-reports/:date/line-items/:lineItemId */
+export const patchMlmPayoutReportLineItem = async (req, res) => {
+  try {
+    assertValidReportDate(req.params.date);
+    const report = await MlmDailyPayoutReport.findOne({ reportDate: req.params.date });
+    if (!report) return handleResponse(res, 404, "Report not found");
+    if (report.status === MLM_DAILY_PAYOUT_REPORT_STATUS.FINALIZED) {
+      return handleResponse(res, 400, "Cannot edit a finalized report");
+    }
+
+    const line = report.memberLineItems.id(req.params.lineItemId);
+    if (!line) return handleResponse(res, 404, "Line item not found");
+
+    const { correctedTotal, adminNote } = req.body || {};
+    if (correctedTotal !== undefined && correctedTotal !== null) {
+      const num = Number(correctedTotal);
+      if (!Number.isFinite(num) || num < 0) {
+        return handleResponse(res, 400, "correctedTotal must be a non-negative number");
+      }
+      line.correctedTotal = num;
+    }
+    if (adminNote !== undefined) {
+      line.adminNote = String(adminNote || "").trim();
+    }
+    await report.save();
+    return handleResponse(res, 200, "Line item updated", { lineItem: line });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+/** POST /api/admin/mlm/payout-reports/:date/line-items/:lineItemId/apply-correction */
+export const applyMlmPayoutReportCorrection = async (req, res) => {
+  try {
+    assertValidReportDate(req.params.date);
+    const { reason } = req.body || {};
+    if (!reason || !String(reason).trim()) {
+      return handleResponse(res, 400, "reason is required");
+    }
+
+    const report = await MlmDailyPayoutReport.findOne({ reportDate: req.params.date });
+    if (!report) return handleResponse(res, 404, "Report not found");
+    if (report.status === MLM_DAILY_PAYOUT_REPORT_STATUS.FINALIZED) {
+      return handleResponse(res, 400, "Cannot correct a finalized report");
+    }
+
+    const line = report.memberLineItems.id(req.params.lineItemId);
+    if (!line) return handleResponse(res, 404, "Line item not found");
+
+    const targetTotal = line.correctedTotal ?? line.autoTotal;
+    const alreadyApplied = (line.adjustments || []).reduce((sum, adj) => {
+      const signed = adj.direction === "DEBIT" ? -adj.amount : adj.amount;
+      return sum + signed;
+    }, 0);
+    const effectiveCurrent = line.autoTotal + alreadyApplied;
+    const delta = Math.round((targetTotal - effectiveCurrent) * 100) / 100;
+
+    if (Math.abs(delta) < 0.01) {
+      return handleResponse(res, 400, "No wallet correction needed (already matches target)");
+    }
+
+    const direction = delta > 0 ? "CREDIT" : "DEBIT";
+    const amount = Math.abs(delta);
+    const membership = await MlmMembership.findById(line.membershipId);
+    if (!membership) return handleResponse(res, 404, "Member not found");
+
+    const idempotencyKey = `${MLM_IDEMPOTENCY_PREFIX.MANUAL_ADJUSTMENT}-RPT-${report.reportDate}-${line._id}-${Date.now()}`;
+    const session = await mongoose.startSession();
+    let walletResult;
+    try {
+      await session.withTransaction(async () => {
+        const args = {
+          ownerType: OWNER_TYPE.CUSTOMER,
+          ownerId: membership.userId,
+          amount,
+          bucket: "earnings",
+          session,
+          ledgerType: LEDGER_TRANSACTION_TYPE.MLM_MANUAL_ADJUSTMENT,
+          ledgerReference: idempotencyKey,
+          ledgerDescription: `Payout report ${report.reportDate} correction: ${reason}`,
+          idempotencyKey,
+          metadata: {
+            adminId: req.user?.id ? String(req.user.id) : null,
+            reason: String(reason).trim(),
+            reportDate: report.reportDate,
+            lineItemId: String(line._id),
+          },
+          syncUserWalletBalance: false,
+        };
+        walletResult =
+          direction === "CREDIT"
+            ? await creditWallet(args)
+            : await debitWallet(args);
+
+        await MlmCommissionEvent.create(
+          [
+            {
+              recipientId: membership.userId,
+              recipientMembershipId: membership._id,
+              sourceUserId: req.user?.id || null,
+              bonusType: MLM_BONUS_TYPE.MANUAL_ADJUSTMENT,
+              planType: membership.planType,
+              bonusAmount: amount,
+              cappedAmount: direction === "CREDIT" ? amount : -amount,
+              rolloverAmount: 0,
+              walletBucket: "earnings",
+              ledgerEntryId: walletResult?.ledgerEntry?._id || null,
+              status: "credited",
+              idempotencyKey,
+              description: `Payout report correction: ${reason}`,
+              meta: {
+                adminId: req.user?.id ? String(req.user.id) : null,
+                direction,
+                reportDate: report.reportDate,
+              },
+            },
+          ],
+          { session },
+        );
+
+        line.adjustments.push({
+          direction,
+          amount,
+          reason: String(reason).trim(),
+          adminId: req.user?.id || null,
+          appliedAt: new Date(),
+          ledgerRef: idempotencyKey,
+          idempotencyKey,
+        });
+        await report.save({ session });
+        await syncCustomerMlmProjection(membership.userId, { session });
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    return handleResponse(res, 200, "Correction applied", {
+      direction,
+      amount,
+      idempotencyKey,
+      lineItem: line,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+/** POST /api/admin/mlm/payout-reports/:date/finalize */
+export const finalizeMlmPayoutReport = async (req, res) => {
+  try {
+    assertValidReportDate(req.params.date);
+    const report = await MlmDailyPayoutReport.findOne({ reportDate: req.params.date });
+    if (!report) return handleResponse(res, 404, "Report not found");
+    if (report.status === MLM_DAILY_PAYOUT_REPORT_STATUS.FINALIZED) {
+      return handleResponse(res, 200, "Already finalized", { report });
+    }
+
+    report.status = MLM_DAILY_PAYOUT_REPORT_STATUS.FINALIZED;
+    report.finalizedAt = new Date();
+    report.finalizedBy = req.user?.id || null;
+    if (req.body?.adminNotes) {
+      report.adminNotes = String(req.body.adminNotes).trim();
+    }
+    await report.save();
+    return handleResponse(res, 200, "Report finalized", { report });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+/** GET /api/admin/mlm/payout-reports/:date/export */
+export const exportMlmPayoutReport = async (req, res) => {
+  try {
+    assertValidReportDate(req.params.date);
+    const report = await getDailyPayoutReportByDate(req.params.date);
+    if (!report) return handleResponse(res, 404, "Report not found");
+    const csv = serializeReportForExport(report);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="mlm-payout-report-${req.params.date}.csv"`,
+    );
+    return res.send(csv);
   } catch (error) {
     return handleResponse(res, error.statusCode || 400, error.message);
   }

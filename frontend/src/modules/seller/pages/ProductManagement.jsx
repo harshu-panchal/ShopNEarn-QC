@@ -873,7 +873,7 @@ const ProductManagement = () => {
       {/* Edit Modal (Copy from Admin) */}
       <AnimatePresence>
         {isProductModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 lg:p-12 overflow-y-auto">
+          <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 lg:p-12 overflow-y-auto">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1180,14 +1180,16 @@ const ProductManagement = () => {
                           Gallery Photos
                         </label>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          {(formData.galleryImages || []).slice(0, 4).map((img, idx) => (
+                          {(formData.galleryImages || []).map((img, idx) => (
                             <div
                               key={`${img}-${idx}`}
                               className="aspect-square rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 overflow-hidden relative">
                               <img src={img} alt={`Gallery ${idx + 1}`} className="w-full h-full object-cover" />
                             </div>
                           ))}
-                          {Array.from({ length: Math.max(0, 4 - (formData.galleryImages || []).length) }).map((_, idx) => (
+                          {Array.from({
+                            length: Math.max(0, 5 - (formData.galleryImages || []).length),
+                          }).map((_, idx) => (
                             <div
                               key={`upload-${idx}`}
                               className="aspect-square rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center group hover:border-primary hover:bg-primary/5 transition-all cursor-pointer overflow-hidden relative">

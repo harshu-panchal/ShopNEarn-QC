@@ -130,7 +130,7 @@ export const MLM_MAINTENANCE_JOBS = [
     category: "Income & Bonuses",
     label: "Backfill referral activation income",
     description:
-      "Credit ₹200 earnings to sponsors whose active referrals never received DIRECT_REFERRAL_ACTIVATION.",
+      "Credit ₹200 earnings to sponsors who completed their first direct L+R pair but never received DIRECT_REFERRAL_ACTIVATION.",
     script: "scripts/backfill-mlm-direct-referral-activation.js",
     danger: "medium",
     applyFlag: "--apply",
@@ -165,6 +165,37 @@ export const MLM_MAINTENANCE_JOBS = [
         label: "Force re-run (voids prior recalc credits)",
         type: "boolean",
         default: false,
+      },
+    ],
+  },
+  {
+    id: "backfill-daily-payout-reports",
+    category: "Income & Bonuses",
+    label: "Backfill daily payout reports",
+    description:
+      "Generate MlmDailyPayoutReport snapshots for an IST date range (pairs, earnings, referrals per day).",
+    script: "scripts/backfill-mlm-daily-payout-reports.js",
+    danger: "medium",
+    applyFlag: "--apply",
+    requiresOption: "from",
+    buildArgs: ({ from, to }) => {
+      const args = [`--from=${String(from || "").trim()}`];
+      if (to) args.push(`--to=${String(to).trim()}`);
+      return args;
+    },
+    options: [
+      {
+        key: "from",
+        label: "From date (IST)",
+        type: "text",
+        required: true,
+        placeholder: "YYYY-MM-DD",
+      },
+      {
+        key: "to",
+        label: "To date (IST)",
+        type: "text",
+        placeholder: "YYYY-MM-DD (defaults to from)",
       },
     ],
   },

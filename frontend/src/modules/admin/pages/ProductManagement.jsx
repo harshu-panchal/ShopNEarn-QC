@@ -669,7 +669,7 @@ const ProductManagement = () => {
             <AnimatePresence>
                 {isProductModalOpen && (
                     <div
-                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 lg:p-12 overflow-hidden overscroll-contain touch-pan-y"
+                        className="fixed inset-0 z-[500] flex items-center justify-center p-4 lg:p-12 overflow-hidden overscroll-contain touch-pan-y"
                         onWheelCapture={(e) => e.stopPropagation()}
                     >
                         <motion.div

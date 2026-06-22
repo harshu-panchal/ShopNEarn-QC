@@ -1,9 +1,9 @@
 /**
  * backfill-mlm-direct-referral-activation.js
  *
- * Credits the one-time direct-referral activation earnings bonus (default
- * ₹200) to every sponsor whose referral is already ACTIVE Plan A but
- * never received `DIRECT_REFERRAL_ACTIVATION` when the feature shipped.
+ * Credits the one-time first direct-pair activation earnings bonus (default
+ * ₹200) to sponsors who already have at least one active direct on each
+ * binary leg but never received DIRECT_REFERRAL_ACTIVATION.
  *
  * Usage:
  *   node backend/scripts/backfill-mlm-direct-referral-activation.js
@@ -17,13 +17,17 @@ import MlmMembership from "../app/models/mlmMembership.js";
 import MlmCommissionEvent from "../app/models/mlmCommissionEvent.js";
 import "../app/models/customer.js";
 import {
+  MLM_BONUS_TYPE,
   MLM_COMMISSION_EVENT_STATUS,
-  MLM_IDEMPOTENCY_PREFIX,
   MLM_MEMBERSHIP_STATUS,
   MLM_PLAN_TYPE,
 } from "../app/constants/mlm.js";
+import { classifyDirectReferralsByLegUnderRoot } from "../app/services/mlm/mlmBinaryTreeBuilder.js";
 import {
   applyDirectReferralActivationBonusStandalone,
+  countDirectReferralLegPairsFromLegMap,
+  directReferralActivationFirstPairIdempotencyKey,
+  shouldCreditFirstDirectReferralPair,
 } from "../app/services/mlm/mlmSignupBonusService.js";
 import { getDirectReferralActivationConfig } from "../app/services/mlm/mlmConfigService.js";
 
@@ -37,8 +41,61 @@ function tag(...args) {
   console.log("[backfill-mlm-direct-referral-activation]", ...args);
 }
 
-function idempotencyKey(sponsorUserId, activatedUserId) {
-  return `${MLM_IDEMPOTENCY_PREFIX.DIRECT_REFERRAL_ACTIVATION}-${String(sponsorUserId)}-${String(activatedUserId)}`;
+async function sponsorAlreadyCredited(sponsorUserId) {
+  const firstPairKey = directReferralActivationFirstPairIdempotencyKey(sponsorUserId);
+  const existing = await MlmCommissionEvent.findOne({
+    $or: [
+      { idempotencyKey: firstPairKey, status: MLM_COMMISSION_EVENT_STATUS.CREDITED },
+      {
+        recipientId: sponsorUserId,
+        bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION,
+        status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+      },
+    ],
+  }).lean();
+  return Boolean(existing);
+}
+
+/**
+ * Find the referral whose activation would have completed the first pair
+ * (chronological Plan A activations among directs).
+ */
+async function findFirstPairTriggerReferral(sponsorMembership, activeDirects) {
+  const sorted = [...activeDirects].sort((a, b) => {
+    const ta = a.planAJoinedAt ? new Date(a.planAJoinedAt).getTime() : 0;
+    const tb = b.planAJoinedAt ? new Date(b.planAJoinedAt).getTime() : 0;
+    return ta - tb;
+  });
+
+  for (const referral of sorted) {
+    const pairsBefore = await loadPairCounts(sponsorMembership, {
+      excludeUserId: referral.userId,
+      activeDirects,
+    });
+    const pairsAfter = await loadPairCounts(sponsorMembership, {
+      activeDirects,
+    });
+    if (
+      shouldCreditFirstDirectReferralPair({
+        pairsBefore: pairsBefore.pairs,
+        pairsAfter: pairsAfter.pairs,
+      })
+    ) {
+      return referral;
+    }
+  }
+  return sorted[sorted.length - 1] || null;
+}
+
+async function loadPairCounts(sponsorMembership, { excludeUserId, activeDirects }) {
+  const directs = excludeUserId
+    ? activeDirects.filter((d) => String(d.userId) !== String(excludeUserId))
+    : activeDirects;
+  const legByReferralId = await classifyDirectReferralsByLegUnderRoot({
+    rootMembership: sponsorMembership,
+    directReferrals: directs,
+  });
+  return countDirectReferralLegPairsFromLegMap(directs, legByReferralId);
 }
 
 async function main() {
@@ -50,73 +107,60 @@ async function main() {
     tag("Direct referral activation bonus is disabled or zero — aborting.");
     process.exit(1);
   }
-  tag(`Amount per credit: ₹${cfg.sponsorAmount}`);
+  tag(`Amount per first-pair credit: ₹${cfg.sponsorAmount}`);
 
-  const activeReferrals = await MlmMembership.find({
-    status: MLM_MEMBERSHIP_STATUS.ACTIVE,
-    planType: MLM_PLAN_TYPE.A,
-    sponsorId: { $ne: null },
-  })
-    .select("_id userId sponsorId referralCode planAJoinedAt")
-    .lean();
-
-  const sponsorIds = [...new Set(activeReferrals.map((m) => String(m.sponsorId)))];
   const sponsors = await MlmMembership.find({
-    userId: { $in: sponsorIds },
+    status: { $nin: [MLM_MEMBERSHIP_STATUS.SUSPENDED, MLM_MEMBERSHIP_STATUS.TERMINATED] },
   })
     .select("userId status referralCode")
     .lean();
-  const sponsorByUserId = new Map(
-    sponsors.map((s) => [String(s.userId), s]),
-  );
 
   const totals = {
-    scanned: activeReferrals.length,
+    sponsorsScanned: sponsors.length,
     alreadyCredited: 0,
+    pairNotComplete: 0,
     wouldCredit: 0,
     credited: 0,
-    skippedNoSponsor: 0,
-    skippedSponsorIneligible: 0,
-    skippedSelfReferral: 0,
+    skippedNoTrigger: 0,
     errors: 0,
     totalAmount: 0,
   };
 
-  for (const referral of activeReferrals) {
-    const activatedUserId = referral.userId;
-    const sponsorUserId = referral.sponsorId;
+  for (const sponsor of sponsors) {
+    const sponsorUserId = sponsor.userId;
 
-    if (String(sponsorUserId) === String(activatedUserId)) {
-      totals.skippedSelfReferral += 1;
+    if (await sponsorAlreadyCredited(sponsorUserId)) {
+      totals.alreadyCredited += 1;
       continue;
     }
 
-    const sponsor = sponsorByUserId.get(String(sponsorUserId));
-    if (!sponsor) {
-      totals.skippedNoSponsor += 1;
+    const activeDirects = await MlmMembership.find({
+      sponsorId: sponsorUserId,
+      status: MLM_MEMBERSHIP_STATUS.ACTIVE,
+      planType: MLM_PLAN_TYPE.A,
+    })
+      .select("_id userId sponsorId referralCode planAJoinedAt")
+      .lean();
+
+    if (!activeDirects.length) {
+      totals.pairNotComplete += 1;
+      continue;
+    }
+
+    const pairsAfter = await loadPairCounts(sponsor, { activeDirects });
+    if (pairsAfter.pairs < 1) {
+      totals.pairNotComplete += 1;
       if (VERBOSE) {
         tag(
-          `SKIP ${referral.referralCode} — sponsor ${String(sponsorUserId)} missing`,
+          `SKIP ${sponsor.referralCode} — first pair not complete (L=${pairsAfter.left} R=${pairsAfter.right})`,
         );
       }
       continue;
     }
-    if (
-      sponsor.status === MLM_MEMBERSHIP_STATUS.SUSPENDED ||
-      sponsor.status === MLM_MEMBERSHIP_STATUS.TERMINATED
-    ) {
-      totals.skippedSponsorIneligible += 1;
-      continue;
-    }
 
-    const key = idempotencyKey(sponsorUserId, activatedUserId);
-    const existing = await MlmCommissionEvent.findOne({
-      idempotencyKey: key,
-      status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
-    }).lean();
-
-    if (existing) {
-      totals.alreadyCredited += 1;
+    const triggerReferral = await findFirstPairTriggerReferral(sponsor, activeDirects);
+    if (!triggerReferral) {
+      totals.skippedNoTrigger += 1;
       continue;
     }
 
@@ -125,7 +169,7 @@ async function main() {
       totals.totalAmount += cfg.sponsorAmount;
       if (VERBOSE) {
         tag(
-          `WOULD CREDIT sponsor ${sponsor.referralCode} ₹${cfg.sponsorAmount} for referral ${referral.referralCode}`,
+          `WOULD CREDIT sponsor ${sponsor.referralCode} ₹${cfg.sponsorAmount} (first pair via ${triggerReferral.referralCode})`,
         );
       }
       continue;
@@ -133,30 +177,30 @@ async function main() {
 
     try {
       const res = await applyDirectReferralActivationBonusStandalone({
-        activatedUserId,
-        activatedMembership: referral,
-        correlationId: `${MIGRATION_ID}-${String(referral._id)}`,
+        activatedUserId: triggerReferral.userId,
+        activatedMembership: triggerReferral,
+        correlationId: `${MIGRATION_ID}-${String(sponsor.userId)}`,
       });
 
       if (res?.skipped === "ALREADY_CREDITED") {
         totals.alreadyCredited += 1;
       } else if (res?.skipped) {
         if (VERBOSE) {
-          tag(`SKIP ${referral.referralCode}: ${res.skipped}`);
+          tag(`SKIP ${sponsor.referralCode}: ${res.skipped}`);
         }
       } else if (res?.amount) {
         totals.credited += 1;
         totals.totalAmount += res.amount;
         if (VERBOSE) {
           tag(
-            `OK sponsor ${sponsor.referralCode} +₹${res.amount} for ${referral.referralCode}`,
+            `OK sponsor ${sponsor.referralCode} +₹${res.amount} (first pair via ${triggerReferral.referralCode})`,
           );
         }
       }
     } catch (err) {
       totals.errors += 1;
       tag(
-        `ERROR referral=${referral.referralCode} sponsor=${sponsor.referralCode}: ${err.message}`,
+        `ERROR sponsor=${sponsor.referralCode}: ${err.message}`,
       );
     }
   }
