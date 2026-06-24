@@ -138,6 +138,18 @@ export const MLM_MAINTENANCE_JOBS = [
     options: [],
   },
   {
+    id: "restore-first-pair-after-recalc",
+    category: "Income & Bonuses",
+    label: "Restore first-pair income after recalc",
+    description:
+      "Credit ₹200 earnings to sponsors zeroed by earnings recalc (MLM-EARN-RECALC) who have a complete first direct L+R pair but no wallet credit yet. Safe for Vinod-type cases.",
+    script: "scripts/restore-first-pair-income-after-recalc.js",
+    danger: "medium",
+    applyFlag: "--apply",
+    buildArgs: () => [],
+    options: [],
+  },
+  {
     id: "backfill-held-bonus-contributors",
     category: "Income & Bonuses",
     label: "Backfill held pair bonus contributors",
