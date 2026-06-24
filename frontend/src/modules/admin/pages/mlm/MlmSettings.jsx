@@ -96,6 +96,12 @@ const MlmSettings = () => {
                 bonusesOnReturn: cfg.bonusesOnReturn || 'clawback',
                 sponsorChainMaxDepth: Number(cfg.sponsorChainMaxDepth) || 10,
                 referralCodeLength: Number(cfg.referralCodeLength) || 8,
+                directReferralActivationBonusEnabled: cfg.directReferralActivationBonusEnabled !== false,
+                directReferralFirstPairEnabled: cfg.directReferralFirstPairEnabled !== false,
+                directReferralFirstPairAmount: Number(cfg.directReferralFirstPairAmount ?? cfg.directReferralActivationSponsorAmount) || 200,
+                directReferralPerActivationEnabled: cfg.directReferralPerActivationEnabled !== false,
+                directReferralPerActivationAmount: Number(cfg.directReferralPerActivationAmount ?? cfg.directReferralActivationSponsorAmount) || 200,
+                directReferralActivationSponsorAmount: Number(cfg.directReferralActivationSponsorAmount) || 200,
             };
             await adminMlmApi.updateMlmSettings(payload);
             toast.success('MLM settings saved');
@@ -161,6 +167,44 @@ const MlmSettings = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <NumField label="Auto-upgrade at lifetime Plan A earnings (₹)" value={cfg.planBAutoUpgradeAtPlanALifetimeEarnings} onChange={(v) => setCfg({ ...cfg, planBAutoUpgradeAtPlanALifetimeEarnings: v })} />
                     <NumField label="Plan B upgrade shopping wallet top-up (₹)" value={cfg.premiumUpgradeShoppingWalletTopup} onChange={(v) => setCfg({ ...cfg, premiumUpgradeShoppingWalletTopup: v })} />
+                </div>
+            </Section>
+
+            <Section title="Direct Referral Activation Income (earnings)">
+                <Toggle
+                    label="Enable direct referral activation income"
+                    value={cfg.directReferralActivationBonusEnabled !== false}
+                    onChange={(v) => setCfg({ ...cfg, directReferralActivationBonusEnabled: v })}
+                />
+                <p className="text-[11px] text-slate-500 mt-2 mb-4 leading-relaxed">
+                    Two independent flows can run together when a direct referral activates Plan A.
+                    Both credit the sponsor&apos;s <strong>earnings</strong> wallet.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                        <Toggle
+                            label="First direct L+R pair (one-time)"
+                            value={cfg.directReferralFirstPairEnabled !== false}
+                            onChange={(v) => setCfg({ ...cfg, directReferralFirstPairEnabled: v })}
+                        />
+                        <NumField
+                            label="Amount (₹)"
+                            value={cfg.directReferralFirstPairAmount ?? cfg.directReferralActivationSponsorAmount ?? 200}
+                            onChange={(v) => setCfg({ ...cfg, directReferralFirstPairAmount: v })}
+                        />
+                    </div>
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                        <Toggle
+                            label="Per direct Plan A activation"
+                            value={cfg.directReferralPerActivationEnabled !== false}
+                            onChange={(v) => setCfg({ ...cfg, directReferralPerActivationEnabled: v })}
+                        />
+                        <NumField
+                            label="Amount (₹)"
+                            value={cfg.directReferralPerActivationAmount ?? cfg.directReferralActivationSponsorAmount ?? 200}
+                            onChange={(v) => setCfg({ ...cfg, directReferralPerActivationAmount: v })}
+                        />
+                    </div>
                 </div>
             </Section>
 

@@ -31,6 +31,7 @@ const BONUS_TYPE_LABEL = {
     BINARY_PAIR_MATCH: 'Binary pair match',
     DIRECT_REFERRAL_MILESTONE: 'Matching Income',
     DIRECT_REFERRAL_ACTIVATION: 'First Direct Pair Income',
+    DIRECT_REFERRAL_PER_ACTIVATION: 'Direct Referral Activation Income',
     REPURCHASE_BONUS: 'Repurchase',
     MENTOR_ROYALTY: 'Mentor royalty',
     HOME_SHOPPING_SALES: 'Home shopping sales',

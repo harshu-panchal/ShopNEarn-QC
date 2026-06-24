@@ -130,7 +130,7 @@ export const MLM_MAINTENANCE_JOBS = [
     category: "Income & Bonuses",
     label: "Backfill referral activation income",
     description:
-      "Credit ₹200 earnings to sponsors who completed their first direct L+R pair but never received DIRECT_REFERRAL_ACTIVATION.",
+      "Credit per-direct (₹200 each) and first-pair (₹200 once) referral activation earnings for eligible sponsors.",
     script: "scripts/backfill-mlm-direct-referral-activation.js",
     danger: "medium",
     applyFlag: "--apply",

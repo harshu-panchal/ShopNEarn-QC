@@ -18,9 +18,14 @@ import { classifyDirectReferralsByLegUnderRoot } from "./mlmBinaryTreeBuilder.js
 import { recordLifetimeEarning } from "./mlmMembershipService.js";
 import { roundCurrency } from "../../utils/money.js";
 
-/** Idempotency key — one ₹200 credit per sponsor for the first direct pair. */
+/** Idempotency key — one credit per sponsor for the first direct pair. */
 export function directReferralActivationFirstPairIdempotencyKey(sponsorUserId) {
   return `${MLM_IDEMPOTENCY_PREFIX.DIRECT_REFERRAL_ACTIVATION}-${String(sponsorUserId)}-FIRST-DIRECT-PAIR`;
+}
+
+/** Idempotency key — one credit per (sponsor, activated direct). */
+export function directReferralPerActivationIdempotencyKey(sponsorUserId, activatedUserId) {
+  return `${MLM_IDEMPOTENCY_PREFIX.DIRECT_REFERRAL_PER_ACTIVATION}-${String(sponsorUserId)}-${String(activatedUserId)}`;
 }
 
 /** Count active Plan A directs on each binary leg under the sponsor. */
@@ -60,6 +65,107 @@ async function loadActiveDirectReferralLegPairCounts(
     directReferrals: directs,
   });
   return countDirectReferralLegPairsFromLegMap(directs, legByReferralId);
+}
+
+async function resolveSponsorForDirectReferralBonus({
+  activatedUserId,
+  activatedMembership,
+  session,
+}) {
+  if (!activatedUserId || !activatedMembership?.sponsorId) {
+    return { skipped: "NO_SPONSOR", sponsorUserId: null, sponsorMembership: null };
+  }
+
+  const sponsorUserId = activatedMembership.sponsorId;
+  if (String(sponsorUserId) === String(activatedUserId)) {
+    return { skipped: "SELF_REFERRAL", sponsorUserId: null, sponsorMembership: null };
+  }
+
+  const sponsorMembership = await MlmMembership.findOne({
+    userId: sponsorUserId,
+  }).session(session);
+  if (!sponsorMembership) {
+    return { skipped: "SPONSOR_NOT_FOUND", sponsorUserId: null, sponsorMembership: null };
+  }
+  if (
+    sponsorMembership.status === MLM_MEMBERSHIP_STATUS.SUSPENDED
+    || sponsorMembership.status === MLM_MEMBERSHIP_STATUS.TERMINATED
+  ) {
+    return { skipped: "SPONSOR_INELIGIBLE", sponsorUserId: null, sponsorMembership: null };
+  }
+
+  return { skipped: null, sponsorUserId, sponsorMembership };
+}
+
+async function creditDirectReferralEarning({
+  sponsorUserId,
+  sponsorMembership,
+  activatedUserId,
+  amount,
+  bonusType,
+  ledgerType,
+  idempotencyKey,
+  description,
+  meta,
+  session,
+  correlationId,
+}) {
+  const creditResult = await creditWallet({
+    ownerType: OWNER_TYPE.CUSTOMER,
+    ownerId: sponsorUserId,
+    amount,
+    bucket: "earnings",
+    session,
+    ledgerType,
+    ledgerReference: idempotencyKey,
+    ledgerDescription: description,
+    metadata: {
+      mlmEvent: bonusType,
+      activatedUserId: String(activatedUserId),
+      sponsorUserId: String(sponsorUserId),
+      ...(meta || {}),
+    },
+    idempotencyKey,
+    correlationId,
+    syncUserWalletBalance: false,
+  });
+
+  const [eventDoc] = await MlmCommissionEvent.create(
+    [
+      {
+        recipientId: sponsorUserId,
+        recipientMembershipId: sponsorMembership._id,
+        sourceUserId: activatedUserId,
+        bonusType,
+        planType: MLM_PLAN_TYPE.A,
+        baseAmount: amount,
+        bonusAmount: amount,
+        cappedAmount: amount,
+        rolloverAmount: 0,
+        walletBucket: "earnings",
+        ledgerEntryId: creditResult?.ledgerEntry?._id || null,
+        status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+        idempotencyKey,
+        correlationId,
+        description,
+        meta: {
+          mlmEvent: bonusType,
+          activatedUserId: String(activatedUserId),
+          ...(meta || {}),
+        },
+      },
+    ],
+    { session },
+  );
+
+  await recordLifetimeEarning({
+    userId: sponsorUserId,
+    amount,
+    planType: MLM_PLAN_TYPE.A,
+    session,
+  });
+
+  return { event: eventDoc, amount };
 }
 
 /**
@@ -329,11 +435,10 @@ export async function applyRegistrationBonusInSession({
 }
 
 /**
- * One-time ₹200 earnings credit when a sponsor's direct referrals complete
- * their first binary pair (one active direct on L and one on R). Pays only
- * on the activation that moves pairs 0 → 1, not on every referral activation.
+ * Per-direct Plan A activation earnings — credits sponsor each time a direct
+ * referral activates (idempotent per sponsor + activated user).
  */
-export async function applyDirectReferralActivationBonusInSession({
+export async function applyDirectReferralPerActivationBonusInSession({
   activatedUserId,
   activatedMembership,
   session,
@@ -341,35 +446,103 @@ export async function applyDirectReferralActivationBonusInSession({
 }) {
   if (!session) {
     throw new Error(
-      "applyDirectReferralActivationBonusInSession requires an open mongoose session.",
+      "applyDirectReferralPerActivationBonusInSession requires an open mongoose session.",
     );
-  }
-  if (!activatedUserId || !activatedMembership?.sponsorId) {
-    return { skipped: "NO_SPONSOR", event: null };
-  }
-
-  const sponsorUserId = activatedMembership.sponsorId;
-  if (String(sponsorUserId) === String(activatedUserId)) {
-    return { skipped: "SELF_REFERRAL", event: null };
   }
 
   const cfg = await getDirectReferralActivationConfig();
-  if (!cfg.enabled || cfg.sponsorAmount <= 0) {
+  if (!cfg.perActivation.enabled || cfg.perActivation.amount <= 0) {
     return { skipped: "DISABLED", event: null };
   }
 
-  const sponsorMembership = await MlmMembership.findOne({
-    userId: sponsorUserId,
-  }).session(session);
-  if (!sponsorMembership) {
-    return { skipped: "SPONSOR_NOT_FOUND", event: null };
+  const sponsor = await resolveSponsorForDirectReferralBonus({
+    activatedUserId,
+    activatedMembership,
+    session,
+  });
+  if (sponsor.skipped) {
+    return { skipped: sponsor.skipped, event: null };
   }
-  if (
-    sponsorMembership.status === MLM_MEMBERSHIP_STATUS.SUSPENDED ||
-    sponsorMembership.status === MLM_MEMBERSHIP_STATUS.TERMINATED
-  ) {
-    return { skipped: "SPONSOR_INELIGIBLE", event: null };
+
+  const { sponsorUserId, sponsorMembership } = sponsor;
+  const idempotencyKey = directReferralPerActivationIdempotencyKey(
+    sponsorUserId,
+    activatedUserId,
+  );
+
+  const existing = await MlmCommissionEvent.findOne(
+    { idempotencyKey },
+    null,
+    { session },
+  );
+  if (existing) {
+    return { skipped: "ALREADY_CREDITED", event: existing };
   }
+
+  // Legacy per-referral credits used MLM-DRA-{sponsor}-{activated} + DIRECT_REFERRAL_ACTIVATION.
+  const legacyKey = `${MLM_IDEMPOTENCY_PREFIX.DIRECT_REFERRAL_ACTIVATION}-${String(sponsorUserId)}-${String(activatedUserId)}`;
+  const legacy = await MlmCommissionEvent.findOne(
+    {
+      idempotencyKey: legacyKey,
+      status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+    },
+    null,
+    { session },
+  );
+  if (legacy) {
+    return { skipped: "ALREADY_CREDITED", event: legacy };
+  }
+
+  const amount = roundCurrency(cfg.perActivation.amount);
+  const result = await creditDirectReferralEarning({
+    sponsorUserId,
+    sponsorMembership,
+    activatedUserId,
+    amount,
+    bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION,
+    ledgerType: LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_PER_ACTIVATION,
+    idempotencyKey,
+    description: "Direct referral Plan A activation income",
+    meta: { incomeType: "PER_ACTIVATION" },
+    session,
+    correlationId,
+  });
+
+  return { skipped: null, ...result };
+}
+
+/**
+ * One-time earnings when a sponsor's direct referrals complete their first
+ * binary pair (one active direct on L and one on R).
+ */
+export async function applyDirectReferralFirstPairBonusInSession({
+  activatedUserId,
+  activatedMembership,
+  session,
+  correlationId = null,
+  backfill = false,
+}) {
+  if (!session) {
+    throw new Error(
+      "applyDirectReferralFirstPairBonusInSession requires an open mongoose session.",
+    );
+  }
+
+  const cfg = await getDirectReferralActivationConfig();
+  if (!cfg.firstPair.enabled || cfg.firstPair.amount <= 0) {
+    return { skipped: "DISABLED", event: null };
+  }
+
+  const sponsor = await resolveSponsorForDirectReferralBonus({
+    activatedUserId,
+    activatedMembership,
+    session,
+  });
+  if (sponsor.skipped) {
+    return { skipped: sponsor.skipped, event: null };
+  }
+
+  const { sponsorUserId, sponsorMembership } = sponsor;
 
   const pairsBefore = await loadActiveDirectReferralLegPairCounts(
     sponsorMembership,
@@ -380,16 +553,20 @@ export async function applyDirectReferralActivationBonusInSession({
     { session },
   );
 
-  if (
-    !shouldCreditFirstDirectReferralPair({
-      pairsBefore: pairsBefore.pairs,
-      pairsAfter: pairsAfter.pairs,
-    })
-  ) {
-    if (pairsAfter.pairs === 0) {
-      return { skipped: "PAIR_NOT_COMPLETE", event: null };
+  if (!backfill) {
+    if (
+      !shouldCreditFirstDirectReferralPair({
+        pairsBefore: pairsBefore.pairs,
+        pairsAfter: pairsAfter.pairs,
+      })
+    ) {
+      if (pairsAfter.pairs === 0) {
+        return { skipped: "PAIR_NOT_COMPLETE", event: null };
+      }
+      return { skipped: "NOT_FIRST_PAIR", event: null };
     }
-    return { skipped: "NOT_FIRST_PAIR", event: null };
+  } else if (pairsAfter.pairs < 1) {
+    return { skipped: "PAIR_NOT_COMPLETE", event: null };
   }
 
   const idempotencyKey =
@@ -403,80 +580,60 @@ export async function applyDirectReferralActivationBonusInSession({
     return { skipped: "ALREADY_CREDITED", event: existing };
   }
 
-  const legacyCredit = await MlmCommissionEvent.findOne(
-    {
-      recipientId: sponsorUserId,
-      bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION,
-      status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
-    },
-    null,
-    { session },
-  );
-  if (legacyCredit) {
-    return { skipped: "ALREADY_CREDITED", event: legacyCredit };
-  }
-
-  const amount = roundCurrency(cfg.sponsorAmount);
-  const creditResult = await creditWallet({
-    ownerType: OWNER_TYPE.CUSTOMER,
-    ownerId: sponsorUserId,
+  const amount = roundCurrency(cfg.firstPair.amount);
+  const result = await creditDirectReferralEarning({
+    sponsorUserId,
+    sponsorMembership,
+    activatedUserId,
     amount,
-    bucket: "earnings",
-    session,
+    bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION,
     ledgerType: LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_ACTIVATION,
-    ledgerReference: idempotencyKey,
-    ledgerDescription: "Direct referral first-pair activation income",
-    metadata: {
-      mlmEvent: "DIRECT_REFERRAL_ACTIVATION",
-      activatedUserId: String(activatedUserId),
-      sponsorUserId: String(sponsorUserId),
+    idempotencyKey,
+    description: "Direct referral first-pair activation income",
+    meta: {
+      incomeType: "FIRST_DIRECT_PAIR",
       pairIndex: 1,
       leftDirectCount: pairsAfter.left,
       rightDirectCount: pairsAfter.right,
     },
-    idempotencyKey,
-    correlationId,
-    syncUserWalletBalance: false,
-  });
-
-  const [eventDoc] = await MlmCommissionEvent.create(
-    [
-      {
-        recipientId: sponsorUserId,
-        recipientMembershipId: sponsorMembership._id,
-        sourceUserId: activatedUserId,
-        bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION,
-        planType: MLM_PLAN_TYPE.A,
-        baseAmount: amount,
-        bonusAmount: amount,
-        cappedAmount: amount,
-        rolloverAmount: 0,
-        walletBucket: "earnings",
-        ledgerEntryId: creditResult?.ledgerEntry?._id || null,
-        status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
-        idempotencyKey,
-        correlationId,
-        description: "Direct referral first-pair activation income",
-        meta: {
-          mlmEvent: "DIRECT_REFERRAL_ACTIVATION",
-          activatedUserId: String(activatedUserId),
-          pairIndex: 1,
-          leftDirectCount: pairsAfter.left,
-          rightDirectCount: pairsAfter.right,
-        },
-      },
-    ],
-    { session },
-  );
-
-  await recordLifetimeEarning({
-    userId: sponsorUserId,
-    amount,
-    planType: MLM_PLAN_TYPE.A,
     session,
+    correlationId,
   });
 
-  return { skipped: null, event: eventDoc, amount };
+  return { skipped: null, ...result };
+}
+
+/**
+ * Runs both direct-referral earnings flows on Plan A activation:
+ *   1. Per-direct activation income (each direct)
+ *   2. First direct L+R pair income (one-time)
+ */
+export async function applyDirectReferralActivationBonusInSession({
+  activatedUserId,
+  activatedMembership,
+  session,
+  correlationId = null,
+}) {
+  if (!session) {
+    throw new Error(
+      "applyDirectReferralActivationBonusInSession requires an open mongoose session.",
+    );
+  }
+
+  const perActivation = await applyDirectReferralPerActivationBonusInSession({
+    activatedUserId,
+    activatedMembership,
+    session,
+    correlationId,
+  });
+  const firstPair = await applyDirectReferralFirstPairBonusInSession({
+    activatedUserId,
+    activatedMembership,
+    session,
+    correlationId,
+  });
+
+  return { perActivation, firstPair };
 }
 
 /**
@@ -714,6 +871,52 @@ export async function applyDirectReferralActivationBonusStandalone({
         activatedMembership,
         session,
         correlationId,
+      });
+    });
+  } finally {
+    await session.endSession();
+  }
+  return result;
+}
+
+export async function applyDirectReferralPerActivationBonusStandalone({
+  activatedUserId,
+  activatedMembership,
+  correlationId = null,
+}) {
+  const session = await mongoose.startSession();
+  let result;
+  try {
+    await session.withTransaction(async () => {
+      result = await applyDirectReferralPerActivationBonusInSession({
+        activatedUserId,
+        activatedMembership,
+        session,
+        correlationId,
+      });
+    });
+  } finally {
+    await session.endSession();
+  }
+  return result;
+}
+
+export async function applyDirectReferralFirstPairBonusStandalone({
+  activatedUserId,
+  activatedMembership,
+  correlationId = null,
+  backfill = false,
+}) {
+  const session = await mongoose.startSession();
+  let result;
+  try {
+    await session.withTransaction(async () => {
+      result = await applyDirectReferralFirstPairBonusInSession({
+        activatedUserId,
+        activatedMembership,
+        session,
+        correlationId,
+        backfill,
       });
     });
   } finally {

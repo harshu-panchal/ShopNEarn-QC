@@ -106,6 +106,12 @@ export const updateMlmSettingsSchema = Joi.object({
   bonusesOnReturn: Joi.string().valid(...ALL_MLM_RETURN_CLAWBACK_MODES),
   sponsorChainMaxDepth: Joi.number().integer().min(1).max(50),
   referralCodeLength: Joi.number().integer().min(4).max(16),
+  directReferralActivationBonusEnabled: Joi.boolean(),
+  directReferralFirstPairEnabled: Joi.boolean(),
+  directReferralFirstPairAmount: Joi.number().min(0),
+  directReferralPerActivationEnabled: Joi.boolean(),
+  directReferralPerActivationAmount: Joi.number().min(0),
+  directReferralActivationSponsorAmount: Joi.number().min(0),
 }).unknown(false);
 
 export function validateMlmSchema(schema, payload) {

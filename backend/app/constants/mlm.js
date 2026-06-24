@@ -75,9 +75,10 @@ export const MLM_BONUS_TYPE = {
   // sponsor-credit at a glance.
   SIGNUP_BONUS_SELF: "SIGNUP_BONUS_SELF",
   SIGNUP_BONUS_SPONSOR: "SIGNUP_BONUS_SPONSOR",
-  // One-time earnings credit to the direct sponsor when a referral
-  // activates Plan A (REGISTERED_UNPAID → ACTIVE).
+  // One-time earnings when sponsor's directs complete first L+R pair.
   DIRECT_REFERRAL_ACTIVATION: "DIRECT_REFERRAL_ACTIVATION",
+  // Per-direct Plan A activation earnings (each direct activation).
+  DIRECT_REFERRAL_PER_ACTIVATION: "DIRECT_REFERRAL_PER_ACTIVATION",
 };
 export const ALL_MLM_BONUS_TYPES = Object.values(MLM_BONUS_TYPE);
 
@@ -197,11 +198,15 @@ export const MLM_DEFAULTS = Object.freeze({
   signupBonusSelfAmount: 100,
   signupBonusSponsorAmount: 50,
 
-  // Direct referral activation income: when a sponsor's direct referrals
-  // complete their first binary pair (one active direct on L leg and one on
-  // R leg under the sponsor), the sponsor receives a one-time ₹200 earnings
-  // credit — not per referral activation.
+  // Direct referral activation income (two independent flows):
+  //   1. First direct L+R pair — one-time earnings credit per sponsor.
+  //   2. Per activation — earnings credit each time a direct activates Plan A.
   directReferralActivationBonusEnabled: true,
+  directReferralFirstPairEnabled: true,
+  directReferralFirstPairAmount: 200,
+  directReferralPerActivationEnabled: true,
+  directReferralPerActivationAmount: 200,
+  // Legacy single-field fallback (maps to both amounts when split fields unset).
   directReferralActivationSponsorAmount: 200,
 
   // Joining package — direct payment + activation (no Product/Order).
@@ -374,4 +379,5 @@ export const MLM_IDEMPOTENCY_PREFIX = {
   SIGNUP_BONUS_SPONSOR: "MLM-SBR",
   // `MLM-DRA-<sponsorUserId>-<activatedReferralUserId>`
   DIRECT_REFERRAL_ACTIVATION: "MLM-DRA",
+  DIRECT_REFERRAL_PER_ACTIVATION: "MLM-DRPA",
 };

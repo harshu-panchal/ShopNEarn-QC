@@ -186,11 +186,11 @@ async function main() {
   tag(APPLY ? "APPLY mode (writes will happen)" : "DRY-RUN mode (no writes)");
 
   const cfg = await getDirectReferralActivationConfig();
-  if (!cfg.enabled || cfg.sponsorAmount <= 0) {
+  if (!cfg.firstPair.enabled || cfg.firstPair.amount <= 0) {
     tag("Direct referral activation bonus is disabled or zero — aborting.");
     process.exit(1);
   }
-  tag(`Restore amount per sponsor: ₹${cfg.sponsorAmount}`);
+  tag(`Restore amount per sponsor: ₹${cfg.firstPair.amount}`);
 
   const affectedUserIds = await findRecalcAffectedUserIds();
   tag(`Recalc-affected members found: ${affectedUserIds.length}`);
@@ -241,7 +241,7 @@ async function main() {
       continue;
     }
 
-    const amount = roundCurrency(cfg.sponsorAmount);
+    const amount = roundCurrency(cfg.firstPair.amount);
 
     if (!APPLY) {
       totals.wouldCredit += 1;

@@ -237,8 +237,23 @@ export async function getDirectReferralActivationConfig(opts) {
     const v = Number(n);
     return Number.isFinite(v) && v > 0 ? v : 0;
   };
+  const legacyAmount = clampNonNegative(cfg.directReferralActivationSponsorAmount);
+  const masterEnabled = cfg.directReferralActivationBonusEnabled !== false;
   return {
-    enabled: cfg.directReferralActivationBonusEnabled !== false,
-    sponsorAmount: clampNonNegative(cfg.directReferralActivationSponsorAmount),
+    enabled: masterEnabled,
+    sponsorAmount: legacyAmount,
+    firstPair: {
+      enabled:
+        masterEnabled
+        && cfg.directReferralFirstPairEnabled !== false,
+      amount: clampNonNegative(cfg.directReferralFirstPairAmount) || legacyAmount,
+    },
+    perActivation: {
+      enabled:
+        masterEnabled
+        && cfg.directReferralPerActivationEnabled !== false,
+      amount:
+        clampNonNegative(cfg.directReferralPerActivationAmount) || legacyAmount,
+    },
   };
 }

@@ -19,6 +19,7 @@ const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumF
 const BONUS_LABELS = {
     BINARY_PAIR_MATCH: 'Pair Match',
     DIRECT_REFERRAL_ACTIVATION: 'First Direct Pair',
+    DIRECT_REFERRAL_PER_ACTIVATION: 'Per Referral Activation',
     REPURCHASE_BONUS: 'Repurchase',
     MENTOR_ROYALTY: 'Mentor Royalty',
     SIGNUP_BONUS_SELF: 'Signup (Self)',

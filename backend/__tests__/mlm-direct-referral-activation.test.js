@@ -2,6 +2,7 @@ import { describe, expect, test } from "@jest/globals";
 import {
   countDirectReferralLegPairsFromLegMap,
   directReferralActivationFirstPairIdempotencyKey,
+  directReferralPerActivationIdempotencyKey,
   shouldCreditFirstDirectReferralPair,
 } from "../app/services/mlm/mlmSignupBonusService.js";
 
@@ -45,7 +46,13 @@ describe("mlm direct referral activation — first pair only", () => {
     ).toBe(false);
   });
 
-  test("activation sequence U→(A,B,C): pay only when B activates", () => {
+  test("directReferralPerActivationIdempotencyKey is per sponsor + referral", () => {
+    expect(directReferralPerActivationIdempotencyKey("s1", "r1")).toBe(
+      "MLM-DRPA-s1-r1",
+    );
+  });
+
+  test("both flows on B activation: per-activation always; first-pair only at 0→1", () => {
   // A on L only
     expect(
       shouldCreditFirstDirectReferralPair({ pairsBefore: 0, pairsAfter: 0 }),
