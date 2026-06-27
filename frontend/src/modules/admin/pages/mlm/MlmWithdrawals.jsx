@@ -14,6 +14,7 @@ const MlmWithdrawals = () => {
     const [status, setStatus] = useState('');
     const [loading, setLoading] = useState(false);
     const [actionId, setActionId] = useState(null);
+    const [detailRow, setDetailRow] = useState(null);
 
     const load = async () => {
         setLoading(true);
@@ -33,7 +34,13 @@ const MlmWithdrawals = () => {
     useEffect(() => { load(); }, [status]);
 
     const handleApprove = async (row) => {
-        const reference = window.prompt(`Payout reference (UTR) for ${formatINR(row.netPayoutAmount)} to ${row.userId?.name || row.userId?.phone || row.userId}?`);
+        const beneficiaryLabel = row.beneficiary?.method === 'upi'
+            ? `UPI: ${row.beneficiary?.upiId || '-'}`
+            : `A/c: ${row.beneficiary?.accountNumber || '-'} (${row.beneficiary?.ifsc || '-'})`;
+        const reference = window.prompt(
+            `Payout reference (UTR) for ${formatINR(row.netPayoutAmount)} to ${row.userId?.name || row.userId?.phone || row.userId}.\n\n` +
+            `Review beneficiary before approving:\n${beneficiaryLabel}`
+        );
         if (reference === null) return;
         setActionId(row._id);
         try {
@@ -129,6 +136,13 @@ const MlmWithdrawals = () => {
                                     {row.beneficiary?.panNumber && (
                                         <p className="text-slate-400 text-[10px]">PAN {row.beneficiary.panNumber}</p>
                                     )}
+                                    <button
+                                        type="button"
+                                        onClick={() => setDetailRow(row)}
+                                        className="mt-1 text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 underline underline-offset-2"
+                                    >
+                                        View details
+                                    </button>
                                 </td>
                                 <td className="px-4 py-3">
                                     <StatusPill status={row.status} />
@@ -164,6 +178,72 @@ const MlmWithdrawals = () => {
                     </tbody>
                 </table>
               </div>
+            </div>
+            <BeneficiaryDetailsModal row={detailRow} onClose={() => setDetailRow(null)} />
+        </div>
+    );
+};
+
+const BeneficiaryDetailsModal = ({ row, onClose }) => {
+    if (!row) return null;
+    const beneficiary = row.beneficiary || {};
+    const isUpi = beneficiary.method === 'upi';
+    return (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
+            <div className="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-xl">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                    <h2 className="text-base font-bold text-slate-900">Beneficiary details</h2>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="text-sm font-semibold text-slate-500 hover:text-slate-700"
+                    >
+                        Close
+                    </button>
+                </div>
+
+                <div className="px-5 py-4 space-y-3 text-sm">
+                    <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-500">Customer</p>
+                        <p className="font-semibold text-slate-900">{row.userId?.name || 'Unknown'}</p>
+                        <p className="text-slate-600">{row.userId?.phone || '-'}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-500">Method</p>
+                        <p className="font-semibold uppercase text-slate-900">{beneficiary.method || '-'}</p>
+                    </div>
+                    {isUpi ? (
+                        <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-500">UPI ID</p>
+                            <p className="font-mono text-slate-900 break-all">{beneficiary.upiId || '-'}</p>
+                        </div>
+                    ) : (
+                        <>
+                            <div>
+                                <p className="text-xs uppercase tracking-wide text-slate-500">Account holder</p>
+                                <p className="text-slate-900">{beneficiary.accountHolderName || '-'}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs uppercase tracking-wide text-slate-500">Account number</p>
+                                <p className="font-mono text-slate-900 break-all">{beneficiary.accountNumber || '-'}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs uppercase tracking-wide text-slate-500">IFSC</p>
+                                <p className="font-mono text-slate-900">{beneficiary.ifsc || '-'}</p>
+                            </div>
+                        </>
+                    )}
+                    {beneficiary.panNumber ? (
+                        <div>
+                            <p className="text-xs uppercase tracking-wide text-slate-500">PAN</p>
+                            <p className="font-mono text-slate-900">{beneficiary.panNumber}</p>
+                        </div>
+                    ) : null}
+                    <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-500">Net payout</p>
+                        <p className="font-bold text-emerald-700">{formatINR(row.netPayoutAmount)}</p>
+                    </div>
+                </div>
             </div>
         </div>
     );

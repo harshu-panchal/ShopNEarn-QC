@@ -134,6 +134,18 @@ const sellerSchema = new mongoose.Schema(
       type: Number,
       default: 5, // Default 5km
     },
+    // Home Shoppy: platform hub seller (Harsh's Hub) — single catalog source
+    // for franchise stock purchases. Only one seller should be active hub.
+    isPlatformHub: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    isFranchiseCatalogSource: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     lastLogin: Date,
   },
   { timestamps: true },

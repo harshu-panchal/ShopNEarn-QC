@@ -46,6 +46,10 @@ import {
 } from "./idempotencyService.js";
 import { buildCheckoutPricingSnapshot } from "./checkoutPricingService.js";
 import { getMlmConfig } from "./mlm/mlmConfigService.js";
+import {
+  resolveFranchiseOrderRouting,
+} from "./franchise/franchiseOrderRoutingService.js";
+import { notifyFranchisePartnerNewOrder } from "./franchise/franchiseOrderService.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
 import * as logger from "./logger.js";
@@ -425,6 +429,13 @@ export async function placeOrderAtomic({
       session,
     });
 
+    const { franchisePartner, fields: franchiseFields } = await resolveFranchiseOrderRouting({
+      hydratedItems: pricingSnapshot.hydratedItems,
+      address: normalizedAddress,
+      customerId,
+    });
+    const isFranchiseRoutedOrder = !!franchiseFields.franchisePartnerId;
+
     const checkoutGroupId = await generateUniqueCheckoutGroupId({ session });
     const checkoutReservation = computeStockReservationWindow(paymentMode);
     const checkoutGroup = new CheckoutGroup({
@@ -449,13 +460,14 @@ export async function placeOrderAtomic({
         timeSlot: normalizedPayload.timeSlot || "now",
         tipAmount,
       },
+      franchisePartnerId: franchiseFields.franchisePartnerId || null,
     });
     await checkoutGroup.save({ session });
 
     const orders = [];
     const pendingLowStockAlerts = [];
     const sellerTimeoutMs = DEFAULT_SELLER_TIMEOUT_MS();
-    const shouldStartSellerWorkflow = paymentMode === "COD";
+    const shouldStartSellerWorkflow = paymentMode === "COD" && !isFranchiseRoutedOrder;
 
     // MLM: detect Plan B exclusive home-shopping orders by matching
     // cart items against the admin-configured Product ID. The flag
@@ -553,9 +565,11 @@ export async function placeOrderAtomic({
         orderStatus: "pending",
         timeSlot: normalizedPayload.timeSlot || "now",
         workflowVersion: 2,
-        workflowStatus: shouldStartSellerWorkflow
-          ? WORKFLOW_STATUS.SELLER_PENDING
-          : WORKFLOW_STATUS.CREATED,
+        workflowStatus: isFranchiseRoutedOrder
+          ? WORKFLOW_STATUS.FRANCHISE_PENDING
+          : shouldStartSellerWorkflow
+            ? WORKFLOW_STATUS.SELLER_PENDING
+            : WORKFLOW_STATUS.CREATED,
         sellerPendingExpiresAt: sellerPendingUntil,
         expiresAt: orderExpiresAt,
         stockReservation: orderReservation,
@@ -573,6 +587,7 @@ export async function placeOrderAtomic({
           riderPayout: "PENDING",
           adminEarningCredited: false,
         },
+        ...franchiseFields,
       });
 
       freezeFinancialSnapshot(order, entry.breakdown);
@@ -802,6 +817,7 @@ export async function placeOrderAtomic({
 
     if (shouldStartSellerWorkflow) {
       for (const order of orders) {
+        if (order.franchisePartnerId) continue;
         void afterPlaceOrderV2(order).catch((error) => {
           logger.warn("[placeOrderAtomic] afterPlaceOrderV2 failed", {
             orderId: order.orderId,
@@ -818,13 +834,16 @@ export async function placeOrderAtomic({
         customerId,
         userId: customerId,
       });
-      if (order.seller) {
+      if (order.seller && !(order.franchisePartnerId && franchisePartner)) {
         emitNotificationEvent(NOTIFICATION_EVENTS.NEW_ORDER, {
           orderId: order.orderId,
           checkoutGroupId,
           sellerId: order.seller,
           customerId,
         });
+      }
+      if (order.franchisePartnerId && franchisePartner) {
+        void notifyFranchisePartnerNewOrder(franchisePartner, order);
       }
     }
 

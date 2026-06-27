@@ -93,6 +93,8 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
     // to clear the BottomNav) is dropped for the same reason —
     // each MLM page already manages its own bottom padding.
     const isMlmRoute = path.startsWith('/mlm');
+    const isFranchiseRoute = path.startsWith('/franchise');
+    const isDedicatedAppShell = isMlmRoute || isFranchiseRoute;
 
     // Pages that manage their own full-viewport height (genealogy tree
     // canvas, etc.) must NOT receive the default `pb-16` mobile-nav
@@ -103,8 +105,8 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
     const fullViewportRoutes = path.startsWith('/mlm/genealogy');
 
     // If props are passed, use them. Otherwise, use route-based logic.
-    const showHeader = showHeaderProp !== undefined ? showHeaderProp : (!hideHeaderRoutes.includes(path) && !path.startsWith('/category') && !path.startsWith('/orders') && !path.startsWith('/mlm'));
-    const showBottomNav = showBottomNavProp !== undefined ? showBottomNavProp : (!hideBottomNavRoutes.includes(path) && !isMlmRoute);
+    const showHeader = showHeaderProp !== undefined ? showHeaderProp : (!hideHeaderRoutes.includes(path) && !path.startsWith('/category') && !path.startsWith('/orders') && !isDedicatedAppShell);
+    const showBottomNav = showBottomNavProp !== undefined ? showBottomNavProp : (!hideBottomNavRoutes.includes(path) && !isDedicatedAppShell);
     const showCart = showCartProp !== undefined ? showCartProp : (!hideCartRoutes.includes(path) && !path.startsWith('/orders'));
     const effectiveFullHeight = fullHeight || fullViewportRoutes;
 
@@ -134,7 +136,7 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
                 </>
             )}
 
-            <main className={cn("flex-1 md:pb-0", !showHeader && "pt-0", !effectiveFullHeight && !isMlmRoute && "pb-16", fullViewportRoutes && "flex flex-col")}>
+            <main className={cn("flex-1 md:pb-0", !showHeader && "pt-0", !effectiveFullHeight && !isDedicatedAppShell && "pb-16", fullViewportRoutes && "flex flex-col")}>
                 {children}
             </main>
 
@@ -150,7 +152,7 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
                 `fullViewportRoutes` flag; the additional `startsWith`
                 check generalises that to every MLM URL. Mobile is
                 untouched because the footer is `hidden md:block`. */}
-            {!fullViewportRoutes && !path.startsWith('/mlm') && (
+            {!fullViewportRoutes && !isDedicatedAppShell && (
                 <div className="hidden md:block">
                     <Footer />
                 </div>

@@ -19,12 +19,20 @@ const ORDER_KIND_REDIRECT = {
         accent: "indigo",
     },
     mlm_home_shopping: {
-        path: "/mlm/home-shopping",
-        title: "Home Shopping Unlocked!",
-        subtitle: "Plan B Reward Claimed",
-        body: "Your home-shopping product has been added to your account.",
-        cta: "Open Home Shopping",
-        accent: "amber",
+        path: "/mlm/franchise",
+        title: "Home Shoppy",
+        subtitle: "Franchise Program",
+        body: "Register as a Home Shoppy franchise partner to stock products from Harsh's Hub.",
+        cta: "Open Home Shoppy",
+        accent: "indigo",
+    },
+    franchise_registration: {
+        path: "/mlm/franchise",
+        title: "Home Shoppy Registration Complete!",
+        subtitle: "Franchise Partner Activated",
+        body: "Your franchise registration is confirmed. Top up your wallet to buy stock from Harsh's Hub.",
+        cta: "Open Franchise Dashboard",
+        accent: "indigo",
     },
 };
 

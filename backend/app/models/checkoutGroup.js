@@ -212,6 +212,12 @@ const checkoutGroupSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    franchisePartnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "FranchisePartner",
+      default: null,
+      index: true,
+    },
     metadata: {
       type: Object,
       default: {},

@@ -22,6 +22,7 @@ import {
   removeReturnPickupTimeoutJob,
 } from "../services/orderWorkflowService.js";
 import { applyDeliveredSettlement } from "../services/orderSettlement.js";
+import { markFranchiseOrderDeliveredFromWorkflow } from "../services/franchise/franchiseOrderService.js";
 import {
   freezeFinancialSnapshot,
   reverseOrderFinanceOnCancellation,
@@ -517,6 +518,7 @@ export const updateOrderStatus = async (req, res) => {
       // - mark COD cash collected (system float)
       await order.save();
       await applyDeliveredSettlement(order, canonicalOrderId);
+      await markFranchiseOrderDeliveredFromWorkflow(order);
 
       emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_DELIVERED, {
         orderId: canonicalOrderId,

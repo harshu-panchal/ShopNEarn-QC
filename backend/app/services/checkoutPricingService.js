@@ -13,6 +13,9 @@ import {
 } from "./finance/pricingService.js";
 import { computeOrderDiscount } from "./finance/couponService.js";
 import { getMlmConfig } from "./mlm/mlmConfigService.js";
+import { cartIsHubOnly } from "./franchise/franchiseCatalogService.js";
+import { getHubSellerId } from "./franchise/franchiseConfigService.js";
+import { resolveFranchisePartner } from "./franchise/franchiseOrderRoutingService.js";
 
 /**
  * MLM-specific carve-out: the home-shopping SKU is a digital product
@@ -75,11 +78,19 @@ export function groupHydratedItemsBySeller(hydratedItems = []) {
   return grouped;
 }
 
-async function computeDistanceKmForSeller({ sellerId, addressLocation, session = null }) {
-  const normalizedLocation = normalizeLocation(addressLocation);
+async function computeDistanceKmForSeller({
+  sellerId,
+  address = null,
+  addressLocation = null,
+  session = null,
+  franchiseContext = null,
+}) {
+  const normalizedLocation = normalizeLocation(addressLocation || address?.location);
   if (!normalizedLocation) return 0;
 
-  const query = Seller.findById(sellerId).select("location serviceRadius shopName").lean();
+  const query = Seller.findById(sellerId)
+    .select("location serviceRadius shopName isPlatformHub isFranchiseCatalogSource")
+    .lean();
   if (session) query.session(session);
   const seller = await query;
   if (!seller) {
@@ -87,6 +98,53 @@ async function computeDistanceKmForSeller({ sellerId, addressLocation, session =
     err.statusCode = 404;
     throw err;
   }
+
+  const configuredHubId = franchiseContext?.hubSellerId
+    ? String(franchiseContext.hubSellerId)
+    : null;
+  let resolvedHubId = configuredHubId;
+  if (!resolvedHubId) {
+    const hubId = await getHubSellerId();
+    resolvedHubId = hubId ? String(hubId) : null;
+  }
+
+  const isHubSeller =
+    seller.isPlatformHub === true ||
+    seller.isFranchiseCatalogSource === true ||
+    (resolvedHubId && resolvedHubId === String(sellerId));
+
+  // Home Shoppy hub catalog orders are fulfilled by the local franchise
+  // partner, not last-mile from the platform hub warehouse.
+  if (isHubSeller) {
+    let partner = franchiseContext?.franchisePartner;
+    if (!partner && address) {
+      partner = await resolveFranchisePartner({
+        address,
+        customerId: franchiseContext?.customerId,
+      });
+    }
+    if (!partner) {
+      const err = new Error(
+        "Home Shoppy is not available in your delivery area yet. No franchise partner serves this location.",
+      );
+      err.statusCode = 422;
+      err.code = "FRANCHISE_TERRITORY_UNAVAILABLE";
+      throw err;
+    }
+    const partnerCoords = partner?.location?.coordinates;
+    if (!Array.isArray(partnerCoords) || partnerCoords.length < 2) {
+      return 0;
+    }
+    const [partnerLng, partnerLat] = partnerCoords;
+    const distanceInMeters = distanceMeters(
+      normalizedLocation.lat,
+      normalizedLocation.lng,
+      Number(partnerLat),
+      Number(partnerLng),
+    );
+    return Number((distanceInMeters / 1000).toFixed(3));
+  }
+
   const coords = seller?.location?.coordinates;
   if (!Array.isArray(coords) || coords.length < 2) return 0;
 
@@ -429,6 +487,38 @@ export async function buildCheckoutPricingSnapshot({
     throw err;
   }
 
+  const hubOnlyCart = await cartIsHubOnly(hydratedItems);
+  const itemsBySeller = groupHydratedItemsBySeller(hydratedItems);
+  const sellerIds = Array.from(itemsBySeller.keys()).sort((a, b) => a.localeCompare(b));
+  const configuredHubId = await getHubSellerId();
+  const configuredHubIdStr = configuredHubId ? String(configuredHubId) : null;
+  const hasPlatformHubSeller =
+    sellerIds.length > 0 &&
+    (await Seller.countDocuments({
+      _id: { $in: sellerIds },
+      isPlatformHub: true,
+    })) > 0;
+  const hubSellerInCart =
+    !!configuredHubIdStr &&
+    sellerIds.some((sellerId) => String(sellerId) === configuredHubIdStr);
+  const isFranchiseHubCart = hubOnlyCart || hasPlatformHubSeller || hubSellerInCart;
+
+  let franchiseContext = {
+    isFranchiseHubCart: false,
+    hubSellerId: null,
+    franchisePartner: null,
+  };
+  if (isFranchiseHubCart) {
+    const hubSellerId = await getHubSellerId();
+    const franchisePartner = await resolveFranchisePartner({ address, customerId });
+    franchiseContext = {
+      isFranchiseHubCart: true,
+      hubSellerId: hubSellerId ? String(hubSellerId) : null,
+      franchisePartner,
+      customerId,
+    };
+  }
+
   // Audit Phase 5 (C-2): when the flag is ON, route discount through
   // the centralized engine. The client-supplied `discountTotal` is
   // discarded in favour of the server-computed amount so customers
@@ -455,8 +545,6 @@ export async function buildCheckoutPricingSnapshot({
     }
   }
 
-  const itemsBySeller = groupHydratedItemsBySeller(hydratedItems);
-  const sellerIds = Array.from(itemsBySeller.keys()).sort((a, b) => a.localeCompare(b));
   const sellerBreakdownEntries = [];
 
   const globalHandling = await computeGlobalHandlingFeeForCheckout(hydratedItems, { session });
@@ -475,8 +563,9 @@ export async function buildCheckoutPricingSnapshot({
     const sellerItems = itemsBySeller.get(sellerId) || [];
     const distanceKm = await computeDistanceKmForSeller({
       sellerId,
-      addressLocation: address?.location,
+      address,
       session,
+      franchiseContext,
     });
     // Distribute discount proportionally by seller subtotal
     const sellerRatio = totalSubtotal > 0 ? (sellerSubtotals.get(sellerId) || 0) / totalSubtotal : 1 / sellerIds.length;

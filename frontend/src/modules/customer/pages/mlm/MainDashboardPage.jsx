@@ -596,25 +596,24 @@ const MemberDashboard = ({ overview, navigate, user, login }) => {
           </div>
         </div>
 
-        {/* Plan B Home Shopping CTA — full width on every breakpoint
-            because it's a tier-exclusive callout, not a stat. */}
-        {membership.planType === "B" && membership.homeShoppingUnlocked && (
-          <button
-            onClick={() => navigate("/mlm/home-shopping")}
-            className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-2xl p-4 flex items-center justify-between hover:opacity-95 transition-opacity"
-          >
-            <div className="flex items-center gap-3">
-              <Gift size={24} />
-              <div className="text-left">
-                <p className="text-sm font-black uppercase tracking-wide">
-                  Home Shopping
-                </p>
-                <p className="text-[11px] opacity-90">Premium-tier exclusive</p>
-              </div>
+        {/* Home Shoppy franchise CTA */}
+        <button
+          onClick={() => navigate("/mlm/franchise")}
+          className="w-full bg-gradient-to-r from-indigo-600 to-violet-700 text-white rounded-2xl p-4 flex items-center justify-between hover:opacity-95 transition-opacity"
+        >
+          <div className="flex items-center gap-3">
+            <Gift size={24} />
+            <div className="text-left">
+              <p className="text-sm font-black uppercase tracking-wide">
+                Home Shoppy
+              </p>
+              <p className="text-[11px] opacity-90">
+                Franchise · Register for ₹10,000
+              </p>
             </div>
-            <ChevronRight size={18} />
-          </button>
-        )}
+          </div>
+          <ChevronRight size={18} />
+        </button>
       </div>
     </div>
   );
@@ -719,7 +718,7 @@ const MyPlanCard = ({ membership, earnings, config }) => {
     ];
   } else if (isPlanB) {
     planName = "Plan B · Premium";
-    planTagline = "You're on the highest tier. Enjoy royalty earnings & Home Shopping.";
+    planTagline = "You're on the highest tier. Enjoy royalty earnings & Home Shoppy franchise.";
     bgClass = "from-amber-500 via-orange-500 to-pink-600";
     statusBadge = { label: "Premium", className: "bg-white/25" };
     Icon = Crown;
@@ -727,8 +726,8 @@ const MyPlanCard = ({ membership, earnings, config }) => {
       "Repurchase bonus on every downline purchase across 12 levels.",
       "Mentor royalties on each direct's commissions.",
       membership.homeShoppingUnlocked
-        ? "Home Shopping unlocked — claim your premium product."
-        : "Home Shopping ready to unlock from your benefits.",
+        ? "Legacy Plan B home shopping benefit — see Home Shoppy franchise for the new program."
+        : "Home Shoppy franchise available — register for ₹10,000.",
     ];
   } else {
     planName = "Plan A";

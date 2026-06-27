@@ -98,6 +98,7 @@ export function resolveWorkflowStatus(order) {
  * After creating a new order document (v2), schedule seller timeout and emit.
  */
 export async function afterPlaceOrderV2(orderDoc) {
+  if (orderDoc?.franchisePartnerId) return;
   const orderId = orderDoc.orderId;
   await scheduleSellerTimeoutJob(orderId);
   emitToSeller(orderDoc.seller?.toString(), {

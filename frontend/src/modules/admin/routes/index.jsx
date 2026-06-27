@@ -23,6 +23,7 @@ import {
   User,
   Network,
   FileText,
+  Store,
 } from "lucide-react";
 
 const Dashboard = React.lazy(() => import("../pages/Dashboard"));
@@ -109,6 +110,13 @@ const MlmSettings = React.lazy(() => import("../pages/mlm/MlmSettings"));
 const MlmMilestoneRules = React.lazy(() => import("../pages/mlm/MlmMilestoneRules"));
 const MlmPayoutReports = React.lazy(() => import("../pages/mlm/MlmPayoutReports"));
 const MlmPayoutReportDetail = React.lazy(() => import("../pages/mlm/MlmPayoutReportDetail"));
+const FranchiseAdminDashboard = React.lazy(() => import("../pages/franchise/FranchiseAdminDashboard"));
+const FranchiseRegistrations = React.lazy(() => import("../pages/franchise/FranchiseRegistrations"));
+const FranchiseTopUps = React.lazy(() => import("../pages/franchise/FranchiseTopUps"));
+const FranchisePartners = React.lazy(() => import("../pages/franchise/FranchisePartners"));
+const FranchisePartnerDetail = React.lazy(() => import("../pages/franchise/FranchisePartnerDetail"));
+const FranchiseSettings = React.lazy(() => import("../pages/franchise/FranchiseSettings"));
+const FranchiseDispatch = React.lazy(() => import("../pages/franchise/FranchiseDispatch"));
 
 const navItems = [
   {
@@ -205,6 +213,19 @@ const navItems = [
       { label: "Payout Reports", path: "/admin/mlm/payout-reports" },
       { label: "Milestones", path: "/admin/mlm/milestones" },
       { label: "Settings", path: "/admin/mlm/settings" },
+    ],
+  },
+  {
+    label: "Home Shoppy",
+    icon: Store,
+    color: "indigo",
+    children: [
+      { label: "Dashboard", path: "/admin/franchise" },
+      { label: "Registrations", path: "/admin/franchise/registrations" },
+      { label: "Top-ups", path: "/admin/franchise/topups" },
+      { label: "Partners", path: "/admin/franchise/partners" },
+      { label: "Dispatch", path: "/admin/franchise/dispatch" },
+      { label: "Settings", path: "/admin/franchise/settings" },
     ],
   },
   { label: "FAQs", path: "/admin/faqs", icon: HelpCircle, color: "pink" },
@@ -326,6 +347,13 @@ const AdminRoutes = () => {
         />
         <Route path="/mlm/milestones" element={<MlmMilestoneRules />} />
         <Route path="/mlm/settings" element={<MlmSettings />} />
+        <Route path="/franchise" element={<FranchiseAdminDashboard />} />
+        <Route path="/franchise/registrations" element={<FranchiseRegistrations />} />
+        <Route path="/franchise/topups" element={<FranchiseTopUps />} />
+        <Route path="/franchise/partners" element={<FranchisePartners />} />
+        <Route path="/franchise/partners/:id" element={<FranchisePartnerDetail />} />
+        <Route path="/franchise/dispatch" element={<FranchiseDispatch />} />
+        <Route path="/franchise/settings" element={<FranchiseSettings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </DashboardLayout>

@@ -1,5 +1,5 @@
 import React, { lazy, useMemo, useEffect, Suspense } from 'react';
-import { createBrowserRouter, RouterProvider, Outlet, Navigate } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Outlet, Navigate, useLocation } from 'react-router-dom';
 import ProtectedRoute from '../guards/ProtectedRoute';
 import RoleGuard from '../guards/RoleGuard';
 import { UserRole } from '../constants/roles';
@@ -55,9 +55,15 @@ const MlmDashboardPage = lazy(() => import('../../modules/customer/pages/mlm/Mlm
 const MlmReferralPage = lazy(() => import('../../modules/customer/pages/mlm/MlmReferralPage'));
 const MlmEarningsPage = lazy(() => import('../../modules/customer/pages/mlm/MlmEarningsPage'));
 const MlmWithdrawalPage = lazy(() => import('../../modules/customer/pages/mlm/MlmWithdrawalPage'));
-const MlmHomeShoppingPage = lazy(() => import('../../modules/customer/pages/mlm/MlmHomeShoppingPage'));
 const MlmProfilePage = lazy(() => import('../../modules/customer/pages/mlm/MlmProfilePage'));
 const ManualPaymentPage = lazy(() => import('../../modules/customer/pages/mlm/ManualPaymentPage'));
+const FranchiseDashboardPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseDashboardPage'));
+const FranchiseRegisterPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseRegisterPage'));
+const FranchiseRegistrationPaymentPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseRegistrationPaymentPage'));
+const FranchiseWalletPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseWalletPage'));
+const FranchiseCatalogPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseCatalogPage'));
+const FranchiseStockPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseStockPage'));
+const FranchiseOrdersPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseOrdersPage'));
 // Customer-MLM-rebuild Phase 8 — new dashboard + Genealogy + Payouts sections.
 const MainDashboardPage = lazy(() => import('../../modules/customer/pages/mlm/MainDashboardPage'));
 // Desktop-only sidebar chrome that wraps every `/mlm/*` URL on
@@ -84,6 +90,13 @@ const AdminModule = lazy(() => import('../../modules/admin/routes/index'));
 const DeliveryModule = lazy(() => import('../../modules/delivery/routes/index'));
 
 import CustomerLayout from '../../modules/customer/components/layout/CustomerLayout';
+
+/** Old `/franchise/*` bookmarks → `/mlm/franchise/*` inside MlmLayout. */
+const LegacyFranchiseRedirect = () => {
+    const { pathname, search, hash } = useLocation();
+    const next = pathname.replace(/^\/franchise/, '/mlm/franchise');
+    return <Navigate to={`${next}${search}${hash}`} replace />;
+};
 
 const CustomerLayoutWrapper = () => {
     useEffect(() => {
@@ -283,10 +296,24 @@ const AppRouter = () => {
                                 // the Payouts layout.
                                 { path: 'earnings', element: <Navigate to="/mlm/payouts/earnings" replace /> },
                                 { path: 'withdrawals', element: <Navigate to="/mlm/payouts/withdrawals" replace /> },
-                                { path: 'home-shopping', element: <MlmHomeShoppingPage /> },
+                                { path: 'home-shopping', element: <Navigate to="/mlm/franchise" replace /> },
                                 { path: 'manual-payment/:paymentId', element: <ManualPaymentPage /> },
+                                {
+                                    path: 'franchise',
+                                    children: [
+                                        { index: true, element: <FranchiseDashboardPage /> },
+                                        { path: 'register', element: <FranchiseRegisterPage /> },
+                                        { path: 'register/payment/:paymentId', element: <FranchiseRegistrationPaymentPage /> },
+                                        { path: 'wallet', element: <FranchiseWalletPage /> },
+                                        { path: 'catalog', element: <FranchiseCatalogPage /> },
+                                        { path: 'stock', element: <FranchiseStockPage /> },
+                                        { path: 'orders', element: <FranchiseOrdersPage /> },
+                                    ],
+                                },
                             ],
                         },
+                        { path: 'franchise', element: <Navigate to="/mlm/franchise" replace /> },
+                        { path: 'franchise/*', element: <LegacyFranchiseRedirect /> },
                         { path: 'search', element: <SearchPage /> },
                     ]
                 },

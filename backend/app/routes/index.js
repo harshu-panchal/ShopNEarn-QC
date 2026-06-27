@@ -28,6 +28,8 @@ import metricsRoute from "./metricsRoutes.js";
 import authOtpRoute from "../modules/otp/otp.routes.js";
 import mlmCustomerRoute from "./mlmCustomerRoutes.js";
 import mlmAdminRoute from "./mlmAdminRoutes.js";
+import franchiseCustomerRoute from "./franchiseCustomerRoutes.js";
+import franchiseAdminRoute from "./franchiseAdminRoutes.js";
 
 import express from "express";
 
@@ -42,6 +44,7 @@ const setupRoutes = (app) => {
     // Mounted BEFORE "/customer" so /api/customer/mlm/* hits the MLM router
     // even though customerRoute itself only declares non-MLM paths.
     router.use("/customer/mlm", mlmCustomerRoute);
+    router.use("/customer/franchise", franchiseCustomerRoute);
     router.use("/customer", customerRoute);
     router.use("/delivery", deliveryRoute);
     // categoryRoute is mounted twice on purpose:
@@ -52,6 +55,7 @@ const setupRoutes = (app) => {
     // MLM admin endpoints — mounted before "/admin" so /api/admin/mlm/*
     // hits the dedicated MLM admin router.
     router.use("/admin/mlm", mlmAdminRoute);
+    router.use("/admin/franchise", franchiseAdminRoute);
     router.use("/admin", adminRoute);
     router.use("/seller", sellerRoute);
     router.use("/settings", settingsRoute);

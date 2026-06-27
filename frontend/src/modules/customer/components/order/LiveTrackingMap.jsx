@@ -11,6 +11,7 @@ import {
   Star,
   Search,
   Loader2,
+  Package,
 } from "lucide-react";
 import customerPin from "@/assets/customer-pin.png";
 import deliveryIcon from "@/assets/deliveryIcon.png";
@@ -255,6 +256,46 @@ const LiveTrackingMap = memo(({
         <p className="text-sm text-gray-500 text-center max-w-sm font-medium">
           The store has up to 60 seconds to confirm. If they don&apos;t, your
           order will be cancelled automatically.
+        </p>
+      </div>
+    );
+  }
+
+  if (norm === "franchise_accepted") {
+    return (
+      <div className="relative w-full min-h-[260px] bg-gradient-to-br from-[#f0faf4] to-[#e8f5e9] overflow-hidden rounded-b-[2rem] flex flex-col items-center justify-center gap-3 px-6 py-10 border-b border-brand-100">
+        <motion.div
+          animate={{ scale: [1, 1.05, 1] }}
+          transition={{ duration: 2, repeat: Infinity }}
+          className="h-16 w-16 bg-primary rounded-full flex items-center justify-center shadow-lg shadow-brand-200">
+          <Package size={30} className="text-white" />
+        </motion.div>
+        <h3 className="text-lg font-black text-gray-800 text-center">
+          Partner is preparing your order
+        </h3>
+        <p className="text-sm text-gray-500 text-center max-w-sm font-medium">
+          Your Home Shoppy partner accepted the order. A delivery agent will be
+          assigned shortly.
+        </p>
+      </div>
+    );
+  }
+
+  if (norm === "franchise_pending") {
+    return (
+      <div className="relative w-full min-h-[260px] bg-gradient-to-br from-[#f0faf4] to-[#e8f5e9] overflow-hidden rounded-b-[2rem] flex flex-col items-center justify-center gap-3 px-6 py-10 border-b border-brand-100">
+        <motion.div
+          animate={{ scale: [1, 1.05, 1] }}
+          transition={{ duration: 2, repeat: Infinity }}
+          className="h-16 w-16 bg-primary rounded-full flex items-center justify-center shadow-lg shadow-brand-200">
+          <Clock size={30} className="text-white" />
+        </motion.div>
+        <h3 className="text-lg font-black text-gray-800 text-center">
+          Waiting for Home Shoppy partner
+        </h3>
+        <p className="text-sm text-gray-500 text-center max-w-sm font-medium">
+          Your order was sent to the nearest franchise partner. They will accept
+          and fulfill it from their local stock.
         </p>
       </div>
     );

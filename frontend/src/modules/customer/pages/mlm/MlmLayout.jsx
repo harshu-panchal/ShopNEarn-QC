@@ -103,8 +103,8 @@ const SIDEBAR_NAV_ITEMS = [
     icon: History,
   },
   {
-    label: "Home Shopping",
-    path: "/mlm/home-shopping",
+    label: "Home Shoppy",
+    path: "/mlm/franchise",
     icon: ShoppingBag,
   },
   {

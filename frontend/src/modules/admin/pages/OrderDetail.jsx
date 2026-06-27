@@ -7,6 +7,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Card from '@shared/components/ui/Card';
 import Badge from '@shared/components/ui/Badge';
 import { adminApi } from '../services/adminApi';
+import { adminFranchiseApi } from '../../customer/services/franchiseApi';
 import {
     ChevronLeft,
     Box,
@@ -39,6 +40,9 @@ const OrderDetail = () => {
     const { settings } = useSettings();
     const [order, setOrder] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [riders, setRiders] = useState([]);
+    const [selectedRiderId, setSelectedRiderId] = useState('');
+    const [assigningRider, setAssigningRider] = useState(false);
     const invoiceRef = useRef(null);
 
     const fetchDetail = async () => {
@@ -71,6 +75,40 @@ const OrderDetail = () => {
             fetchDetail();
         }
     }, [orderId]);
+
+    const isFranchiseAwaitingDispatch =
+        order?.franchisePartnerId &&
+        !order?.isFranchiseStockOrder &&
+        String(order?.workflowStatus || '').toUpperCase() === 'FRANCHISE_ACCEPTED' &&
+        !order?.deliveryBoy;
+
+    useEffect(() => {
+        if (!isFranchiseAwaitingDispatch) return;
+        adminApi.getDeliveryPartners({ status: 'active', limit: 200 })
+            .then((res) => {
+                const list = res.data?.result?.deliveryPartners ?? res.data?.data?.deliveryPartners ?? [];
+                setRiders(list);
+            })
+            .catch(() => {});
+    }, [isFranchiseAwaitingDispatch]);
+
+    const handleAssignFranchiseRider = async () => {
+        if (!selectedRiderId) {
+            showToast('Select a delivery partner', 'error');
+            return;
+        }
+        setAssigningRider(true);
+        try {
+            await adminFranchiseApi.assignOrderDelivery(orderId, { deliveryBoyId: selectedRiderId });
+            showToast('Delivery partner assigned', 'success');
+            setSelectedRiderId('');
+            fetchDetail();
+        } catch (error) {
+            showToast(error?.response?.data?.message || 'Failed to assign rider', 'error');
+        } finally {
+            setAssigningRider(false);
+        }
+    };
 
     const getStatusStyles = (status) => {
         switch (status.toLowerCase()) {
@@ -432,6 +470,35 @@ const OrderDetail = () => {
                                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">CONTACT: {order.deliveryBoy?.phone || "N/A"}</p>
                                 </div>
                             </div>
+                            {isFranchiseAwaitingDispatch && (
+                                <div className="mt-2 pt-4 border-t border-slate-100 space-y-3">
+                                    <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">
+                                        Home Shoppy — assign rider on behalf of partner
+                                    </p>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <select
+                                            value={selectedRiderId}
+                                            onChange={(e) => setSelectedRiderId(e.target.value)}
+                                            className="text-xs border border-slate-200 rounded-lg px-3 py-2 min-w-[200px] flex-1"
+                                        >
+                                            <option value="">Select delivery partner…</option>
+                                            {riders.map((r) => (
+                                                <option key={r._id} value={r._id}>
+                                                    {r.name} ({r.phone})
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            type="button"
+                                            disabled={assigningRider}
+                                            onClick={handleAssignFranchiseRider}
+                                            className="px-4 py-2 text-xs font-black uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50"
+                                        >
+                                            Assign rider
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </Card>
 

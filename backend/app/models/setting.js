@@ -10,6 +10,11 @@ import {
     ALL_MLM_RETURN_CLAWBACK_MODES,
     MLM_DEFAULTS,
 } from "../constants/mlm.js";
+import {
+    ALL_FRANCHISE_PAYMENT_MODES,
+    FRANCHISE_DEFAULTS,
+    FRANCHISE_PAYMENT_MODE,
+} from "../constants/franchise.js";
 
 const settingSchema = new mongoose.Schema(
     {
@@ -416,6 +421,34 @@ const settingSchema = new mongoose.Schema(
                 default: MLM_DEFAULTS.referralCodeLength,
                 min: 4,
                 max: 16,
+            },
+        },
+        // Home Shoppy franchise program (separate from MLM Home Shopping)
+        homeShoppy: {
+            enabled: { type: Boolean, default: FRANCHISE_DEFAULTS.enabled },
+            registrationPrice: {
+                type: Number,
+                default: FRANCHISE_DEFAULTS.registrationPrice,
+                min: 0,
+            },
+            walletCreditMultiplier: {
+                type: Number,
+                default: FRANCHISE_DEFAULTS.walletCreditMultiplier,
+                min: 1,
+            },
+            registrationPaymentMode: {
+                type: String,
+                enum: ALL_FRANCHISE_PAYMENT_MODES,
+                default: FRANCHISE_DEFAULTS.registrationPaymentMode,
+            },
+            hubSellerId: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "Seller",
+                default: null,
+            },
+            hubShopDisplayName: {
+                type: String,
+                default: FRANCHISE_DEFAULTS.hubShopDisplayName,
             },
         },
     },

@@ -1,0 +1,67 @@
+/**
+ * Home Shoppy franchise constants.
+ *
+ * Decision gates (plan defaults — G1 separate from MLM Home Shopping):
+ *   G1: Keep MLM Home Shopping unchanged
+ *   G2: Pincode territory routing
+ *   G3: Franchise fulfills from wallet-purchased stock
+ *   G4: B2B stock purchase from Harsh's Hub catalog
+ *
+ * Franchise partners use the existing Customer account + franchise role.
+ * ₹10,000 registration is one-time; wallet top-ups are separate deposits.
+ */
+
+export const FRANCHISE_PARTNER_STATUS = {
+  PENDING_PAYMENT: "pending_payment",
+  ACTIVE: "active",
+  SUSPENDED: "suspended",
+  TERMINATED: "terminated",
+};
+
+export const ALL_FRANCHISE_PARTNER_STATUSES = Object.values(FRANCHISE_PARTNER_STATUS);
+
+export const FRANCHISE_ORDER_STATUS = {
+  PENDING: "pending",
+  ACCEPTED: "accepted",
+  REJECTED: "rejected",
+  FULFILLED: "fulfilled",
+};
+
+export const ALL_FRANCHISE_ORDER_STATUSES = Object.values(FRANCHISE_ORDER_STATUS);
+
+export const FRANCHISE_PAYMENT_MODE = {
+  PHONEPE: "phonepe",
+  MANUAL_QR: "manual_qr",
+};
+
+export const ALL_FRANCHISE_PAYMENT_MODES = Object.values(FRANCHISE_PAYMENT_MODE);
+
+export const FRANCHISE_TOPUP_STATUS = {
+  CREATED: "created",
+  PENDING_REVIEW: "pending_review",
+  APPROVED: "approved",
+  REJECTED: "rejected",
+};
+
+export const ALL_FRANCHISE_TOPUP_STATUSES = Object.values(FRANCHISE_TOPUP_STATUS);
+
+export const FRANCHISE_IDEMPOTENCY_PREFIX = {
+  REGISTRATION_ACTIVATED: "FRANCHISE-REG-ACTIVATED",
+  TOPUP_CREDIT: "FRANCHISE-TOPUP-CREDIT",
+  STOCK_PURCHASE: "FRANCHISE-STOCK",
+  MANUAL_ADJUSTMENT: "FRANCHISE-MANUAL-ADJ",
+};
+
+export const FRANCHISE_MERCHANT_PREFIX = {
+  REGISTRATION: "FRANCHISE-REG",
+  TOPUP: "FRANCHISE-TOPUP",
+};
+
+export const FRANCHISE_DEFAULTS = {
+  enabled: true,
+  registrationPrice: 10000,
+  walletCreditMultiplier: 2,
+  registrationPaymentMode: FRANCHISE_PAYMENT_MODE.MANUAL_QR,
+  hubSellerId: null,
+  hubShopDisplayName: "Harsh's Hub",
+};

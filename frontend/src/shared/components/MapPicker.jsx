@@ -72,6 +72,9 @@ const MapPicker = ({
   initialRadius = 5,
   maxRadius = 20,
   preferCurrentLocationOnOpen = false,
+  showRadius = true,
+  title = "Select Shop Location",
+  searchPlaceholder = "Search for your shop area...",
 }) => {
   const [center, setCenter] = useState(initialLocation || defaultCenter);
   const [marker, setMarker] = useState(initialLocation);
@@ -208,8 +211,12 @@ const MapPicker = ({
   }, [clearCircleOverlay]);
 
   useEffect(() => {
+    if (!showRadius) {
+      clearCircleOverlay();
+      return undefined;
+    }
     if (!isLoaded || !mapRef.current || !window.google?.maps) {
-      return;
+      return undefined;
     }
 
     clearCircleOverlay();
@@ -235,7 +242,7 @@ const MapPicker = ({
     return () => {
       clearCircleOverlay();
     };
-  }, [isLoaded, marker, radius, clearCircleOverlay]);
+  }, [isLoaded, marker, radius, clearCircleOverlay, showRadius]);
 
   const handleConfirm = async () => {
     if (!marker) {
@@ -256,7 +263,7 @@ const MapPicker = ({
 
       onConfirm({
         ...marker,
-        radius,
+        ...(showRadius ? { radius } : {}),
         address: result.formatted_address,
         ...extractAddressDetails(result),
       });
@@ -266,7 +273,7 @@ const MapPicker = ({
       // Fallback: confirm without address
       onConfirm({
         ...marker,
-        radius,
+        ...(showRadius ? { radius } : {}),
         address: address || "Custom Location",
       });
       onClose();
@@ -289,7 +296,7 @@ const MapPicker = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Select Shop Location"
+      title={title}
       size="md"
       footer={
         <div className="flex justify-between w-full items-center">
@@ -325,7 +332,7 @@ const MapPicker = ({
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <Input
-                    placeholder="Search for your shop area..."
+                    placeholder={searchPlaceholder}
                     className="pl-10"
                   />
                 </div>
@@ -373,6 +380,7 @@ const MapPicker = ({
           )}
         </div>
 
+        {showRadius && (
         <div className="bg-gray-50 p-4 rounded-lg space-y-3">
           <div className="flex justify-between items-center">
             <label className="text-sm font-medium text-gray-700">
@@ -399,6 +407,7 @@ const MapPicker = ({
             order from you.
           </p>
         </div>
+        )}
       </div>
     </Modal>
   );

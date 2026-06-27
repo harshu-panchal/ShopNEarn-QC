@@ -507,25 +507,23 @@ const MemberDashboardView = ({ data, navigate }) => {
           </button>
         </div>
 
-        {/* Plan B exclusive: Home Shopping CTA */}
-        {membership?.planType === "B" && (
-          <button
-            onClick={() => navigate("/mlm/home-shopping")}
-            className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-2xl p-4 flex items-center justify-between hover:opacity-95 transition-opacity">
-            <div className="flex items-center gap-3">
-              <Gift size={24} />
-              <div className="text-left">
-                <p className="text-sm font-black uppercase tracking-wide">
-                  Home Shopping
-                </p>
-                <p className="text-[11px] opacity-90">
-                  Plan B exclusive · Claim now
-                </p>
-              </div>
+        {/* Home Shoppy franchise */}
+        <button
+          onClick={() => navigate("/mlm/franchise")}
+          className="w-full bg-gradient-to-r from-indigo-600 to-violet-700 text-white rounded-2xl p-4 flex items-center justify-between hover:opacity-95 transition-opacity">
+          <div className="flex items-center gap-3">
+            <Gift size={24} />
+            <div className="text-left">
+              <p className="text-sm font-black uppercase tracking-wide">
+                Home Shoppy
+              </p>
+              <p className="text-[11px] opacity-90">
+                Franchise partner · ₹10,000 registration
+              </p>
             </div>
-            <ChevronRight size={18} />
-          </button>
-        )}
+          </div>
+          <ChevronRight size={18} />
+        </button>
       </div>
     </div>
   );

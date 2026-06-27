@@ -429,6 +429,25 @@ const orderSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    // Home Shoppy franchise routing
+    franchisePartnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "FranchisePartner",
+      default: null,
+      index: true,
+    },
+    franchiseRoutedAt: { type: Date, default: null },
+    franchiseStatus: {
+      type: String,
+      enum: ["pending", "accepted", "rejected", "fulfilled"],
+      default: null,
+      index: true,
+    },
+    isFranchiseStockOrder: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     expiresAt: {
       type: Date,
     },

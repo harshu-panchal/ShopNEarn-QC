@@ -18,6 +18,12 @@ import {
   processJoiningPaymentWebhook,
   verifyJoiningPaymentStatus,
 } from "./mlm/mlmJoiningPaymentService.js";
+import {
+  isFranchiseRegMerchantOrderId,
+  processFranchiseRegistrationWebhook,
+  verifyFranchiseRegistrationPaymentStatus,
+} from "./franchise/franchiseRegistrationPaymentService.js";
+import FranchiseRegistrationPayment from "../models/franchiseRegistrationPayment.js";
 import { DEFAULT_SELLER_TIMEOUT_MS, WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import { afterPlaceOrderV2 } from "./orderWorkflowService.js";
 import { releaseReservedStockForOrder } from "./stockService.js";
@@ -276,6 +282,10 @@ async function transitionPaymentState(payment, {
 }
 
 async function moveOrderToSellerPendingAfterPayment(orderId) {
+  const existing = await Order.findById(orderId).select("franchisePartnerId paymentMode workflowVersion workflowStatus");
+  if (!existing || existing.paymentMode !== "ONLINE" || existing.workflowVersion < 2) return;
+
+  const isFranchiseOrder = !!existing.franchisePartnerId;
   const now = new Date();
   const sellerPendingUntil = new Date(now.getTime() + DEFAULT_SELLER_TIMEOUT_MS());
   const updatedOrder = await Order.findOneAndUpdate(
@@ -286,15 +296,21 @@ async function moveOrderToSellerPendingAfterPayment(orderId) {
       paymentMode: "ONLINE",
     },
     {
-      $set: {
-        workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
-        sellerPendingExpiresAt: sellerPendingUntil,
-        expiresAt: sellerPendingUntil,
-      },
+      $set: isFranchiseOrder
+        ? {
+            workflowStatus: WORKFLOW_STATUS.FRANCHISE_PENDING,
+            sellerPendingExpiresAt: null,
+            expiresAt: null,
+          }
+        : {
+            workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
+            sellerPendingExpiresAt: sellerPendingUntil,
+            expiresAt: sellerPendingUntil,
+          },
     },
     { new: true },
   );
-  if (updatedOrder) {
+  if (updatedOrder && !updatedOrder.franchisePartnerId) {
     void afterPlaceOrderV2(updatedOrder).catch((error) => {
       logger.warn("afterPlaceOrderV2 failed", {
         scope: "moveOrderToSellerPendingAfterPayment",
@@ -595,6 +611,13 @@ export async function verifyPhonePePaymentStatus({
     });
   }
 
+  if (isFranchiseRegMerchantOrderId(merchantOrderId)) {
+    return verifyFranchiseRegistrationPaymentStatus({
+      merchantOrderId,
+      userId,
+    });
+  }
+
   const payment = await Payment.findOne({ gatewayOrderId: merchantOrderId });
   if (!payment) {
     const err = new Error("Payment attempt not found");
@@ -743,6 +766,26 @@ export async function processPhonePeWebhook({
       },
     );
 
+    return {
+      accepted: true,
+      duplicate: false,
+      paymentStatus: result.paymentStatus,
+      publicOrderId: merchantOrderId,
+    };
+  }
+
+  if (isFranchiseRegMerchantOrderId(merchantOrderId)) {
+    const franchisePayment = await FranchiseRegistrationPayment.findOne({
+      gatewayOrderId: merchantOrderId,
+    });
+    if (!franchisePayment) {
+      return { accepted: true, ignored: true, reason: "Franchise registration payment not found" };
+    }
+    const result = await processFranchiseRegistrationWebhook({
+      payment: franchisePayment,
+      decoded,
+    });
+    await PaymentWebhookEvent.updateOne({ eventId }, { $set: { publicOrderId: merchantOrderId } });
     return {
       accepted: true,
       duplicate: false,
