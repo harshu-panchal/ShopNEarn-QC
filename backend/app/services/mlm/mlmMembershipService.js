@@ -716,6 +716,12 @@ export async function recordLifetimeEarning({
   );
   if (updated) {
     await syncCustomerMlmProjection(userId, { session });
+    try {
+      const { syncBinaryTopupMemberFlag } = await import("./mlmBinaryPairIncomeService.js");
+      await syncBinaryTopupMemberFlag(updated, { session });
+    } catch (_) {
+      /* non-fatal */
+    }
   }
   return updated;
 }

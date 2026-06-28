@@ -308,7 +308,7 @@ const MlmSettings = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <NumField label="Min withdrawal (₹)" value={cfg.withdrawalMinAmount} onChange={(v) => setCfg({ ...cfg, withdrawalMinAmount: v })} />
                     <NumField label="Admin charge %" value={cfg.withdrawalAdminChargePercent} onChange={(v) => setCfg({ ...cfg, withdrawalAdminChargePercent: v })} max={100} />
-                    <NumField label="TDS %" value={cfg.withdrawalGstOnAdminChargePercent} onChange={(v) => setCfg({ ...cfg, withdrawalGstOnAdminChargePercent: v })} max={100} />
+                    <NumField label="GST / statutory %" value={cfg.withdrawalGstOnAdminChargePercent} onChange={(v) => setCfg({ ...cfg, withdrawalGstOnAdminChargePercent: v })} max={100} />
                 </div>
             </Section>
 

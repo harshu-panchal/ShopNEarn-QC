@@ -43,6 +43,7 @@ import { mlmApi } from "../../services/mlmApi";
 import { customerApi } from "../../services/customerApi";
 import { useAuth } from "@core/context/AuthContext";
 import { useMlmDrawer } from "./MlmLayout";
+import { buildBinaryPairHint, isTeamLegWeaker } from "@shared/utils/mlmBinaryDisplay";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -534,40 +535,25 @@ const MemberDashboard = ({ overview, navigate, user, login }) => {
               </h3>
               <div className="grid grid-cols-3 gap-3 mb-3">
                 <LegBox
-                  label="Left Leg"
-                  count={binary.leftLegTotalDownlineCount}
+                  label="Left Team"
+                  count={binary.leftLegTeamActiveCount ?? 0}
                   activeCount={binary.leftLegActiveDownlineCount}
                   icon={<ArrowLeft size={18} />}
-                  weaker={
-                    binary.leftLegDirectCount <= binary.rightLegDirectCount
-                  }
+                  weaker={isTeamLegWeaker(binary, "left")}
+                  subtitle="active Plan A"
                 />
-                <LegBox label="Pairs" count={binary.pairsCompleted} accent />
+                <LegBox label="Pairs Paid" count={binary.pairsCompleted} accent />
                 <LegBox
-                  label="Right Leg"
-                  count={binary.rightLegTotalDownlineCount}
+                  label="Right Team"
+                  count={binary.rightLegTeamActiveCount ?? 0}
                   activeCount={binary.rightLegActiveDownlineCount}
                   icon={<ArrowRight size={18} />}
-                  weaker={
-                    binary.rightLegDirectCount <= binary.leftLegDirectCount
-                  }
+                  weaker={isTeamLegWeaker(binary, "right")}
+                  subtitle="active Plan A"
                 />
               </div>
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                Refer one more friend on your{" "}
-                <strong>
-                  {binary.leftLegDirectCount <= binary.rightLegDirectCount
-                    ? "left"
-                    : "right"}{" "}
-                  leg
-                </strong>{" "}
-                to complete pair #{binary.nextPairIndex} and earn{" "}
-                <strong>
-                  {binary.nextPairBonusAmount > 0
-                    ? formatINR(binary.nextPairBonusAmount)
-                    : "—"}
-                </strong>
-                .
+                {buildBinaryPairHint(binary, formatINR)}
               </p>
             </div>
           </div>
@@ -608,7 +594,7 @@ const MemberDashboard = ({ overview, navigate, user, login }) => {
                 Home Shoppy
               </p>
               <p className="text-[11px] opacity-90">
-                Franchise · Register for ₹10,000
+                Franchise · Home Shoppy partner program
               </p>
             </div>
           </div>
@@ -723,21 +709,21 @@ const MyPlanCard = ({ membership, earnings, config }) => {
     statusBadge = { label: "Premium", className: "bg-white/25" };
     Icon = Crown;
     perks = [
-      "Repurchase bonus on every downline purchase across 12 levels.",
+      `Repurchase bonus on downline purchases (L1–L${membership.config?.repurchaseBonusLevels?.length || 6}).`,
       "Mentor royalties on each direct's commissions.",
       membership.homeShoppingUnlocked
         ? "Legacy Plan B home shopping benefit — see Home Shoppy franchise for the new program."
-        : "Home Shoppy franchise available — register for ₹10,000.",
+        : "Home Shoppy franchise available from the franchise section.",
     ];
   } else {
     planName = "Plan A";
-    planTagline = "Build your binary tree and earn on every matched pair.";
+    planTagline = "Build your binary tree and earn on team pair matches.";
     bgClass = "from-indigo-600 via-violet-600 to-purple-700";
     statusBadge = { label: "Active", className: "bg-emerald-400/30" };
     Icon = ShieldCheck;
     perks = [
-      "Pair-match bonus on every L+R direct pair you complete.",
-      "Daily-cap rollover keeps unpaid bonuses queued for tomorrow.",
+      "Pair-match bonus when active Plan A team volume balances (2:1 opener, then 1:1).",
+      "Daily pair cap and earning cap — unpaid amounts roll to the next day.",
       upgradeThreshold > 0
         ? `Auto-upgrade to Plan B at ${formatINR(upgradeThreshold)} lifetime earnings.`
         : "Stay tuned for Plan B (Premium) auto-upgrade benefits.",
@@ -1478,7 +1464,7 @@ const StatTile = ({ label, value, icon, tone = "indigo", subtle }) => {
   );
 };
 
-const LegBox = ({ label, count, activeCount, weaker, accent, icon }) => (
+const LegBox = ({ label, count, activeCount, weaker, accent, icon, subtitle }) => (
   <div
     className={`rounded-xl border p-3 text-center ${
       accent
@@ -1507,6 +1493,9 @@ const LegBox = ({ label, count, activeCount, weaker, accent, icon }) => (
     <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mt-1">
       {label}
     </p>
+    {subtitle && (
+      <p className="text-[9px] text-slate-400 mt-0.5">{subtitle}</p>
+    )}
   </div>
 );
 

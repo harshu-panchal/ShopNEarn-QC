@@ -54,12 +54,10 @@ export const MLM_BONUS_TYPE = {
   // MlmCommissionEvent rows continue to deserialise; no runtime code
   // path emits new credits of this type after the binary-pair refactor.
   DIRECT_REFERRAL_MILESTONE: "DIRECT_REFERRAL_MILESTONE",
-  // Plan A binary pair-matching bonus — paid every time the sponsor
-  // completes a new pair of direct referrals
-  // (min(leftLegDirectCount, rightLegDirectCount) increments by 1).
-  // Amount comes from `Setting.mlm.planAPairBonusTiers` per pair index,
-  // falling back to `planAPairBonusFixedAmount` for pairs beyond
-  // `planAPairBonusFixedAfterPair`.
+  // Plan A binary pair-matching bonus — paid when team ACTIVE Plan A
+  // volumes on left/right binary subtrees complete a match (2:1 or
+  // 1:2 opener, then 1:1). Amount from `binaryPairIncomeTiers` by
+  // sponsor's active Plan A direct count (or topup override).
   BINARY_PAIR_MATCH: "BINARY_PAIR_MATCH",
   REPURCHASE_BONUS: "REPURCHASE_BONUS",
   MENTOR_ROYALTY: "MENTOR_ROYALTY",
@@ -122,8 +120,22 @@ export const ALL_MLM_WITHDRAWAL_METHODS = Object.values(MLM_WITHDRAWAL_METHOD);
 export const MLM_MILESTONE_TYPE = {
   DIRECT_REFERRAL_COUNT: "DIRECT_REFERRAL_COUNT",
   LIFETIME_EARNING: "LIFETIME_EARNING",
+  LIFETIME_PLAN_A_EARNINGS: "LIFETIME_PLAN_A_EARNINGS",
+  LIFETIME_PLAN_B_EARNINGS: "LIFETIME_PLAN_B_EARNINGS",
+  TOTAL_DOWNLINE_COUNT: "TOTAL_DOWNLINE_COUNT",
 };
 export const ALL_MLM_MILESTONE_TYPES = Object.values(MLM_MILESTONE_TYPE);
+
+/** Normalize legacy admin/UI milestone type strings to canonical enum values. */
+export const MLM_MILESTONE_TYPE_ALIASES = {
+  DIRECT_REFERRALS_COUNT: MLM_MILESTONE_TYPE.DIRECT_REFERRAL_COUNT,
+  LIFETIME_EARNINGS: MLM_MILESTONE_TYPE.LIFETIME_EARNING,
+};
+
+export function normalizeMilestoneType(type) {
+  const raw = String(type || "").trim();
+  return MLM_MILESTONE_TYPE_ALIASES[raw] || raw;
+}
 
 export const MLM_MILESTONE_REWARD_TYPE = {
   SHOPPING_CREDIT: "SHOPPING_CREDIT",

@@ -79,8 +79,8 @@ const MatchingReportPage = () => {
         {items.length === 0 ? (
           <div className="px-4 py-12 text-center">
             <p className="text-sm text-slate-500">
-              No pair matches yet — complete your first L+R pair to start
-              earning.
+              No pair matches yet — grow active Plan A team volume on both
+              binary legs to start earning.
             </p>
           </div>
         ) : (
@@ -92,7 +92,11 @@ const MatchingReportPage = () => {
                     <span className="text-[10px] font-bold uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">
                       Pair #{item.pairIndex || "?"}
                     </span>
-                    {item.isHeld ? (
+                    {item.isRollover ? (
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-sky-100 text-sky-700 px-2 py-0.5 rounded">
+                        Rolled over
+                      </span>
+                    ) : item.isHeld ? (
                       <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 px-2 py-0.5 rounded flex items-center gap-1">
                         <Hourglass size={10} /> Held
                       </span>
@@ -103,22 +107,38 @@ const MatchingReportPage = () => {
                     )}
                   </div>
                   <p className="text-sm font-black text-slate-900 ml-auto">
-                    {formatINR(item.bonusAmount)}
+                    {formatINR(item.cappedAmount ?? item.bonusAmount)}
+                    {item.cappedAmount > 0 &&
+                      item.bonusAmount > item.cappedAmount && (
+                        <span className="text-[10px] font-normal text-slate-400 ml-1">
+                          / {formatINR(item.bonusAmount)}
+                        </span>
+                      )}
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <ContributorChip
-                    label="Left"
-                    icon={<ArrowLeft size={12} />}
-                    accent="indigo"
-                    contributor={item.left}
-                  />
-                  <ContributorChip
-                    label="Right"
-                    icon={<ArrowRight size={12} />}
-                    accent="emerald"
-                    contributor={item.right}
-                  />
+                  {item.left || item.right ? (
+                    <>
+                      <ContributorChip
+                        label="Left"
+                        icon={<ArrowLeft size={12} />}
+                        accent="indigo"
+                        contributor={item.left}
+                      />
+                      <ContributorChip
+                        label="Right"
+                        icon={<ArrowRight size={12} />}
+                        accent="emerald"
+                        contributor={item.right}
+                      />
+                    </>
+                  ) : (
+                    <div className="col-span-2 text-[11px] text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+                      Team match — active Plan A volume:{" "}
+                      <strong>{item.leftTeamActive ?? "—"}</strong> left ·{" "}
+                      <strong>{item.rightTeamActive ?? "—"}</strong> right
+                    </div>
+                  )}
                 </div>
                 <p className="text-[10px] text-slate-400 mt-2">
                   {formatDate(item.createdAt)}

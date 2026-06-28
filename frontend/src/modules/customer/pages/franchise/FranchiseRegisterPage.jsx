@@ -16,12 +16,16 @@ const INITIAL_FORM = {
   lng: null,
 };
 
+const formatINR = (n) =>
+  `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
 const FranchiseRegisterPage = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState(INITIAL_FORM);
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(true);
+  const [registrationPrice, setRegistrationPrice] = useState(10000);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,6 +34,7 @@ const FranchiseRegisterPage = () => {
       .then((res) => {
         if (cancelled) return;
         const profile = res.data?.result ?? res.data?.data;
+        setRegistrationPrice(profile?.config?.registrationPrice || 10000);
         if (profile?.isPartner) {
           navigate("/mlm/franchise", { replace: true });
           return;
@@ -156,7 +161,7 @@ const FranchiseRegisterPage = () => {
           Franchise Registration
         </h1>
         <p className="text-sm text-slate-600">
-          Pay ₹10,000 to register. Customer orders are routed to the nearest
+          Pay {formatINR(registrationPrice)} to register. Customer orders are routed to the nearest
           franchise partner — no service radius needed.
         </p>
 
@@ -261,7 +266,7 @@ const FranchiseRegisterPage = () => {
           disabled={loading}
           className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl disabled:opacity-50"
         >
-          {loading ? "Starting..." : "Pay ₹10,000 & Register"}
+          {loading ? "Starting..." : `Pay ${formatINR(registrationPrice)} & Register`}
         </button>
       </div>
 

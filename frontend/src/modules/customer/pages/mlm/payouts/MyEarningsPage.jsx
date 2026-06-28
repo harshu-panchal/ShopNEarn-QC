@@ -18,6 +18,7 @@ const formatDate = (d) =>
 
 const bonusTypeLabel = (t) => {
   const map = {
+    SIGNUP_BONUS_SELF: "Welcome Signup Bonus",
     SIGNUP_BONUS_SPONSOR: "Referral Signup Bonus",
     DIRECT_REFERRAL_MILESTONE: "Matching Income",
     DIRECT_REFERRAL_ACTIVATION: "First Direct Pair Income",
@@ -132,6 +133,26 @@ const MyEarningsPage = () => {
             <h2 className="text-2xl sm:text-3xl font-black mt-1 break-all">
               {formatINR(summary.shoppingWalletBalance || 0)}
             </h2>
+            {summary.shoppingByType?.length > 0 && (
+              <div className="mt-4 space-y-1.5 border-t border-white/20 pt-3">
+                {summary.shoppingByType.map((row) => (
+                  <div
+                    key={row.bonusType}
+                    className="flex items-center justify-between gap-2 text-xs"
+                  >
+                    <span className="opacity-90 truncate">
+                      {bonusTypeLabel(row.bonusType)}
+                    </span>
+                    <span className="font-bold shrink-0">
+                      {formatINR(row.total)}
+                      <span className="font-normal opacity-80 ml-1">
+                        ({row.count})
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

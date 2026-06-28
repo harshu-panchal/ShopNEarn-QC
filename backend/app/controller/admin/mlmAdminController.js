@@ -16,6 +16,7 @@ import {
   MLM_IDEMPOTENCY_PREFIX,
   MLM_MEMBERSHIP_STATUS,
   MLM_PLAN_TYPE,
+  normalizeMilestoneType,
 } from "../../constants/mlm.js";
 import { LEDGER_TRANSACTION_TYPE, OWNER_TYPE } from "../../constants/finance.js";
 import {
@@ -1456,6 +1457,9 @@ function sanitizeMilestonePayload(raw) {
   ];
   for (const k of passthrough) {
     if (raw[k] !== undefined) out[k] = raw[k];
+  }
+  if (out.milestoneType !== undefined) {
+    out.milestoneType = normalizeMilestoneType(out.milestoneType);
   }
   if (out.threshold !== undefined) out.threshold = Number(out.threshold) || 0;
   if (out.rewardAmount !== undefined) out.rewardAmount = Number(out.rewardAmount) || 0;

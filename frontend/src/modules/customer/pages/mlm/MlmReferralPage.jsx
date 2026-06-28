@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Menu, Copy, Share2, Users, MessageCircle, Download, QrCode, ArrowLeft, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { mlmApi } from '../../services/mlmApi';
+import { buildBinaryPairHint, isTeamLegWeaker } from '@shared/utils/mlmBinaryDisplay';
 import { useMlmDrawer } from './MlmLayout';
 import TeamMemberSearch, { filterTeamMembersByQuery } from '../../../../shared/components/mlm/TeamMemberSearch';
 import MemberJoinedSubtitle from '@shared/components/mlm/MemberJoinedSubtitle';
@@ -342,41 +343,24 @@ const LegBalanceCard = ({ membership, config }) => {
 
             <div className="grid grid-cols-3 gap-3 mb-3">
                 <LegBox
-                  label="Left Leg"
-                  count={binary.leftLegTotalDownlineCount}
+                  label="Left Team"
+                  count={binary.leftLegTeamActiveCount ?? 0}
                   activeCount={binary.leftLegActiveDownlineCount}
                   icon={<ArrowLeft size={18} />}
-                  weaker={
-                    binary.leftLegDirectCount <= binary.rightLegDirectCount
-                  }
+                  weaker={isTeamLegWeaker(binary, "left")}
                 />
-                <LegBox label="Pairs" count={binary.pairsCompleted} accent />
+                <LegBox label="Pairs Paid" count={binary.pairsCompleted} accent />
                 <LegBox
-                  label="Right Leg"
-                  count={binary.rightLegTotalDownlineCount}
+                  label="Right Team"
+                  count={binary.rightLegTeamActiveCount ?? 0}
                   activeCount={binary.rightLegActiveDownlineCount}
                   icon={<ArrowRight size={18} />}
-                  weaker={
-                    binary.rightLegDirectCount <= binary.leftLegDirectCount
-                  }
+                  weaker={isTeamLegWeaker(binary, "right")}
                 />
             </div>
 
             <p className="text-[11px] text-slate-500 leading-relaxed">
-                Refer one more friend on your{" "}
-                <strong>
-                  {binary.leftLegDirectCount <= binary.rightLegDirectCount
-                    ? "left"
-                    : "right"}{" "}
-                  leg
-                </strong>{" "}
-                to complete pair #{binary.nextPairIndex} and earn{" "}
-                <strong>
-                  {binary.nextPairBonusAmount > 0
-                    ? formatINR(binary.nextPairBonusAmount)
-                    : "—"}
-                </strong>
-                .
+                {buildBinaryPairHint(binary, formatINR)}
             </p>
         </div>
     );

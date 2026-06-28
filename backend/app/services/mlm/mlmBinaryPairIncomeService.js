@@ -195,6 +195,79 @@ export async function countActivePlanADirects(sponsorUserId, { session } = {}) {
 }
 
 /**
+ * Preview the next binary pair payout for dashboard/API surfaces.
+ * Uses the same tier resolution as `computeAndCreditBinaryTeamPairIncome`.
+ */
+export async function getBinaryPairIncomePreview(membership, { session } = {}) {
+  if (!membership?.userId) {
+    return {
+      nextPairBonusAmount: 0,
+      dailyPairCap: 0,
+      activePlanADirectCount: 0,
+      isTopup: false,
+      leftLegTeamActiveCount: 0,
+      rightLegTeamActiveCount: 0,
+      binaryPairsEligible: 0,
+      binaryLeftBalance: 0,
+      binaryRightBalance: 0,
+      pairsRemaining: 0,
+    };
+  }
+
+  const cfg = await getMlmConfig();
+  const directCount = await countActivePlanADirects(membership.userId, { session });
+  const isTopup = Boolean(membership.binaryTopupMember);
+  const { pairIncome, dailyPairCap } = resolvePairIncomeConfig(cfg, directCount, isTopup);
+
+  const hasSnapshot =
+    membership.leftLegTeamActiveCount != null
+    && membership.rightLegTeamActiveCount != null;
+  const snapshot = hasSnapshot
+    ? {
+        leftLegTeamActiveCount: membership.leftLegTeamActiveCount || 0,
+        rightLegTeamActiveCount: membership.rightLegTeamActiveCount || 0,
+        binaryPairsEligible: membership.binaryPairsEligible || 0,
+        binaryLeftBalance: membership.binaryLeftBalance || 0,
+        binaryRightBalance: membership.binaryRightBalance || 0,
+      }
+    : await computeBinaryTeamPairSnapshot(membership, { session });
+
+  const pairsCompleted = Number(membership.pairsCompleted) || 0;
+  const pairsRemaining = Math.max(
+    (snapshot.binaryPairsEligible || 0) - pairsCompleted,
+    0,
+  );
+
+  return {
+    nextPairBonusAmount: pairIncome,
+    dailyPairCap,
+    activePlanADirectCount: directCount,
+    isTopup,
+    ...snapshot,
+    pairsRemaining,
+  };
+}
+
+/**
+ * Set `binaryTopupMember` when lifetime earnings cross the configured threshold.
+ */
+export async function syncBinaryTopupMemberFlag(membership, { session, cfg } = {}) {
+  if (!membership || membership.binaryTopupMember) return membership;
+  const config = cfg || (await getMlmConfig());
+  const threshold = Number(config.binaryTopupPairIncome?.eligibilityLifetimeEarnings) || 0;
+  if (threshold <= 0) return membership;
+
+  const lifetime =
+    (Number(membership.lifetimePlanAEarnings) || 0)
+    + (Number(membership.lifetimePlanBEarnings) || 0);
+  if (lifetime < threshold) return membership;
+
+  membership.binaryTopupMember = true;
+  await membership.save({ session });
+  return membership;
+}
+
+/**
  * Walk binary-parent chain upward from `startUserId` (exclusive of start).
  */
 async function getBinaryAncestorUserIds(startUserId, { session } = {}) {
@@ -271,8 +344,12 @@ export async function computeAndCreditBinaryTeamPairIncome({
       description: `Binary pair #${pairIndex} team match (₹${pairIncome})`,
       meta: {
         pairIndex,
+        matchingMode: "team",
+        triggerUserId: triggerUserId ? String(triggerUserId) : null,
         leftActive,
         rightActive,
+        leftTeamActive: leftActive,
+        rightTeamActive: rightActive,
         directCount,
         pairIncome,
         dailyPairCap,

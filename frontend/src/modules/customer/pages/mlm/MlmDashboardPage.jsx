@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../services/mlmApi";
+import { buildBinaryPairHint, isTeamLegWeaker } from "@shared/utils/mlmBinaryDisplay";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -518,7 +519,7 @@ const MemberDashboardView = ({ data, navigate }) => {
                 Home Shoppy
               </p>
               <p className="text-[11px] opacity-90">
-                Franchise partner · ₹10,000 registration
+                Franchise partner · Home Shoppy program
               </p>
             </div>
           </div>
@@ -551,11 +552,18 @@ const WalletCard = ({ label, amount, hint, color }) => (
  * The "weaker leg" is highlighted because that is what limits pair count.
  */
 const PairBonusCard = ({ membership, config }) => {
-  const left = Number(membership.leftLegDirectCount) || 0;
-  const right = Number(membership.rightLegDirectCount) || 0;
-  const pairs = Number(membership.pairsCompleted) || 0;
-  const nextPair = Number(membership.nextPairIndex) || pairs + 1;
-  const nextAmount = Number(membership.nextPairBonusAmount) || 0;
+  const binary = {
+    leftLegTeamActiveCount: membership.leftLegTeamActiveCount,
+    rightLegTeamActiveCount: membership.rightLegTeamActiveCount,
+    pairsCompleted: membership.pairsCompleted,
+    pairsRemaining: membership.pairsRemaining,
+    nextPairBonusAmount: membership.nextPairBonusAmount,
+    dailyPairCap: membership.dailyPairCap,
+  };
+  const left = Number(binary.leftLegTeamActiveCount) || 0;
+  const right = Number(binary.rightLegTeamActiveCount) || 0;
+  const pairs = Number(binary.pairsCompleted) || 0;
+  const nextAmount = Number(binary.nextPairBonusAmount) || 0;
   const cooldown = Number(config?.planAPairBonusReleaseCooldownDays) || 0;
 
   return (
@@ -571,20 +579,20 @@ const PairBonusCard = ({ membership, config }) => {
 
       <div className="grid grid-cols-3 gap-3 mb-3">
         <LegCard
-          label="Left Leg"
+          label="Left Team"
           value={left}
-          highlight={left <= right}
+          highlight={isTeamLegWeaker(binary, "left")}
         />
         <LegCard
-          label="Pairs"
+          label="Pairs Paid"
           value={pairs}
           highlight={false}
           accent
         />
         <LegCard
-          label="Right Leg"
+          label="Right Team"
           value={right}
-          highlight={right <= left}
+          highlight={isTeamLegWeaker(binary, "right")}
         />
       </div>
 
@@ -596,16 +604,10 @@ const PairBonusCard = ({ membership, config }) => {
           <span className="text-lg font-black text-slate-900">
             {nextAmount > 0 ? formatINR(nextAmount) : "—"}
           </span>
-          <span className="text-[11px] text-slate-500">
-            for completing pair #{nextPair}
-          </span>
+          <span className="text-[11px] text-slate-500">per team match</span>
         </div>
         <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
-          Refer one more friend on your{" "}
-          <strong>
-            {left <= right ? "left" : "right"} leg
-          </strong>{" "}
-          to complete the next pair.
+          {buildBinaryPairHint(binary, formatINR)}
           {cooldown > 0 && (
             <>
               {" "}

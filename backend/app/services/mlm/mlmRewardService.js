@@ -5,7 +5,9 @@ import {
   MLM_BONUS_TYPE,
   MLM_IDEMPOTENCY_PREFIX,
   MLM_MILESTONE_REWARD_TYPE,
+  MLM_MILESTONE_TYPE,
   MLM_PLAN_TYPE,
+  normalizeMilestoneType,
 } from "../../constants/mlm.js";
 import { LEDGER_TRANSACTION_TYPE, OWNER_TYPE } from "../../constants/finance.js";
 import { creditWallet } from "../finance/walletService.js";
@@ -21,10 +23,10 @@ import { roundCurrency } from "../../utils/money.js";
  * member has just crossed and credits the configured reward.
  *
  * Supported milestoneType values:
- *   - LIFETIME_EARNINGS (any plan)
+ *   - LIFETIME_EARNING
  *   - LIFETIME_PLAN_A_EARNINGS
  *   - LIFETIME_PLAN_B_EARNINGS
- *   - DIRECT_REFERRALS_COUNT
+ *   - DIRECT_REFERRAL_COUNT
  *   - TOTAL_DOWNLINE_COUNT
  *
  * Supported rewardType values:
@@ -82,16 +84,17 @@ export async function evaluateMilestonesAfterCommission({ userId, session }) {
 }
 
 function valueForMilestoneType(type, membership, lifetimeAll) {
-  switch (type) {
-    case "LIFETIME_EARNINGS":
+  const normalized = normalizeMilestoneType(type);
+  switch (normalized) {
+    case MLM_MILESTONE_TYPE.LIFETIME_EARNING:
       return lifetimeAll;
-    case "LIFETIME_PLAN_A_EARNINGS":
+    case MLM_MILESTONE_TYPE.LIFETIME_PLAN_A_EARNINGS:
       return membership.lifetimePlanAEarnings || 0;
-    case "LIFETIME_PLAN_B_EARNINGS":
+    case MLM_MILESTONE_TYPE.LIFETIME_PLAN_B_EARNINGS:
       return membership.lifetimePlanBEarnings || 0;
-    case "DIRECT_REFERRALS_COUNT":
+    case MLM_MILESTONE_TYPE.DIRECT_REFERRAL_COUNT:
       return membership.directReferralsCount || 0;
-    case "TOTAL_DOWNLINE_COUNT":
+    case MLM_MILESTONE_TYPE.TOTAL_DOWNLINE_COUNT:
       return membership.totalDownlineCount || 0;
     default:
       return 0;

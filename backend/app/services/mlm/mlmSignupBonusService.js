@@ -15,7 +15,7 @@ import {
 import { creditWallet, debitWallet } from "../finance/walletService.js";
 import { getSignupBonusConfig, getDirectReferralActivationConfig } from "./mlmConfigService.js";
 import { classifyDirectReferralsByLegUnderRoot } from "./mlmBinaryTreeBuilder.js";
-import { recordLifetimeEarning } from "./mlmMembershipService.js";
+import { creditBonusToEarningsWallet } from "./mlmBonusEngineService.js";
 import { roundCurrency } from "../../utils/money.js";
 
 /** Idempotency key — one credit per sponsor for the first direct pair. */
@@ -103,69 +103,31 @@ async function creditDirectReferralEarning({
   activatedUserId,
   amount,
   bonusType,
-  ledgerType,
   idempotencyKey,
   description,
   meta,
   session,
   correlationId,
 }) {
-  const creditResult = await creditWallet({
-    ownerType: OWNER_TYPE.CUSTOMER,
-    ownerId: sponsorUserId,
-    amount,
+  const event = await creditBonusToEarningsWallet({
+    recipientUserId: sponsorUserId,
+    bonusType,
+    planType: MLM_PLAN_TYPE.A,
+    bonusAmount: amount,
+    sourceUserId: activatedUserId,
     bucket: "earnings",
-    session,
-    ledgerType,
-    ledgerReference: idempotencyKey,
-    ledgerDescription: description,
-    metadata: {
-      mlmEvent: bonusType,
+    description,
+    meta: {
       activatedUserId: String(activatedUserId),
       sponsorUserId: String(sponsorUserId),
       ...(meta || {}),
     },
     idempotencyKey,
     correlationId,
-    syncUserWalletBalance: false,
-  });
-
-  const [eventDoc] = await MlmCommissionEvent.create(
-    [
-      {
-        recipientId: sponsorUserId,
-        recipientMembershipId: sponsorMembership._id,
-        sourceUserId: activatedUserId,
-        bonusType,
-        planType: MLM_PLAN_TYPE.A,
-        baseAmount: amount,
-        bonusAmount: amount,
-        cappedAmount: amount,
-        rolloverAmount: 0,
-        walletBucket: "earnings",
-        ledgerEntryId: creditResult?.ledgerEntry?._id || null,
-        status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
-        idempotencyKey,
-        correlationId,
-        description,
-        meta: {
-          mlmEvent: bonusType,
-          activatedUserId: String(activatedUserId),
-          ...(meta || {}),
-        },
-      },
-    ],
-    { session },
-  );
-
-  await recordLifetimeEarning({
-    userId: sponsorUserId,
-    amount,
-    planType: MLM_PLAN_TYPE.A,
     session,
   });
 
-  return { event: eventDoc, amount };
+  return { event, amount: event?.cappedAmount || amount };
 }
 
 /**
@@ -500,7 +462,6 @@ export async function applyDirectReferralPerActivationBonusInSession({
     activatedUserId,
     amount,
     bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION,
-    ledgerType: LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_PER_ACTIVATION,
     idempotencyKey,
     description: "Direct referral Plan A activation income",
     meta: { incomeType: "PER_ACTIVATION" },
@@ -587,7 +548,6 @@ export async function applyDirectReferralFirstPairBonusInSession({
     activatedUserId,
     amount,
     bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION,
-    ledgerType: LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_ACTIVATION,
     idempotencyKey,
     description: "Direct referral first-pair activation income",
     meta: {

@@ -12,10 +12,10 @@ import { adminMlmApi } from '../../services/api/mlmApi';
  * after every commission credit.
  */
 const MILESTONE_TYPES = [
-  { value: 'LIFETIME_EARNINGS', label: 'Lifetime Earnings (all)' },
+  { value: 'LIFETIME_EARNING', label: 'Lifetime Earnings (all)' },
   { value: 'LIFETIME_PLAN_A_EARNINGS', label: 'Lifetime Plan A Earnings' },
   { value: 'LIFETIME_PLAN_B_EARNINGS', label: 'Lifetime Plan B Earnings' },
-  { value: 'DIRECT_REFERRALS_COUNT', label: 'Direct Referrals Count' },
+  { value: 'DIRECT_REFERRAL_COUNT', label: 'Direct Referrals Count' },
   { value: 'TOTAL_DOWNLINE_COUNT', label: 'Total Downline Count' },
 ];
 const REWARD_TYPES = [
@@ -26,7 +26,7 @@ const REWARD_TYPES = [
 
 const blankRow = () => ({
   name: '',
-  milestoneType: 'LIFETIME_EARNINGS',
+  milestoneType: 'LIFETIME_EARNING',
   threshold: 1000,
   rewardType: 'SHOPPING_CREDIT',
   rewardAmount: 100,

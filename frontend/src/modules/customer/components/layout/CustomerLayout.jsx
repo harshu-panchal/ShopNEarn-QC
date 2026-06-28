@@ -102,7 +102,8 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
     // hide the desktop <Footer> because the page already fills the
     // viewport and a trailing footer would push total page height
     // past 100dvh and cause the body to scroll.
-    const fullViewportRoutes = path.startsWith('/mlm/genealogy');
+    const fullViewportRoutes =
+      path.startsWith('/mlm/network/genealogy') || path.startsWith('/mlm/genealogy');
 
     // If props are passed, use them. Otherwise, use route-based logic.
     const showHeader = showHeaderProp !== undefined ? showHeaderProp : (!hideHeaderRoutes.includes(path) && !path.startsWith('/category') && !path.startsWith('/orders') && !isDedicatedAppShell);

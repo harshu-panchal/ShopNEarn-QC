@@ -27,8 +27,8 @@ import {
 import {
   getManualQrConfig,
   getMlmConfig,
-  getPlanAPairBonusForPairIndex,
 } from "../services/mlm/mlmConfigService.js";
+import { getBinaryPairIncomePreview } from "../services/mlm/mlmBinaryPairIncomeService.js";
 import {
   cancelWithdrawalRequestByCustomer,
   createWithdrawalRequest,
@@ -52,6 +52,35 @@ import {
 /* ===============================
    Customer-MLM-rebuild Phase 5 — helpers
 ================================ */
+
+/** Wallet buckets that count toward withdrawable MLM earnings (not shopping). */
+const MLM_EARNINGS_WALLET_BUCKETS = ["earnings", "pending"];
+
+function creditedEarningsEventMatch(userId, extra = {}) {
+  const recipientId =
+    userId instanceof mongoose.Types.ObjectId
+      ? userId
+      : new mongoose.Types.ObjectId(userId);
+  return {
+    recipientId,
+    status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+    walletBucket: { $in: MLM_EARNINGS_WALLET_BUCKETS },
+    ...extra,
+  };
+}
+
+function creditedShoppingEventMatch(userId, extra = {}) {
+  const recipientId =
+    userId instanceof mongoose.Types.ObjectId
+      ? userId
+      : new mongoose.Types.ObjectId(userId);
+  return {
+    recipientId,
+    status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+    walletBucket: "shopping",
+    ...extra,
+  };
+}
 
 /**
  * Mask a phone number for downline privacy:
@@ -100,13 +129,12 @@ export const getMyMembership = async (req, res) => {
     ]);
     const registeredAt = registeredAtMap.get(String(userId)) || null;
 
-    // Compute the next-pair payout preview so the dashboard can show
-    // "complete your next pair to earn ₹X" without the frontend having
-    // to replicate the tier-vs-fixed lookup.
+    // Next-pair preview uses the same tier table as runtime pair credits.
     const pairsCompleted = membership?.pairsCompleted || 0;
-    const nextPairBonusAmount = membership
-      ? await getPlanAPairBonusForPairIndex(pairsCompleted + 1)
-      : 0;
+    const pairPreview = membership
+      ? await getBinaryPairIncomePreview(membership)
+      : null;
+    const nextPairBonusAmount = pairPreview?.nextPairBonusAmount || 0;
 
     // Surface the latest non-terminal manual-QR joining payment so the
     // dashboard can render resume / under-review / try-again banners
@@ -148,13 +176,22 @@ export const getMyMembership = async (req, res) => {
             totalDownlineCount: membership.totalDownlineCount || 0,
             activeDownlineCount: membership.activeDownlineCount || 0,
             inactiveDownlineCount: membership.inactiveDownlineCount || 0,
-            // Plan A binary pair-match state.
+            // Plan A binary pair-match state (team volumes + direct-leg counters).
             leftLegDirectCount: membership.leftLegDirectCount || 0,
             rightLegDirectCount: membership.rightLegDirectCount || 0,
+            leftLegTeamActiveCount: pairPreview?.leftLegTeamActiveCount || 0,
+            rightLegTeamActiveCount: pairPreview?.rightLegTeamActiveCount || 0,
+            binaryPairsEligible: pairPreview?.binaryPairsEligible || 0,
+            binaryLeftBalance: pairPreview?.binaryLeftBalance || 0,
+            binaryRightBalance: pairPreview?.binaryRightBalance || 0,
             pairsCompleted,
+            pairsRemaining: pairPreview?.pairsRemaining || 0,
             lastPaidPairIndex: membership.lastPaidPairIndex || 0,
             nextPairIndex: pairsCompleted + 1,
             nextPairBonusAmount,
+            activePlanADirectCount: pairPreview?.activePlanADirectCount || 0,
+            dailyPairCap: pairPreview?.dailyPairCap || 0,
+            binaryTopupMember: !!membership.binaryTopupMember,
             lifetimePlanAEarnings: membership.lifetimePlanAEarnings || 0,
             lifetimePlanBEarnings: membership.lifetimePlanBEarnings || 0,
             homeShoppingUnlocked: !!membership.homeShoppingUnlocked,
@@ -181,11 +218,8 @@ export const getMyMembership = async (req, res) => {
         withdrawalGstOnAdminChargePercent: cfg.withdrawalGstOnAdminChargePercent,
         planBAutoUpgradeAtPlanALifetimeEarnings:
           cfg.planBAutoUpgradeAtPlanALifetimeEarnings,
-        // Plan A pair bonus settings (read-only from the customer's
-        // perspective; admin maintains them via /admin/mlm/settings).
-        planAPairBonusTiers: cfg.planAPairBonusTiers || [],
-        planAPairBonusFixedAfterPair: cfg.planAPairBonusFixedAfterPair || 0,
-        planAPairBonusFixedAmount: cfg.planAPairBonusFixedAmount || 0,
+        binaryPairIncomeTiers: cfg.binaryPairIncomeTiers || [],
+        binaryTopupPairIncome: cfg.binaryTopupPairIncome || null,
         planAPairBonusReleaseCooldownDays:
           cfg.planAPairBonusReleaseCooldownDays || 0,
         repurchaseBonusLevels: cfg.repurchaseBonusLevels,
@@ -312,48 +346,36 @@ export const getEarningsSummary = async (req, res) => {
   try {
     const userId = req.user.id;
     const membership = await getMembershipByUserId(userId);
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    const monthStart = new Date();
+    monthStart.setUTCHours(0, 0, 0, 0);
+    monthStart.setUTCDate(1);
 
-    const [totalCredited, totalThisMonth, byType, wallet] = await Promise.all([
+    const [totalCredited, totalThisMonth, byType, shoppingByType, wallet] =
+      await Promise.all([
       MlmCommissionEvent.aggregate([
-        {
-          $match: {
-            recipientId: new mongoose.Types.ObjectId(userId),
-            status: {
-              $nin: [
-                MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
-              ],
-            },
-          },
-        },
+        { $match: creditedEarningsEventMatch(userId) },
         { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
       ]),
       MlmCommissionEvent.aggregate([
         {
-          $match: {
-            recipientId: new mongoose.Types.ObjectId(userId),
-            status: {
-              $nin: [
-                MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
-              ],
-            },
-            createdAt: { $gte: new Date(today.getFullYear(), today.getMonth(), 1) },
-          },
+          $match: creditedEarningsEventMatch(userId, {
+            createdAt: { $gte: monthStart },
+          }),
         },
         { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
       ]),
       MlmCommissionEvent.aggregate([
+        { $match: creditedEarningsEventMatch(userId) },
         {
-          $match: {
-            recipientId: new mongoose.Types.ObjectId(userId),
-            status: {
-              $nin: [
-                MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
-              ],
-            },
+          $group: {
+            _id: "$bonusType",
+            total: { $sum: "$cappedAmount" },
+            count: { $sum: 1 },
           },
         },
+      ]),
+      MlmCommissionEvent.aggregate([
+        { $match: creditedShoppingEventMatch(userId) },
         {
           $group: {
             _id: "$bonusType",
@@ -379,6 +401,11 @@ export const getEarningsSummary = async (req, res) => {
         total: row.total,
         count: row.count,
       })),
+      shoppingByType: shoppingByType.map((row) => ({
+        bonusType: row._id,
+        total: row.total,
+        count: row.count,
+      })),
       dailyCapTracker: membership?.dailyCapTracker || null,
     });
   } catch (error) {
@@ -395,10 +422,12 @@ export const getEarningsHistory = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const query = {
-      recipientId: userId,
+      ...creditedEarningsEventMatch(userId),
       status: {
-        $nin: [
-          MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
+        $in: [
+          MLM_COMMISSION_EVENT_STATUS.CREDITED,
+          MLM_COMMISSION_EVENT_STATUS.CAPPED_ROLLOVER,
+          MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_DOWNLINE_ACTIVATION,
         ],
       },
     };
@@ -708,9 +737,10 @@ export const getDashboardOverview = async (req, res) => {
     const registeredAt = registeredAtMap.get(String(userId)) || null;
 
     const pairsCompleted = membership?.pairsCompleted || 0;
-    const nextPairBonusAmount = membership
-      ? await getPlanAPairBonusForPairIndex(pairsCompleted + 1)
-      : 0;
+    const pairPreview = membership
+      ? await getBinaryPairIncomePreview(membership)
+      : null;
+    const nextPairBonusAmount = pairPreview?.nextPairBonusAmount || 0;
 
     // Downline split: active customers vs registered-unpaid. We count
     // memberships whose `sponsorChain` contains the caller (full
@@ -718,6 +748,7 @@ export const getDashboardOverview = async (req, res) => {
     const [
       activeDownline,
       unpaidDownline,
+      totalDownlineLive,
       directActive,
       directUnpaid,
       binaryTreeDescendantsAgg,
@@ -730,6 +761,7 @@ export const getDashboardOverview = async (req, res) => {
         sponsorChain: userObjectId,
         status: MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID,
       }),
+      MlmMembership.countDocuments({ sponsorChain: userObjectId }),
       MlmMembership.countDocuments({
         sponsorId: userId,
         status: MLM_MEMBERSHIP_STATUS.ACTIVE,
@@ -830,9 +862,7 @@ export const getDashboardOverview = async (req, res) => {
         ]),
         MlmCommissionEvent.aggregate([
           {
-            $match: {
-              recipientId: userObjectId,
-              status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+            $match: creditedEarningsEventMatch(userObjectId, {
               createdAt: {
                 $gte: (() => {
                   // Start of today IST -> UTC instant
@@ -841,7 +871,7 @@ export const getDashboardOverview = async (req, res) => {
                   return new Date(ist.getTime() - 330 * 60 * 1000);
                 })(),
               },
-            },
+            }),
           },
           {
             $group: {
@@ -853,11 +883,9 @@ export const getDashboardOverview = async (req, res) => {
         ]),
         MlmCommissionEvent.aggregate([
           {
-            $match: {
-              recipientId: userObjectId,
-              status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+            $match: creditedEarningsEventMatch(userObjectId, {
               createdAt: { $gte: monthStart },
-            },
+            }),
           },
           { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
         ]),
@@ -906,26 +934,35 @@ export const getDashboardOverview = async (req, res) => {
         thisMonth: monthCreditAgg[0]?.total || 0,
       },
       referrals: {
-        directReferralsCount: membership?.directReferralsCount || 0,
+        directReferralsCount: directActive + directUnpaid,
         directActive,
         directRegisteredUnpaid: directUnpaid,
-        totalDownlineCount: membership?.totalDownlineCount || 0,
-        activeDownlineCount: membership?.activeDownlineCount || 0,
-        inactiveDownlineCount: membership?.inactiveDownlineCount || 0,
+        totalDownlineCount: totalDownlineLive,
+        activeDownlineCount: activeDownline,
+        inactiveDownlineCount: Math.max(totalDownlineLive - activeDownline, 0),
         activeCustomersInNetwork: activeDownline,
         registeredUnpaidInNetwork: unpaidDownline,
       },
       binary: {
         leftLegDirectCount: membership?.leftLegDirectCount || 0,
         rightLegDirectCount: membership?.rightLegDirectCount || 0,
+        leftLegTeamActiveCount: pairPreview?.leftLegTeamActiveCount || 0,
+        rightLegTeamActiveCount: pairPreview?.rightLegTeamActiveCount || 0,
+        binaryPairsEligible: pairPreview?.binaryPairsEligible || 0,
+        binaryLeftBalance: pairPreview?.binaryLeftBalance || 0,
+        binaryRightBalance: pairPreview?.binaryRightBalance || 0,
         leftLegTotalDownlineCount,
         rightLegTotalDownlineCount,
         leftLegActiveDownlineCount,
         rightLegActiveDownlineCount,
         pairsCompleted,
+        pairsRemaining: pairPreview?.pairsRemaining || 0,
         lastPaidPairIndex: membership?.lastPaidPairIndex || 0,
         nextPairIndex: pairsCompleted + 1,
         nextPairBonusAmount,
+        activePlanADirectCount: pairPreview?.activePlanADirectCount || 0,
+        dailyPairCap: pairPreview?.dailyPairCap || 0,
+        binaryTopupMember: !!membership?.binaryTopupMember,
       },
       payout: {
         pendingGross: pendingWithdraw.gross || 0,
@@ -944,11 +981,9 @@ export const getDashboardOverview = async (req, res) => {
         joiningPackagePrice: cfg.joiningPackagePrice,
         joiningPackageShoppingWalletCredit: cfg.joiningPackageShoppingWalletCredit,
         withdrawalMinAmount: cfg.withdrawalMinAmount,
-        planAPairBonusTiers: cfg.planAPairBonusTiers || [],
-        planAPairBonusFixedAmount: cfg.planAPairBonusFixedAmount || 0,
-        // Surface the Plan A → Plan B auto-upgrade threshold so the
-        // Main Dashboard "Current Plan" card can render a progress
-        // meter towards the Premium tier without a second round-trip.
+        binaryPairIncomeTiers: cfg.binaryPairIncomeTiers || [],
+        planAPairBonusReleaseCooldownDays: cfg.planAPairBonusReleaseCooldownDays || 0,
+        repurchaseBonusLevels: cfg.repurchaseBonusLevels || [],
         planBAutoUpgradeAtPlanALifetimeEarnings:
           cfg.planBAutoUpgradeAtPlanALifetimeEarnings || 0,
         premiumUpgradeShoppingWalletTopup:
@@ -1299,9 +1334,12 @@ export const getMyBinaryGenealogy = async (req, res) => {
 
     return handleResponse(res, 200, "Binary genealogy", {
       isMember: true,
-      leftLegCount: membership.leftLegDirectCount || 0,
-      rightLegCount: membership.rightLegDirectCount || 0,
+      leftLegCount: membership.leftLegTeamActiveCount || 0,
+      rightLegCount: membership.rightLegTeamActiveCount || 0,
+      leftLegDirectCount: membership.leftLegDirectCount || 0,
+      rightLegDirectCount: membership.rightLegDirectCount || 0,
       pairsCompleted: membership.pairsCompleted || 0,
+      binaryPairsEligible: membership.binaryPairsEligible || 0,
       leftLeg,
       rightLeg,
     });
@@ -1373,9 +1411,15 @@ export const getMyMatchingReport = async (req, res) => {
         pairIndex: ev.meta?.pairIndex || null,
         bonusAmount: ev.bonusAmount,
         cappedAmount: ev.cappedAmount,
+        rolloverAmount: ev.rolloverAmount || 0,
         status: ev.status,
         isHeld:
           ev.status === MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_DOWNLINE_ACTIVATION,
+        isRollover: ev.status === MLM_COMMISSION_EVENT_STATUS.CAPPED_ROLLOVER,
+        matchingMode: ev.meta?.matchingMode
+          || (ev.meta?.leftContributorUserId ? "direct" : "team"),
+        leftTeamActive: ev.meta?.leftTeamActive ?? ev.meta?.leftActive ?? null,
+        rightTeamActive: ev.meta?.rightTeamActive ?? ev.meta?.rightActive ?? null,
         createdAt: ev.createdAt,
         releasedAt: ev.releasedAt || null,
         left: left
