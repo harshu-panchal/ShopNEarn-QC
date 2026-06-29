@@ -2,8 +2,8 @@
  * restore-first-pair-income-after-recalc.js
  *
  * Repairs sponsors whose earnings were zeroed by `recalc-mlm-earnings-wallet.js`
- * (MLM-EARN-RECALC-2026 / MLM-EARN-RECALC-TREE-2026) without re-crediting
- * first direct-pair referral activation income (₹200).
+ * without re-crediting first direct-pair income. Skips sponsors who already
+ * received first-pair income via binary pair match #1 or a prior restore.
  *
  * Credits once per sponsor when:
  *   - An earnings-bucket recalc RESET debit exists for their wallet, and
@@ -37,6 +37,9 @@ import {
   countDirectReferralLegPairsFromLegMap,
   directReferralActivationFirstPairIdempotencyKey,
 } from "../app/services/mlm/mlmSignupBonusService.js";
+import {
+  hasCreditedFirstPairMatchingIncome,
+} from "../app/services/mlm/mlmFirstPairIncomeGuard.js";
 import { getDirectReferralActivationConfig } from "../app/services/mlm/mlmConfigService.js";
 import { creditWallet } from "../app/services/finance/walletService.js";
 import { syncCustomerMlmProjection } from "../app/services/mlm/mlmMembershipService.js";
@@ -64,6 +67,10 @@ async function ledgerExists(idempotencyKey, session) {
 }
 
 async function alreadyHasFirstPairIncomeCredit(userId, session) {
+  if (await hasCreditedFirstPairMatchingIncome(userId, { session })) {
+    return true;
+  }
+
   const keys = [
     directReferralActivationFirstPairIdempotencyKey(userId),
     restoreIdempotencyKey(userId),

@@ -17,11 +17,12 @@ import { getSignupBonusConfig, getDirectReferralActivationConfig } from "./mlmCo
 import { classifyDirectReferralsByLegUnderRoot } from "./mlmBinaryTreeBuilder.js";
 import { creditBonusToEarningsWallet } from "./mlmBonusEngineService.js";
 import { roundCurrency } from "../../utils/money.js";
+import {
+  directReferralActivationFirstPairIdempotencyKey,
+  hasCreditedBinaryPairMatchIndex,
+} from "./mlmFirstPairIncomeGuard.js";
 
-/** Idempotency key — one credit per sponsor for the first direct pair. */
-export function directReferralActivationFirstPairIdempotencyKey(sponsorUserId) {
-  return `${MLM_IDEMPOTENCY_PREFIX.DIRECT_REFERRAL_ACTIVATION}-${String(sponsorUserId)}-FIRST-DIRECT-PAIR`;
-}
+export { directReferralActivationFirstPairIdempotencyKey } from "./mlmFirstPairIncomeGuard.js";
 
 /** Idempotency key — one credit per (sponsor, activated direct). */
 export function directReferralPerActivationIdempotencyKey(sponsorUserId, activatedUserId) {
@@ -507,7 +508,8 @@ export async function applyDirectReferralPerActivationBonusInSession({
 
 /**
  * One-time earnings when a sponsor's direct referrals complete their first
- * binary pair (one active direct on L and one on R).
+ * binary pair (one active direct on L and one on R). Skipped when binary
+ * pair match #1 was already paid — only one first-pair income total.
  */
 export async function applyDirectReferralFirstPairBonusInSession({
   activatedUserId,
@@ -574,6 +576,10 @@ export async function applyDirectReferralFirstPairBonusInSession({
     return { skipped: "ALREADY_CREDITED", event: existing };
   }
 
+  if (await hasCreditedBinaryPairMatchIndex(sponsorUserId, 1, { session })) {
+    return { skipped: "BINARY_PAIR_ALREADY_PAID", event: null };
+  }
+
   const amount = roundCurrency(cfg.firstPair.amount);
   const result = await creditDirectReferralEarning({
     sponsorUserId,
@@ -592,6 +598,15 @@ export async function applyDirectReferralFirstPairBonusInSession({
     session,
     correlationId,
   });
+
+  const paidPairs = Number(sponsorMembership.pairsCompleted) || 0;
+  if (paidPairs < 1) {
+    await MlmMembership.updateOne(
+      { _id: sponsorMembership._id },
+      { $set: { pairsCompleted: 1, lastPaidPairIndex: 1 } },
+      { session },
+    );
+  }
 
   return { skipped: null, ...result };
 }

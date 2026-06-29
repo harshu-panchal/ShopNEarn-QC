@@ -31,6 +31,7 @@ import {
   directReferralActivationFirstPairIdempotencyKey,
   directReferralPerActivationIdempotencyKey,
 } from "../app/services/mlm/mlmSignupBonusService.js";
+import { hasCreditedFirstPairMatchingIncome } from "../app/services/mlm/mlmFirstPairIncomeGuard.js";
 import { getDirectReferralActivationConfig } from "../app/services/mlm/mlmConfigService.js";
 
 dotenv.config();
@@ -56,12 +57,7 @@ async function perActivationAlreadyCredited(sponsorUserId, activatedUserId) {
 }
 
 async function firstPairAlreadyCredited(sponsorUserId) {
-  const key = directReferralActivationFirstPairIdempotencyKey(sponsorUserId);
-  const existing = await MlmCommissionEvent.findOne({
-    idempotencyKey: key,
-    status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
-  }).lean();
-  return Boolean(existing);
+  return hasCreditedFirstPairMatchingIncome(sponsorUserId);
 }
 
 async function loadPairCounts(sponsorMembership, activeDirects) {

@@ -210,8 +210,10 @@ export const MLM_DEFAULTS = Object.freeze({
   signupBonusSelfAmount: 100,
   signupBonusSponsorAmount: 50,
 
-  // Direct referral activation income (two independent flows):
-  //   1. First direct L+R pair — one-time earnings credit per sponsor.
+  // Direct referral activation income (two flows; first pair pays only once
+  // total — mutually exclusive with binary pair match #1):
+  //   1. First direct L+R pair — one-time when directs complete 1L+1R, unless
+  //      binary pair #1 already paid.
   //   2. Per activation — earnings credit each time a direct activates Plan A.
   directReferralActivationBonusEnabled: true,
   directReferralFirstPairEnabled: true,

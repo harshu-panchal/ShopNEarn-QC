@@ -11,6 +11,7 @@ import { getMlmConfig, resolvePlanABonusWalletBucket } from "./mlmConfigService.
 import { getMembershipByUserId } from "./mlmMembershipService.js";
 import { creditBonusToEarningsWallet } from "./mlmBonusEngineService.js";
 import { MLM_IDEMPOTENCY_PREFIX } from "../../constants/mlm.js";
+import { hasCreditedDirectReferralFirstPairIncome } from "./mlmFirstPairIncomeGuard.js";
 
 const IST_TZ_OFFSET_MIN = 330;
 
@@ -328,6 +329,14 @@ export async function computeAndCreditBinaryTeamPairIncome({
   const events = [];
   for (let i = 0; i < newPairs; i += 1) {
     const pairIndex = alreadyPaid + i + 1;
+
+    if (
+      pairIndex === 1
+      && (await hasCreditedDirectReferralFirstPairIncome(sponsorUserId, { session }))
+    ) {
+      continue;
+    }
+
     const idempotencyKey = `${MLM_IDEMPOTENCY_PREFIX.BINARY_PAIR_MATCH}-${sponsorUserId}-P${pairIndex}`;
 
     const event = await creditBonusToEarningsWallet({
