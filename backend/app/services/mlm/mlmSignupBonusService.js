@@ -28,6 +28,39 @@ export function directReferralPerActivationIdempotencyKey(sponsorUserId, activat
   return `${MLM_IDEMPOTENCY_PREFIX.DIRECT_REFERRAL_PER_ACTIVATION}-${String(sponsorUserId)}-${String(activatedUserId)}`;
 }
 
+/** Legacy per-direct credits used DIRECT_REFERRAL_ACTIVATION + MLM-DRA-{sponsor}-{user}. */
+export const LEGACY_PER_ACTIVATION_DRA_KEY_RE =
+  /^MLM-DRA-[0-9a-f]{24}-[0-9a-f]{24}$/i;
+
+export function parseLegacyPerActivationDraKey(idempotencyKey) {
+  const key = String(idempotencyKey || "");
+  const match = key.match(LEGACY_PER_ACTIVATION_DRA_KEY_RE);
+  if (!match) return null;
+  const parts = key.split("-");
+  return {
+    sponsorUserId: parts[2],
+    activatedUserId: parts[3],
+  };
+}
+
+export function isLegacyPerActivationDirectReferralCredit({
+  bonusType,
+  idempotencyKey,
+}) {
+  return (
+    bonusType === MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION
+    && LEGACY_PER_ACTIVATION_DRA_KEY_RE.test(String(idempotencyKey || ""))
+  );
+}
+
+/** Map legacy per-direct rows to the canonical bonus type for reporting. */
+export function normalizeEarningsBonusType(bonusType, idempotencyKey) {
+  if (isLegacyPerActivationDirectReferralCredit({ bonusType, idempotencyKey })) {
+    return MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION;
+  }
+  return bonusType;
+}
+
 /** Count active Plan A directs on each binary leg under the sponsor. */
 export function countDirectReferralLegPairsFromLegMap(directReferrals, legByReferralId) {
   let left = 0;

@@ -1457,13 +1457,11 @@ const MemberDetailModal = ({
     data.registeredAt || data.joinedAt || null;
   const leftActive = Number(data.leftLegActiveDownlineCount ?? 0);
   const rightActive = Number(data.rightLegActiveDownlineCount ?? 0);
-  const left = Number(data.leftLegTotalDownlineCount || 0);
-  const right = Number(data.rightLegTotalDownlineCount || 0);
+  const left = Number(data.leftLegTeamActiveCount ?? 0);
+  const right = Number(data.rightLegTeamActiveCount ?? 0);
   const pairsPaid = Number(data.pairsCompleted || 0);
   const pairsEligible = Number(data.binaryPairsEligible ?? pairsPaid);
-  const totalDownline = Number(data.totalDownlineCount || 0);
-  const activeDownline = Number(data.activeDownlineCount || 0);
-  const inactiveDownline = Number(data.inactiveDownlineCount || 0);
+  const pairsRemaining = Math.max(0, pairsEligible - pairsPaid);
   const lifetime =
     Number(data.lifetimePlanAEarnings || 0) +
     Number(data.lifetimePlanBEarnings || 0);
@@ -1575,12 +1573,12 @@ const MemberDetailModal = ({
           )}
         </div>
 
-        {/* Leg stats — total downline with active count in parentheses
-            (same format as the Binary Network dashboard). */}
+        {/* Pair-matching volume — active Plan A team counts (same as Binary Network dashboard). */}
         <div className="px-4 py-3 border-t border-slate-100 grid grid-cols-3 gap-1.5">
           <Stat
             icon={<ChevronLeft size={11} />}
-            label="Left Leg"
+            label="Left Team"
+            subtitle="active Plan A"
             value={
               <>
                 {left}{" "}
@@ -1591,7 +1589,8 @@ const MemberDetailModal = ({
           />
           <Stat
             icon={<ChevronRight size={11} />}
-            label="Right Leg"
+            label="Right Team"
+            subtitle="active Plan A"
             value={
               <>
                 {right}{" "}
@@ -1602,7 +1601,7 @@ const MemberDetailModal = ({
           />
           <Stat
             icon={<Users size={11} />}
-            label="Pairs"
+            label="Pairs Paid"
             value={
               pairsEligible > pairsPaid ? (
                 <>
@@ -1617,16 +1616,18 @@ const MemberDetailModal = ({
           />
         </div>
 
-        {/* Network summary. */}
+        {/* Pair volume footer — no global downline totals. */}
         <div className="px-4 py-2.5 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50">
-          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-slate-600 leading-tight max-w-[200px]">
-            <Users size={11} className="shrink-0" />
-            <span className="font-bold">{totalDownline}</span>
-            <span>downline</span>
-            <span className="text-[10px] text-slate-400">
-              (<span className="text-emerald-600 font-semibold">{activeDownline}</span> Active,{" "}
-              <span className="text-rose-600 font-semibold">{inactiveDownline}</span> Inactive)
-            </span>
+          <div className="flex items-center gap-1 text-[11px] text-slate-600 leading-tight">
+            <Sparkles size={11} className="shrink-0 text-amber-500" />
+            {pairsRemaining > 0 ? (
+              <span>
+                <span className="font-bold">{pairsRemaining}</span> pair
+                {pairsRemaining !== 1 ? "s" : ""} pending
+              </span>
+            ) : (
+              <span>Pair volume balanced</span>
+            )}
           </div>
           <div className="flex items-center gap-1 text-[11px] text-slate-700 font-bold">
             <TrendingUp size={11} className="text-emerald-500" />
@@ -1723,7 +1724,7 @@ const TooltipRow = ({ icon, label, value, mono = false }) => (
   </div>
 );
 
-const Stat = ({ icon, label, value, tone = "slate" }) => {
+const Stat = ({ icon, label, subtitle, value, tone = "slate" }) => {
   const toneClass =
     tone === "emerald"
       ? "bg-emerald-50 text-emerald-700"
@@ -1739,6 +1740,11 @@ const Stat = ({ icon, label, value, tone = "slate" }) => {
         {label}
       </div>
       <div className="text-[13px] font-bold leading-tight">{value}</div>
+      {subtitle ? (
+        <div className="text-[8px] font-semibold uppercase tracking-wide opacity-60 mt-0.5">
+          {subtitle}
+        </div>
+      ) : null}
     </div>
   );
 };

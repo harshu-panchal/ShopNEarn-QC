@@ -29,6 +29,7 @@ import {
   getMlmConfig,
 } from "../services/mlm/mlmConfigService.js";
 import { getBinaryPairIncomePreview } from "../services/mlm/mlmBinaryPairIncomeService.js";
+import { normalizeEarningsBonusType } from "../services/mlm/mlmSignupBonusService.js";
 import {
   cancelWithdrawalRequestByCustomer,
   createWithdrawalRequest,
@@ -80,6 +81,24 @@ function creditedShoppingEventMatch(userId, extra = {}) {
     walletBucket: "shopping",
     ...extra,
   };
+}
+
+/** Group credited earnings events by display bonus type (legacy DRA → DRPA). */
+function groupEarningsEventsByDisplayType(events) {
+  const byType = new Map();
+  for (const row of events) {
+    const key = normalizeEarningsBonusType(row.bonusType, row.idempotencyKey);
+    const prev = byType.get(key) || { total: 0, count: 0 };
+    byType.set(key, {
+      total: prev.total + (Number(row.cappedAmount) || 0),
+      count: prev.count + 1,
+    });
+  }
+  return [...byType.entries()].map(([bonusType, stats]) => ({
+    bonusType,
+    total: stats.total,
+    count: stats.count,
+  }));
 }
 
 /**
@@ -350,7 +369,7 @@ export const getEarningsSummary = async (req, res) => {
     monthStart.setUTCHours(0, 0, 0, 0);
     monthStart.setUTCDate(1);
 
-    const [totalCredited, totalThisMonth, byType, shoppingByType, wallet] =
+    const [totalCredited, totalThisMonth, earningsEvents, shoppingByType, wallet] =
       await Promise.all([
       MlmCommissionEvent.aggregate([
         { $match: creditedEarningsEventMatch(userId) },
@@ -364,16 +383,9 @@ export const getEarningsSummary = async (req, res) => {
         },
         { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
       ]),
-      MlmCommissionEvent.aggregate([
-        { $match: creditedEarningsEventMatch(userId) },
-        {
-          $group: {
-            _id: "$bonusType",
-            total: { $sum: "$cappedAmount" },
-            count: { $sum: 1 },
-          },
-        },
-      ]),
+      MlmCommissionEvent.find(creditedEarningsEventMatch(userId))
+        .select("bonusType cappedAmount idempotencyKey")
+        .lean(),
       MlmCommissionEvent.aggregate([
         { $match: creditedShoppingEventMatch(userId) },
         {
@@ -387,6 +399,8 @@ export const getEarningsSummary = async (req, res) => {
       Wallet.findOne({ ownerType: OWNER_TYPE.CUSTOMER, ownerId: userId }).lean(),
     ]);
 
+    const byType = groupEarningsEventsByDisplayType(earningsEvents);
+
     return handleResponse(res, 200, "Earnings summary", {
       lifetimeEarnings:
         (membership?.lifetimePlanAEarnings || 0) +
@@ -396,11 +410,7 @@ export const getEarningsSummary = async (req, res) => {
       shoppingWalletBalance: wallet?.shoppingBalance || 0,
       totalCredited: totalCredited[0]?.total || 0,
       totalThisMonth: totalThisMonth[0]?.total || 0,
-      byType: byType.map((row) => ({
-        bonusType: row._id,
-        total: row.total,
-        count: row.count,
-      })),
+      byType,
       shoppingByType: shoppingByType.map((row) => ({
         bonusType: row._id,
         total: row.total,
