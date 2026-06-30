@@ -598,7 +598,7 @@ const PairBonusCard = ({ membership, config }) => {
 
       <div className="bg-slate-50 rounded-xl px-4 py-3 border border-slate-200">
         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-          Next Pair Payout
+          Next Team Pair Payout
         </p>
         <div className="flex items-baseline justify-between mt-1">
           <span className="text-lg font-black text-slate-900">

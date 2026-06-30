@@ -25,6 +25,8 @@ import {
   updateMyMembership,
   getMyLegTeam,
   getMyLevelTeam,
+  getMyTotalTeam,
+  getMyNetworkMemberDetail,
 } from "../controller/mlmCustomerController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 
@@ -66,6 +68,8 @@ router.post("/genealogy/add-member", verifyToken, addMemberAtSlot);
 // Network section
 router.get("/network/leg-team", verifyToken, getMyLegTeam);
 router.get("/network/level-team", verifyToken, getMyLevelTeam);
+router.get("/network/total-team", verifyToken, getMyTotalTeam);
+router.get("/network/members/:memberId", verifyToken, getMyNetworkMemberDetail);
 
 // Customer-MLM-rebuild Phase 5 — Payouts section: My Earnings
 // reuses /earnings-summary + /earnings-history; My Payout reuses

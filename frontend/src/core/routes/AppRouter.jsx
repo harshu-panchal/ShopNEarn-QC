@@ -83,6 +83,8 @@ const WalletHistoryPage = lazy(() => import('../../modules/customer/pages/mlm/pa
 const LeftTeamPage = lazy(() => import('../../modules/customer/pages/mlm/network/LeftTeamPage'));
 const RightTeamPage = lazy(() => import('../../modules/customer/pages/mlm/network/RightTeamPage'));
 const LevelTeamPage = lazy(() => import('../../modules/customer/pages/mlm/network/LevelTeamPage'));
+const TotalTeamPage = lazy(() => import('../../modules/customer/pages/mlm/network/TotalTeamPage'));
+const NetworkMemberDetailPage = lazy(() => import('../../modules/customer/pages/mlm/network/NetworkMemberDetailPage'));
 
 // Lazy load heavy modules
 const SellerModule = lazy(() => import('../../modules/seller/routes/index'));
@@ -261,6 +263,8 @@ const AppRouter = () => {
                                     path: 'network',
                                     children: [
                                         { path: 'referrals', element: <MlmReferralPage /> },
+                                        { path: 'total-team', element: <TotalTeamPage /> },
+                                        { path: 'member/:memberId', element: <NetworkMemberDetailPage /> },
                                         { path: 'left-team', element: <LeftTeamPage /> },
                                         { path: 'right-team', element: <RightTeamPage /> },
                                         { path: 'level-team', element: <LevelTeamPage /> },

@@ -44,6 +44,7 @@ export function buildBinaryPairHint(binary, formatINR) {
 
   return (
     `Grow active Plan A members on your ${growLeg}. ` +
-    `Next match pays ${nextAmount}. First pair needs 2:1 or 1:2 team volume, then 1:1.${capNote}`
+    `Next team match pays ${nextAmount}. Team first pair needs 2:1 or 1:2 volume, then 1:1.${capNote} ` +
+    `First Direct Pair Income is separate (one-time).`
   );
 }

@@ -5,7 +5,7 @@ import LedgerEntry from "../models/ledgerEntry.js";
 import MlmMembership from "../models/mlmMembership.js";
 import MlmCommissionEvent from "../models/mlmCommissionEvent.js";
 import MlmWithdrawalRequest from "../models/mlmWithdrawalRequest.js";
-import { LEDGER_TRANSACTION_TYPE, OWNER_TYPE } from "../constants/finance.js";
+import { LEDGER_DIRECTION, LEDGER_TRANSACTION_TYPE, OWNER_TYPE } from "../constants/finance.js";
 import Customer from "../models/customer.js";
 import {
   ALL_MLM_WITHDRAWAL_STATUSES,
@@ -100,6 +100,209 @@ function groupEarningsEventsByDisplayType(events) {
     total: stats.total,
     count: stats.count,
   }));
+}
+
+/** Denormalised counters can drift negative after reparent/delete flows. */
+function clampMlmCount(value) {
+  return Math.max(0, Number(value) || 0);
+}
+
+async function sumLedgerCredits(userId, category) {
+  const [row] = await LedgerEntry.aggregate([
+    {
+      $match: {
+        ...buildWalletHistoryQuery({ userId, category }),
+        direction: LEDGER_DIRECTION.CREDIT,
+      },
+    },
+    { $group: { _id: null, total: { $sum: "$amount" } } },
+  ]);
+  return Number(row?.total) || 0;
+}
+
+async function computeBinaryDownlineStats(rootUserId) {
+  const aggResult = await MlmMembership.aggregate([
+    { $match: { userId: rootUserId } },
+    {
+      $graphLookup: {
+        from: MlmMembership.collection.name,
+        startWith: "$userId",
+        connectFromField: "userId",
+        connectToField: "binaryParentId",
+        as: "descendants",
+        maxDepth: 64,
+      },
+    },
+    {
+      $project: {
+        descendants: {
+          $map: {
+            input: "$descendants",
+            as: "d",
+            in: {
+              userId: "$$d.userId",
+              binaryParentId: "$$d.binaryParentId",
+              binaryPosition: "$$d.binaryPosition",
+              status: "$$d.status",
+            },
+          },
+        },
+      },
+    },
+  ]);
+
+  const descendants = aggResult[0]?.descendants || [];
+  const rootKey = String(rootUserId);
+  const parentLinkByUser = new Map();
+  for (const d of descendants) {
+    parentLinkByUser.set(String(d.userId), {
+      parent: d.binaryParentId ? String(d.binaryParentId) : null,
+      position: d.binaryPosition || null,
+    });
+  }
+
+  let leftLegTotalDownlineCount = 0;
+  let rightLegTotalDownlineCount = 0;
+  let leftLegActiveDownlineCount = 0;
+  let rightLegActiveDownlineCount = 0;
+  let activeDownlineCount = 0;
+
+  for (const d of descendants) {
+    let cursor = String(d.userId);
+    let legUnderRoot = null;
+    for (let i = 0; i < 64; i += 1) {
+      const link = parentLinkByUser.get(cursor);
+      if (!link || !link.parent) break;
+      if (link.parent === rootKey) {
+        legUnderRoot = link.position;
+        break;
+      }
+      cursor = link.parent;
+    }
+    if (legUnderRoot === "L") {
+      leftLegTotalDownlineCount += 1;
+      if (d.status === MLM_MEMBERSHIP_STATUS.ACTIVE) {
+        leftLegActiveDownlineCount += 1;
+      }
+    } else if (legUnderRoot === "R") {
+      rightLegTotalDownlineCount += 1;
+      if (d.status === MLM_MEMBERSHIP_STATUS.ACTIVE) {
+        rightLegActiveDownlineCount += 1;
+      }
+    }
+    if (d.status === MLM_MEMBERSHIP_STATUS.ACTIVE) {
+      activeDownlineCount += 1;
+    }
+  }
+
+  const totalDownlineCount =
+    leftLegTotalDownlineCount + rightLegTotalDownlineCount;
+
+  return {
+    totalDownlineCount,
+    activeDownlineCount,
+    inactiveDownlineCount: Math.max(totalDownlineCount - activeDownlineCount, 0),
+    leftLegTotalDownlineCount,
+    rightLegTotalDownlineCount,
+    leftLegActiveDownlineCount,
+    rightLegActiveDownlineCount,
+  };
+}
+
+async function buildEarningsSummaryPayload(userId, membership) {
+  const monthStart = new Date();
+  monthStart.setUTCHours(0, 0, 0, 0);
+  monthStart.setUTCDate(1);
+
+  const [
+    totalCredited,
+    totalThisMonth,
+    earningsEvents,
+    shoppingByTypeRows,
+    wallet,
+    earningsLedgerCredits,
+    shoppingLedgerCredits,
+    signupLedgerCredits,
+  ] = await Promise.all([
+    MlmCommissionEvent.aggregate([
+      { $match: creditedEarningsEventMatch(userId) },
+      { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
+    ]),
+    MlmCommissionEvent.aggregate([
+      {
+        $match: creditedEarningsEventMatch(userId, {
+          createdAt: { $gte: monthStart },
+        }),
+      },
+      { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
+    ]),
+    MlmCommissionEvent.find(creditedEarningsEventMatch(userId))
+      .select("bonusType cappedAmount idempotencyKey")
+      .lean(),
+    MlmCommissionEvent.aggregate([
+      { $match: creditedShoppingEventMatch(userId) },
+      {
+        $group: {
+          _id: "$bonusType",
+          total: { $sum: "$cappedAmount" },
+          count: { $sum: 1 },
+        },
+      },
+    ]),
+    Wallet.findOne({
+      ownerType: OWNER_TYPE.CUSTOMER,
+      ownerId: userId,
+    }).lean(),
+    sumLedgerCredits(userId, "earnings"),
+    sumLedgerCredits(userId, "shopping"),
+    sumLedgerCredits(userId, "signup"),
+  ]);
+
+  const byType = groupEarningsEventsByDisplayType(earningsEvents);
+  const shoppingByType = shoppingByTypeRows.map((row) => ({
+    bonusType: row._id,
+    total: row.total,
+    count: row.count,
+  }));
+  const totalShoppingCredited =
+    shoppingLedgerCredits + signupLedgerCredits;
+  const totalEarningsCredited = Math.max(
+    totalCredited[0]?.total || 0,
+    earningsLedgerCredits,
+  );
+
+  return {
+    lifetimeEarnings:
+      (membership?.lifetimePlanAEarnings || 0) +
+      (membership?.lifetimePlanBEarnings || 0),
+    lifetimePlanAEarnings: membership?.lifetimePlanAEarnings || 0,
+    lifetimePlanBEarnings: membership?.lifetimePlanBEarnings || 0,
+    earningsWalletBalance: wallet?.earningsBalance || 0,
+    shoppingWalletBalance: wallet?.shoppingBalance || 0,
+    totalCredited: totalEarningsCredited,
+    totalThisMonth: totalThisMonth[0]?.total || 0,
+    totalShoppingCredited,
+    totalSignupCredited: signupLedgerCredits,
+    byType,
+    shoppingByType,
+    dailyCapTracker: membership?.dailyCapTracker || null,
+  };
+}
+
+async function resolveNetworkMemberUserId(rawParam) {
+  const param = String(rawParam || "").trim();
+  if (!param) return null;
+  if (mongoose.isValidObjectId(param)) return param;
+
+  const byPublicId = await Customer.findOne({ userId: param })
+    .select("_id")
+    .lean();
+  if (byPublicId) return String(byPublicId._id);
+
+  const byReferral = await MlmMembership.findOne({ referralCode: param })
+    .select("userId")
+    .lean();
+  return byReferral?.userId ? String(byReferral.userId) : null;
 }
 
 /**
@@ -374,67 +577,8 @@ export const getEarningsSummary = async (req, res) => {
   try {
     const userId = req.user.id;
     const membership = await getMembershipByUserId(userId);
-    const monthStart = new Date();
-    monthStart.setUTCHours(0, 0, 0, 0);
-    monthStart.setUTCDate(1);
-
-    const [
-      totalCredited,
-      totalThisMonth,
-      earningsEvents,
-      shoppingByType,
-      wallet,
-    ] = await Promise.all([
-      MlmCommissionEvent.aggregate([
-        { $match: creditedEarningsEventMatch(userId) },
-        { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
-      ]),
-      MlmCommissionEvent.aggregate([
-        {
-          $match: creditedEarningsEventMatch(userId, {
-            createdAt: { $gte: monthStart },
-          }),
-        },
-        { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
-      ]),
-      MlmCommissionEvent.find(creditedEarningsEventMatch(userId))
-        .select("bonusType cappedAmount idempotencyKey")
-        .lean(),
-      MlmCommissionEvent.aggregate([
-        { $match: creditedShoppingEventMatch(userId) },
-        {
-          $group: {
-            _id: "$bonusType",
-            total: { $sum: "$cappedAmount" },
-            count: { $sum: 1 },
-          },
-        },
-      ]),
-      Wallet.findOne({
-        ownerType: OWNER_TYPE.CUSTOMER,
-        ownerId: userId,
-      }).lean(),
-    ]);
-
-    const byType = groupEarningsEventsByDisplayType(earningsEvents);
-
-    return handleResponse(res, 200, "Earnings summary", {
-      lifetimeEarnings:
-        (membership?.lifetimePlanAEarnings || 0) +
-        (membership?.lifetimePlanBEarnings || 0),
-      lifetimePlanAEarnings: membership?.lifetimePlanAEarnings || 0,
-      lifetimePlanBEarnings: membership?.lifetimePlanBEarnings || 0,
-      shoppingWalletBalance: wallet?.shoppingBalance || 0,
-      totalCredited: totalCredited[0]?.total || 0,
-      totalThisMonth: totalThisMonth[0]?.total || 0,
-      byType,
-      shoppingByType: shoppingByType.map((row) => ({
-        bonusType: row._id,
-        total: row.total,
-        count: row.count,
-      })),
-      dailyCapTracker: membership?.dailyCapTracker || null,
-    });
+    const payload = await buildEarningsSummaryPayload(userId, membership);
+    return handleResponse(res, 200, "Earnings summary", payload);
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
   }
@@ -2200,6 +2344,225 @@ export const getMyLevelTeam = async (req, res) => {
       inactiveMembers,
       levelCounts,
       totalPages: Math.ceil(total / limit) || 1,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * GET /api/customer/mlm/network/total-team
+ *
+ * Direct referrals only, split into left and right legs under the
+ * caller's binary root (same leg classification as genealogy binary).
+ */
+export const getMyTotalTeam = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const membership = await getMembershipByUserId(userId);
+    if (!membership) {
+      return handleResponse(res, 200, "Total team", {
+        isMember: false,
+        leftLeg: [],
+        rightLeg: [],
+      });
+    }
+
+    const rootUserId = membership.userId?._id || membership.userId;
+
+    let directReferrals = await MlmMembership.find({
+      sponsorId: rootUserId,
+    }).lean();
+
+    // Defensive fallback for legacy/drifted rows where sponsor edges
+    // are missing but members are still directly placed under root in
+    // the binary tree.
+    if (
+      directReferrals.length === 0 &&
+      ((membership.leftLegDirectCount || 0) > 0 ||
+        (membership.rightLegDirectCount || 0) > 0)
+    ) {
+      directReferrals = await MlmMembership.find({
+        binaryParentId: rootUserId,
+      })
+        .sort({ createdAt: 1 })
+        .lean();
+    }
+
+    const legByUserId = await classifyDirectReferralsByLegUnderRoot({
+      rootMembership: membership,
+      directReferrals,
+    });
+
+    const userById = await loadCustomerRowsForMembers(directReferrals);
+
+    const shape = (m, leg) => {
+      const u = userById.get(String(m.userId));
+      return {
+        userId: m.userId,
+        name: u?.name || null,
+        phone: maskPhoneForDownline(u?.phone || null),
+        referralCode: m.referralCode,
+        publicUserId: u?.userId || m.referralCode || null,
+        status: m.status,
+        planType: m.planType,
+        position: leg,
+        joinedAt: resolveMemberRegistrationAt({ ...m, userId: u || m.userId }),
+        directReferralsCount: m.directReferralsCount || 0,
+        totalDownlineCount: m.totalDownlineCount || 0,
+        activeDownlineCount: m.activeDownlineCount || 0,
+        pairsCompleted: m.pairsCompleted || 0,
+        leftLegDirectCount: m.leftLegDirectCount || 0,
+        rightLegDirectCount: m.rightLegDirectCount || 0,
+        lifetimeEarnings:
+          (m.lifetimePlanAEarnings || 0) + (m.lifetimePlanBEarnings || 0),
+      };
+    };
+
+    const leftLeg = [];
+    const rightLeg = [];
+    for (const m of directReferrals) {
+      // Fallback to member.binaryPosition when ancestry walk cannot
+      // resolve leg due to legacy/partial tree-link drift.
+      const leg = legByUserId.get(String(m.userId)) || m.binaryPosition || null;
+      if (leg === "L") leftLeg.push(shape(m, leg));
+      else if (leg === "R") rightLeg.push(shape(m, leg));
+    }
+
+    const sortByJoined = (a, b) =>
+      new Date(a.joinedAt || 0) - new Date(b.joinedAt || 0);
+    leftLeg.sort(sortByJoined);
+    rightLeg.sort(sortByJoined);
+
+    const countActive = (rows) =>
+      rows.filter((r) => r.status === MLM_MEMBERSHIP_STATUS.ACTIVE).length;
+
+    return handleResponse(res, 200, "Total team", {
+      isMember: true,
+      leftLegCount: membership.leftLegDirectCount || leftLeg.length,
+      rightLegCount: membership.rightLegDirectCount || rightLeg.length,
+      leftLegActiveCount: countActive(leftLeg),
+      rightLegActiveCount: countActive(rightLeg),
+      pairsCompleted: membership.pairsCompleted || 0,
+      leftLeg,
+      rightLeg,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * GET /api/customer/mlm/network/members/:memberId
+ *
+ * Downline member profile + earnings summary. Caller must be in the
+ * member's upline (sponsor chain or binary-parent walk).
+ */
+export const getMyNetworkMemberDetail = async (req, res) => {
+  try {
+    const callerUserId = req.user.id;
+    const memberUserId = await resolveNetworkMemberUserId(req.params.memberId);
+    if (!memberUserId) {
+      return handleResponse(res, 404, "Member not found");
+    }
+
+    const membership = await MlmMembership.findOne({ userId: memberUserId })
+      .populate("userId", "name phone email userId createdAt")
+      .lean();
+    if (!membership) {
+      return handleResponse(res, 404, "Member not found");
+    }
+
+    const isSelf = String(memberUserId) === String(callerUserId);
+    if (!isSelf) {
+      const allowed = await isCallerAuthorisedForTreeRoot(
+        callerUserId,
+        membership,
+      );
+      if (!allowed) {
+        return handleResponse(
+          res,
+          403,
+          "You can only view members in your own network.",
+        );
+      }
+    }
+
+    const customer = membership.userId;
+    const callerMembership = await getMembershipByUserId(callerUserId);
+
+    let legUnderCaller = null;
+    if (callerMembership && !isSelf) {
+      const legMap = await classifyDirectReferralsByLegUnderRoot({
+        rootMembership: callerMembership,
+        directReferrals: [membership],
+      });
+      legUnderCaller = legMap.get(String(memberUserId)) || null;
+    }
+
+    const isDirectReferral =
+      callerMembership &&
+      String(membership.sponsorId) === String(callerMembership.userId);
+
+    let sponsor = null;
+    if (membership.sponsorId) {
+      const sponsorMembership = await MlmMembership.findOne({
+        userId: membership.sponsorId,
+      })
+        .populate("userId", "name userId")
+        .lean();
+      if (sponsorMembership) {
+        sponsor = {
+          userId: sponsorMembership.userId?._id || sponsorMembership.userId,
+          name: sponsorMembership.userId?.name || null,
+          publicUserId: sponsorMembership.userId?.userId || null,
+          referralCode: sponsorMembership.referralCode || null,
+        };
+      }
+    }
+
+    const earningsSummary = await buildEarningsSummaryPayload(
+      memberUserId,
+      membership,
+    );
+
+    const [downlineStats, directReferralsLive] = await Promise.all([
+      computeBinaryDownlineStats(memberUserId),
+      MlmMembership.countDocuments({ sponsorId: memberUserId }),
+    ]);
+
+    return handleResponse(res, 200, "Network member detail", {
+      member: {
+        userId: memberUserId,
+        membershipId: membership._id,
+        name: customer?.name || null,
+        phone: maskPhoneForDownline(customer?.phone || null),
+        email: customer?.email || null,
+        publicUserId: customer?.userId || membership.referralCode || null,
+        referralCode: membership.referralCode,
+        status: membership.status,
+        planType: membership.planType,
+        joinedAt: resolveMemberRegistrationAt(membership),
+        legUnderYou: legUnderCaller,
+        isDirectReferral,
+        directReferralsCount: Math.max(
+          directReferralsLive,
+          clampMlmCount(membership.directReferralsCount),
+        ),
+        totalDownlineCount: downlineStats.totalDownlineCount,
+        activeDownlineCount: downlineStats.activeDownlineCount,
+        inactiveDownlineCount: downlineStats.inactiveDownlineCount,
+        leftLegDirectCount: clampMlmCount(membership.leftLegDirectCount),
+        rightLegDirectCount: clampMlmCount(membership.rightLegDirectCount),
+        pairsCompleted: clampMlmCount(membership.pairsCompleted),
+        binaryPairsEligible: clampMlmCount(membership.binaryPairsEligible),
+        lifetimeEarnings: clampMlmCount(
+          (membership.lifetimePlanAEarnings || 0) +
+            (membership.lifetimePlanBEarnings || 0),
+        ),
+      },
+      sponsor,
+      earningsSummary,
     });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);

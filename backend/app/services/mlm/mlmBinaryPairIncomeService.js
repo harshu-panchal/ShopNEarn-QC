@@ -54,8 +54,13 @@ export function resolvePairIncomeConfig(cfg, directCount, isTopup = false) {
 }
 
 /**
- * First direct L+R pair income uses the same tier table as team pair
- * matching (`binaryPairIncomeTiers`) keyed by active Plan A direct count.
+ * First direct L+R pair income rule:
+ *   - 3+ active directs => ₹250 (fixed one-time first direct pair)
+ *   - 2 active directs  => ₹200
+ *   - fallback          => configured flat fallback
+ *
+ * Team-pair income (`resolvePairIncomeConfig`) remains independent and
+ * can continue to be ₹300/₹400 based on higher direct-count tiers.
  */
 export function resolveFirstDirectPairIncomeAmount(
   cfg,
@@ -63,8 +68,9 @@ export function resolveFirstDirectPairIncomeAmount(
   isTopup = false,
   flatFallback = 0,
 ) {
-  const { pairIncome } = resolvePairIncomeConfig(cfg, directCount, isTopup);
-  if (pairIncome > 0) return pairIncome;
+  const directs = Number(directCount) || 0;
+  if (directs >= 3) return 250;
+  if (directs >= 2) return 200;
   const fallback = Number(flatFallback);
   return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
 }

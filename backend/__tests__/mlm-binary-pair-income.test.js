@@ -58,7 +58,7 @@ describe("mlmBinaryPairIncomeService (client PHP spec)", () => {
     });
   });
 
-  test("resolveFirstDirectPairIncomeAmount follows pair tiers", () => {
+  test("resolveFirstDirectPairIncomeAmount uses fixed first-pair slabs", () => {
     expect(resolveFirstDirectPairIncomeAmount(MLM_DEFAULTS, 2, false, 200)).toBe(
       200,
     );
@@ -66,7 +66,10 @@ describe("mlmBinaryPairIncomeService (client PHP spec)", () => {
       250,
     );
     expect(resolveFirstDirectPairIncomeAmount(MLM_DEFAULTS, 5, false, 200)).toBe(
-      300,
+      250,
+    );
+    expect(resolveFirstDirectPairIncomeAmount(MLM_DEFAULTS, 7, false, 200)).toBe(
+      250,
     );
     expect(resolveFirstDirectPairIncomeAmount(MLM_DEFAULTS, 1, false, 175)).toBe(
       175,

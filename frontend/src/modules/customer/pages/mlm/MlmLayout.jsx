@@ -81,6 +81,7 @@ const SIDEBAR_NAV_ITEMS = [
     icon: Network,
     children: [
       { label: "Direct Referrals", path: "/mlm/network/referrals" },
+      { label: "Total Team", path: "/mlm/network/total-team" },
       { label: "Left Team", path: "/mlm/network/left-team" },
       { label: "Right Team", path: "/mlm/network/right-team" },
       { label: "Genealogy", path: "/mlm/network/genealogy" },
