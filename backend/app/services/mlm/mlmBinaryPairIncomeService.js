@@ -54,6 +54,22 @@ export function resolvePairIncomeConfig(cfg, directCount, isTopup = false) {
 }
 
 /**
+ * First direct L+R pair income uses the same tier table as team pair
+ * matching (`binaryPairIncomeTiers`) keyed by active Plan A direct count.
+ */
+export function resolveFirstDirectPairIncomeAmount(
+  cfg,
+  directCount,
+  isTopup = false,
+  flatFallback = 0,
+) {
+  const { pairIncome } = resolvePairIncomeConfig(cfg, directCount, isTopup);
+  if (pairIncome > 0) return pairIncome;
+  const fallback = Number(flatFallback);
+  return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
+}
+
+/**
  * Mirror of client PHP `calculateBinaryIncome`.
  * First pair requires 2:1 or 1:2; only after that opener do 1:1 pairs count.
  */

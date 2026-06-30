@@ -35,6 +35,37 @@ const bonusTypeLabel = (t) => {
   return map[t] || t;
 };
 
+const getEarningReason = (row) => {
+  const meta = row?.meta || {};
+  const type = row?.bonusType;
+
+  if (type === "DIRECT_REFERRAL_ACTIVATION") {
+    const left = Number(meta.leftDirectCount || 0);
+    const right = Number(meta.rightDirectCount || 0);
+    const directCount = Number(meta.directCount || 0);
+    const pairIncome = Number(meta.pairIncome || row?.cappedAmount || 0);
+    return `Reason: first direct L+R pair complete (L${left}:R${right}); ${directCount} active directs tier => ${formatINR(pairIncome)}.`;
+  }
+
+  if (type === "BINARY_PAIR_MATCH") {
+    const pairIndex = Number(meta.pairIndex || 0);
+    const directCount = Number(meta.directCount || 0);
+    const pairIncome = Number(meta.pairIncome || row?.cappedAmount || 0);
+    return `Reason: team pair #${pairIndex || "?"} matched; ${directCount} active directs tier => ${formatINR(pairIncome)} per pair.`;
+  }
+
+  if (type === "DIRECT_REFERRAL_PER_ACTIVATION") {
+    const name = row?.sourceUserId?.name;
+    const code = row?.sourceUserId?.userId;
+    if (name || code) {
+      return `Reason: direct referral activated Plan A (${name || "Member"}${code ? ` - ${code}` : ""}).`;
+    }
+    return "Reason: one direct referral activated Plan A.";
+  }
+
+  return null;
+};
+
 /**
  * Customer-MLM-rebuild Phase 8 — My Earnings (under Payouts layout).
  *
@@ -252,6 +283,11 @@ const MyEarningsPage = () => {
                           joinedAt={row.sourceUserId.joinedAt}
                           className="text-[10px] text-slate-500"
                         />
+                      )}
+                      {getEarningReason(row) && (
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {getEarningReason(row)}
+                        </p>
                       )}
                       <p className="text-[11px] text-slate-500 mt-0.5">
                         {formatDate(row.createdAt)}

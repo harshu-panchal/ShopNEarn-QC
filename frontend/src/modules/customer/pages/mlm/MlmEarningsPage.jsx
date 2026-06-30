@@ -27,6 +27,32 @@ const bonusTypeLabel = (t) => {
     return map[t] || t;
 };
 
+const getEarningReason = (row) => {
+    const meta = row?.meta || {};
+    const type = row?.bonusType;
+
+    if (type === 'DIRECT_REFERRAL_ACTIVATION') {
+        const left = Number(meta.leftDirectCount || 0);
+        const right = Number(meta.rightDirectCount || 0);
+        const directCount = Number(meta.directCount || 0);
+        const pairIncome = Number(meta.pairIncome || row?.cappedAmount || 0);
+        return `Reason: first direct L+R pair complete (L${left}:R${right}); ${directCount} active directs tier => ${formatINR(pairIncome)}.`;
+    }
+
+    if (type === 'BINARY_PAIR_MATCH') {
+        const pairIndex = Number(meta.pairIndex || 0);
+        const directCount = Number(meta.directCount || 0);
+        const pairIncome = Number(meta.pairIncome || row?.cappedAmount || 0);
+        return `Reason: team pair #${pairIndex || '?'} matched; ${directCount} active directs tier => ${formatINR(pairIncome)} per pair.`;
+    }
+
+    if (type === 'DIRECT_REFERRAL_PER_ACTIVATION') {
+        return 'Reason: one direct referral activated Plan A.';
+    }
+
+    return null;
+};
+
 const MlmEarningsPage = () => {
     const navigate = useNavigate();
     const [summary, setSummary] = useState(null);
@@ -153,6 +179,11 @@ const MlmEarningsPage = () => {
                                                 {row.level ? <span className="text-xs text-slate-500 ml-1">L{row.level}</span> : null}
                                             </p>
                                             <p className="text-[11px] text-slate-500">{formatDate(row.createdAt)}</p>
+                                            {getEarningReason(row) && (
+                                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                                    {getEarningReason(row)}
+                                                </p>
+                                            )}
                                             {row.status === 'capped_rollover' && (
                                                 <p className="text-[10px] text-amber-600 font-semibold mt-0.5">
                                                     Rolled over: {formatINR(row.rolloverAmount)}

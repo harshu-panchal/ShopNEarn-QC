@@ -29,6 +29,7 @@ import {
   getMlmConfig,
 } from "../services/mlm/mlmConfigService.js";
 import { getBinaryPairIncomePreview } from "../services/mlm/mlmBinaryPairIncomeService.js";
+import { buildWalletHistoryQuery, WALLET_HISTORY_CATEGORIES } from "../services/finance/walletHistoryQuery.js";
 import { normalizeEarningsBonusType } from "../services/mlm/mlmSignupBonusService.js";
 import {
   cancelWithdrawalRequestByCustomer,
@@ -229,12 +230,14 @@ export const getMyMembership = async (req, res) => {
       pendingJoiningPayment,
       config: {
         joiningPackagePrice: cfg.joiningPackagePrice,
-        joiningPackageShoppingWalletCredit: cfg.joiningPackageShoppingWalletCredit,
+        joiningPackageShoppingWalletCredit:
+          cfg.joiningPackageShoppingWalletCredit,
         joiningPaymentMode:
           cfg.joiningPaymentMode === "phonepe" ? "phonepe" : "manual_qr",
         withdrawalMinAmount: cfg.withdrawalMinAmount,
         withdrawalAdminChargePercent: cfg.withdrawalAdminChargePercent,
-        withdrawalGstOnAdminChargePercent: cfg.withdrawalGstOnAdminChargePercent,
+        withdrawalGstOnAdminChargePercent:
+          cfg.withdrawalGstOnAdminChargePercent,
         planBAutoUpgradeAtPlanALifetimeEarnings:
           cfg.planBAutoUpgradeAtPlanALifetimeEarnings,
         binaryPairIncomeTiers: cfg.binaryPairIncomeTiers || [],
@@ -259,7 +262,7 @@ export const getMyMembership = async (req, res) => {
 export const updateMyMembership = async (req, res) => {
   try {
     const { payoutBeneficiary } = req.body;
-    
+
     if (!payoutBeneficiary || typeof payoutBeneficiary !== "object") {
       return handleResponse(res, 400, "Invalid payload");
     }
@@ -311,7 +314,13 @@ export const getMyDirectReferrals = async (req, res) => {
       list.map(async (m) => {
         const customer = await mongoose
           .model("User")
-          .findById(m.userId, { name: 1, phone: 1, email: 1, userId: 1, createdAt: 1 })
+          .findById(m.userId, {
+            name: 1,
+            phone: 1,
+            email: 1,
+            userId: 1,
+            createdAt: 1,
+          })
           .lean();
         return {
           userId: m.userId,
@@ -369,8 +378,13 @@ export const getEarningsSummary = async (req, res) => {
     monthStart.setUTCHours(0, 0, 0, 0);
     monthStart.setUTCDate(1);
 
-    const [totalCredited, totalThisMonth, earningsEvents, shoppingByType, wallet] =
-      await Promise.all([
+    const [
+      totalCredited,
+      totalThisMonth,
+      earningsEvents,
+      shoppingByType,
+      wallet,
+    ] = await Promise.all([
       MlmCommissionEvent.aggregate([
         { $match: creditedEarningsEventMatch(userId) },
         { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
@@ -396,7 +410,10 @@ export const getEarningsSummary = async (req, res) => {
           },
         },
       ]),
-      Wallet.findOne({ ownerType: OWNER_TYPE.CUSTOMER, ownerId: userId }).lean(),
+      Wallet.findOne({
+        ownerType: OWNER_TYPE.CUSTOMER,
+        ownerId: userId,
+      }).lean(),
     ]);
 
     const byType = groupEarningsEventsByDisplayType(earningsEvents);
@@ -428,7 +445,10 @@ export const getEarningsHistory = async (req, res) => {
   try {
     const userId = req.user.id;
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 20, 1),
+      100,
+    );
     const skip = (page - 1) * limit;
 
     const query = {
@@ -491,7 +511,10 @@ export const requestWithdrawal = async (req, res) => {
     if (!membership || membership.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) {
       return handleResponse(res, 403, "Only active MLM members can withdraw");
     }
-    const payload = validateMlmSchema(createWithdrawalRequestSchema, req.body || {});
+    const payload = validateMlmSchema(
+      createWithdrawalRequestSchema,
+      req.body || {},
+    );
     const request = await createWithdrawalRequest({
       userId,
       amount: payload.amount,
@@ -515,9 +538,10 @@ export const requestWithdrawal = async (req, res) => {
 export const listMyWithdrawals = async (req, res) => {
   try {
     const userId = req.user.id;
-    const status = req.query.status && ALL_MLM_WITHDRAWAL_STATUSES.includes(req.query.status)
-      ? req.query.status
-      : undefined;
+    const status =
+      req.query.status && ALL_MLM_WITHDRAWAL_STATUSES.includes(req.query.status)
+        ? req.query.status
+        : undefined;
     const result = await listWithdrawalsForCustomer(userId, {
       page: req.query.page,
       limit: req.query.limit,
@@ -545,7 +569,11 @@ export const claimHomeShopping = async (req, res) => {
     const membership = await getMembershipByUserId(userId);
     if (!membership) return handleResponse(res, 404, "Not an MLM member");
     if (membership.planType !== "B" || !membership.homeShoppingUnlocked) {
-      return handleResponse(res, 403, "Home Shopping is reserved for Plan B members");
+      return handleResponse(
+        res,
+        403,
+        "Home Shopping is reserved for Plan B members",
+      );
     }
     if (membership.homeShoppingClaimed) {
       return handleResponse(res, 200, "Home Shopping already claimed", {
@@ -580,7 +608,8 @@ export const claimHomeShopping = async (req, res) => {
 export const initiateJoin = async (req, res) => {
   try {
     const userId = req.user.id;
-    const idempotencyKey = req.headers["idempotency-key"] || req.body?.idempotencyKey || null;
+    const idempotencyKey =
+      req.headers["idempotency-key"] || req.body?.idempotencyKey || null;
     const result = await initiateJoiningPayment({ userId, idempotencyKey });
     return handleResponse(res, 200, "Joining payment initiated", result);
   } catch (error) {
@@ -696,7 +725,9 @@ export const cancelMyWithdrawal = async (req, res) => {
       requestId: req.params.id,
       userId,
     });
-    return handleResponse(res, 200, "Withdrawal request cancelled", { id: request._id });
+    return handleResponse(res, 200, "Withdrawal request cancelled", {
+      id: request._id,
+    });
   } catch (error) {
     return handleResponse(res, error.statusCode || 400, error.message);
   }
@@ -839,11 +870,11 @@ export const getDashboardOverview = async (req, res) => {
       }
       if (legUnderRoot === "L") {
         leftLegTotalDownlineCount++;
-        if (d.status === 'active') leftLegActiveDownlineCount++;
+        if (d.status === "active") leftLegActiveDownlineCount++;
       }
       if (legUnderRoot === "R") {
         rightLegTotalDownlineCount++;
-        if (d.status === 'active') rightLegActiveDownlineCount++;
+        if (d.status === "active") rightLegActiveDownlineCount++;
       }
     }
 
@@ -989,10 +1020,12 @@ export const getDashboardOverview = async (req, res) => {
       },
       config: {
         joiningPackagePrice: cfg.joiningPackagePrice,
-        joiningPackageShoppingWalletCredit: cfg.joiningPackageShoppingWalletCredit,
+        joiningPackageShoppingWalletCredit:
+          cfg.joiningPackageShoppingWalletCredit,
         withdrawalMinAmount: cfg.withdrawalMinAmount,
         binaryPairIncomeTiers: cfg.binaryPairIncomeTiers || [],
-        planAPairBonusReleaseCooldownDays: cfg.planAPairBonusReleaseCooldownDays || 0,
+        planAPairBonusReleaseCooldownDays:
+          cfg.planAPairBonusReleaseCooldownDays || 0,
         repurchaseBonusLevels: cfg.repurchaseBonusLevels || [],
         planBAutoUpgradeAtPlanALifetimeEarnings:
           cfg.planBAutoUpgradeAtPlanALifetimeEarnings || 0,
@@ -1059,12 +1092,17 @@ function shapeCustomerNode(member, position) {
 function shapeCustomerTree(node) {
   if (!node) return null;
   const shaped = shapeCustomerNode(node.raw, node.position);
-  shaped.leftLegTotalDownlineCount = node.raw.trueLeftLegTotalDownlineCount || 0;
-  shaped.rightLegTotalDownlineCount = node.raw.trueRightLegTotalDownlineCount || 0;
-  shaped.leftLegActiveDownlineCount = node.raw.trueLeftLegActiveDownlineCount || 0;
-  shaped.rightLegActiveDownlineCount = node.raw.trueRightLegActiveDownlineCount || 0;
-  
-  shaped.totalDownlineCount = shaped.leftLegTotalDownlineCount + shaped.rightLegTotalDownlineCount;
+  shaped.leftLegTotalDownlineCount =
+    node.raw.trueLeftLegTotalDownlineCount || 0;
+  shaped.rightLegTotalDownlineCount =
+    node.raw.trueRightLegTotalDownlineCount || 0;
+  shaped.leftLegActiveDownlineCount =
+    node.raw.trueLeftLegActiveDownlineCount || 0;
+  shaped.rightLegActiveDownlineCount =
+    node.raw.trueRightLegActiveDownlineCount || 0;
+
+  shaped.totalDownlineCount =
+    shaped.leftLegTotalDownlineCount + shaped.rightLegTotalDownlineCount;
   shaped.activeDownlineCount = node.raw.trueBinaryActiveDownlineCount || 0;
   shaped.inactiveDownlineCount = node.raw.trueBinaryInactiveDownlineCount || 0;
   // Pair stats come from the membership snapshot (team-active volumes +
@@ -1097,7 +1135,10 @@ function shapeCustomerTree(node) {
  */
 async function isCallerAuthorisedForTreeRoot(callerUserId, rootMembership) {
   if (!rootMembership) return false;
-  if (String(rootMembership.userId?._id || rootMembership.userId) === String(callerUserId)) {
+  if (
+    String(rootMembership.userId?._id || rootMembership.userId) ===
+    String(callerUserId)
+  ) {
     return true;
   }
   const chain = (rootMembership.sponsorChain || []).map((id) => String(id));
@@ -1148,18 +1189,21 @@ export const getMyGenealogyTree = async (req, res) => {
     // bounded if the schema ever develops a placement cycle bug.
     const MAX_TREE_DEPTH = 50;
     const rawDepth = parseInt(req.query.depth, 10);
-    const depth = Number.isFinite(rawDepth) && rawDepth > 0
-      ? Math.min(rawDepth, MAX_TREE_DEPTH)
-      : MAX_TREE_DEPTH;
-    const rawRoot = typeof req.query.rootUserId === "string"
-      ? req.query.rootUserId.trim()
-      : "";
-    const requestedRoot = rawRoot && mongoose.isValidObjectId(rawRoot)
-      ? rawRoot
-      : callerUserId;
+    const depth =
+      Number.isFinite(rawDepth) && rawDepth > 0
+        ? Math.min(rawDepth, MAX_TREE_DEPTH)
+        : MAX_TREE_DEPTH;
+    const rawRoot =
+      typeof req.query.rootUserId === "string"
+        ? req.query.rootUserId.trim()
+        : "";
+    const requestedRoot =
+      rawRoot && mongoose.isValidObjectId(rawRoot) ? rawRoot : callerUserId;
     const isOwnTree = String(requestedRoot) === String(callerUserId);
 
-    const rootMembership = await MlmMembership.findOne({ userId: requestedRoot })
+    const rootMembership = await MlmMembership.findOne({
+      userId: requestedRoot,
+    })
       .populate("userId", "name phone email userId")
       .lean();
     if (!rootMembership) {
@@ -1186,11 +1230,16 @@ export const getMyGenealogyTree = async (req, res) => {
       }
     }
 
-    const { tree: rawTree, drift, totalDescendants, renderedCount, orphanedCount } =
-      await buildBinaryTreeBottomUp({
-        rootMembership,
-        depthLeft: depth,
-      });
+    const {
+      tree: rawTree,
+      drift,
+      totalDescendants,
+      renderedCount,
+      orphanedCount,
+    } = await buildBinaryTreeBottomUp({
+      rootMembership,
+      depthLeft: depth,
+    });
     const tree = shapeCustomerTree(rawTree);
 
     // Emit a single console.warn line per request when the
@@ -1266,7 +1315,10 @@ export const getMyBinaryGenealogy = async (req, res) => {
 
     const userRows = await mongoose
       .model("User")
-      .find({ _id: { $in: descendants.map((d) => d.userId) } }, { name: 1, phone: 1, userId: 1, createdAt: 1 })
+      .find(
+        { _id: { $in: descendants.map((d) => d.userId) } },
+        { name: 1, phone: 1, userId: 1, createdAt: 1 },
+      )
       .lean();
     const userById = new Map(userRows.map((u) => [String(u._id), u]));
 
@@ -1339,8 +1391,12 @@ export const getMyBinaryGenealogy = async (req, res) => {
       }
     }
 
-    leftLeg.sort((a, b) => new Date(a.joinedAt || 0) - new Date(b.joinedAt || 0));
-    rightLeg.sort((a, b) => new Date(a.joinedAt || 0) - new Date(b.joinedAt || 0));
+    leftLeg.sort(
+      (a, b) => new Date(a.joinedAt || 0) - new Date(b.joinedAt || 0),
+    );
+    rightLeg.sort(
+      (a, b) => new Date(a.joinedAt || 0) - new Date(b.joinedAt || 0),
+    );
 
     return handleResponse(res, 200, "Binary genealogy", {
       isMember: true,
@@ -1372,7 +1428,10 @@ export const getMyMatchingReport = async (req, res) => {
   try {
     const userId = req.user.id;
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 20, 1),
+      100,
+    );
     const skip = (page - 1) * limit;
 
     const query = {
@@ -1392,8 +1451,10 @@ export const getMyMatchingReport = async (req, res) => {
     // Gather every contributor userId to do ONE user lookup.
     const contributorIds = new Set();
     for (const ev of items) {
-      if (ev.meta?.leftContributorUserId) contributorIds.add(String(ev.meta.leftContributorUserId));
-      if (ev.meta?.rightContributorUserId) contributorIds.add(String(ev.meta.rightContributorUserId));
+      if (ev.meta?.leftContributorUserId)
+        contributorIds.add(String(ev.meta.leftContributorUserId));
+      if (ev.meta?.rightContributorUserId)
+        contributorIds.add(String(ev.meta.rightContributorUserId));
     }
     const users = contributorIds.size
       ? await mongoose
@@ -1424,12 +1485,15 @@ export const getMyMatchingReport = async (req, res) => {
         rolloverAmount: ev.rolloverAmount || 0,
         status: ev.status,
         isHeld:
-          ev.status === MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_DOWNLINE_ACTIVATION,
+          ev.status ===
+          MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_DOWNLINE_ACTIVATION,
         isRollover: ev.status === MLM_COMMISSION_EVENT_STATUS.CAPPED_ROLLOVER,
-        matchingMode: ev.meta?.matchingMode
-          || (ev.meta?.leftContributorUserId ? "direct" : "team"),
+        matchingMode:
+          ev.meta?.matchingMode ||
+          (ev.meta?.leftContributorUserId ? "direct" : "team"),
         leftTeamActive: ev.meta?.leftTeamActive ?? ev.meta?.leftActive ?? null,
-        rightTeamActive: ev.meta?.rightTeamActive ?? ev.meta?.rightActive ?? null,
+        rightTeamActive:
+          ev.meta?.rightTeamActive ?? ev.meta?.rightActive ?? null,
         createdAt: ev.createdAt,
         releasedAt: ev.releasedAt || null,
         left: left
@@ -1543,13 +1607,21 @@ export const getMyTreeLayout = async (req, res) => {
     const map = membership.treeLayoutOverrides;
     if (map && typeof map.forEach === "function") {
       map.forEach((value, key) => {
-        if (value && typeof value.x === "number" && typeof value.y === "number") {
+        if (
+          value &&
+          typeof value.x === "number" &&
+          typeof value.y === "number"
+        ) {
           overrides[String(key)] = { x: value.x, y: value.y };
         }
       });
     } else if (map && typeof map === "object") {
       for (const [key, value] of Object.entries(map)) {
-        if (value && typeof value.x === "number" && typeof value.y === "number") {
+        if (
+          value &&
+          typeof value.x === "number" &&
+          typeof value.y === "number"
+        ) {
           overrides[String(key)] = { x: value.x, y: value.y };
         }
       }
@@ -1576,9 +1648,10 @@ export const updateMyTreeLayout = async (req, res) => {
   try {
     const userId = req.user.id;
     const body = req.body || {};
-    const incoming = body.overrides && typeof body.overrides === "object"
-      ? body.overrides
-      : null;
+    const incoming =
+      body.overrides && typeof body.overrides === "object"
+        ? body.overrides
+        : null;
     if (!incoming) {
       return handleResponse(res, 400, "`overrides` is required (object)");
     }
@@ -1627,14 +1700,8 @@ export const updateMyTreeLayout = async (req, res) => {
 export const addMemberAtSlot = async (req, res) => {
   try {
     const actorUserId = req.user.id;
-    const {
-      parentMembershipId,
-      leg,
-      name,
-      email,
-      phone,
-      password,
-    } = req.body || {};
+    const { parentMembershipId, leg, name, email, phone, password } =
+      req.body || {};
 
     const result = await createMemberInBinarySlot({
       parentMembershipId,
@@ -1696,7 +1763,10 @@ async function enrichWalletHistoryWithReferralDetails(items) {
   const referralIds = [
     ...new Set(
       items
-        .filter((row) => row.type === LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SPONSOR)
+        .filter(
+          (row) =>
+            row.type === LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SPONSOR,
+        )
         .map((row) => extractSignupSponsorReferralObjectId(row))
         .filter(Boolean),
     ),
@@ -1737,7 +1807,7 @@ async function enrichWalletHistoryWithReferralDetails(items) {
 }
 
 /**
- * GET /api/customer/mlm/payouts/wallet-history?page=1&limit=20&type=&direction=
+ * GET /api/customer/mlm/payouts/wallet-history?page=1&limit=20&type=&direction=&category=
  *
  * Customer-MLM-rebuild Phase 5: unified wallet history from the
  * canonical `LedgerEntry` collection. Replaces the legacy
@@ -1753,22 +1823,18 @@ export const getMyWalletHistory = async (req, res) => {
   try {
     const userId = req.user.id;
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 20, 1),
+      100,
+    );
     const skip = (page - 1) * limit;
 
-    const query = {
-      actorType: OWNER_TYPE.CUSTOMER,
-      actorId: new mongoose.Types.ObjectId(userId),
-    };
-    if (req.query.type) {
-      query.type = req.query.type;
-    }
-    if (
-      req.query.direction &&
-      ["CREDIT", "DEBIT"].includes(String(req.query.direction).toUpperCase())
-    ) {
-      query.direction = String(req.query.direction).toUpperCase();
-    }
+    const query = buildWalletHistoryQuery({
+      userId,
+      type: req.query.type || null,
+      direction: req.query.direction || null,
+      category: req.query.category || null,
+    });
 
     const [items, total] = await Promise.all([
       LedgerEntry.find(query)
@@ -1805,6 +1871,7 @@ export const getMyWalletHistory = async (req, res) => {
       limit,
       total,
       totalPages: Math.ceil(total / limit) || 1,
+      categories: WALLET_HISTORY_CATEGORIES,
     });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
@@ -1855,15 +1922,24 @@ export const getMyLegTeam = async (req, res) => {
   try {
     const userId = req.user.id;
     const leg = req.query.leg; // 'L' or 'R'
-    if (!['L', 'R'].includes(leg)) {
+    if (!["L", "R"].includes(leg)) {
       return handleResponse(res, 400, "Invalid leg. Must be L or R.");
     }
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 20, 1),
+      100,
+    );
 
     const membership = await getMembershipByUserId(userId);
     if (!membership) {
-      return handleResponse(res, 200, "Leg team", { items: [], page, limit, total: 0, totalPages: 0 });
+      return handleResponse(res, 200, "Leg team", {
+        items: [],
+        page,
+        limit,
+        total: 0,
+        totalPages: 0,
+      });
     }
 
     const aggResult = await mongoose.model("MlmMembership").aggregate([
@@ -1892,7 +1968,7 @@ export const getMyLegTeam = async (req, res) => {
     // Determine actual leg under root
     const actualLegByUser = new Map();
     actualLegByUser.set(String(membership.userId), "ROOT");
-    
+
     const legMembers = [];
     for (const d of descendants) {
       const targetId = String(d.userId);
@@ -1918,18 +1994,28 @@ export const getMyLegTeam = async (req, res) => {
     legMembers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     const totalMembers = legMembers.length;
-    const activePlanA = legMembers.filter(m => m.status === 'active' && m.planType === 'A').length;
-    const activePlanB = legMembers.filter(m => m.status === 'active' && m.planType === 'B').length;
-    const inactiveMembers = legMembers.filter(m => m.status !== 'active').length;
+    const activePlanA = legMembers.filter(
+      (m) => m.status === "active" && m.planType === "A",
+    ).length;
+    const activePlanB = legMembers.filter(
+      (m) => m.status === "active" && m.planType === "B",
+    ).length;
+    const inactiveMembers = legMembers.filter(
+      (m) => m.status !== "active",
+    ).length;
 
     let filteredMembers = legMembers;
     const filter = req.query.filter;
-    if (filter === 'planA') {
-      filteredMembers = legMembers.filter(m => m.status === 'active' && m.planType === 'A');
-    } else if (filter === 'planB') {
-      filteredMembers = legMembers.filter(m => m.status === 'active' && m.planType === 'B');
-    } else if (filter === 'inactive') {
-      filteredMembers = legMembers.filter(m => m.status !== 'active');
+    if (filter === "planA") {
+      filteredMembers = legMembers.filter(
+        (m) => m.status === "active" && m.planType === "A",
+      );
+    } else if (filter === "planB") {
+      filteredMembers = legMembers.filter(
+        (m) => m.status === "active" && m.planType === "B",
+      );
+    } else if (filter === "inactive") {
+      filteredMembers = legMembers.filter((m) => m.status !== "active");
     }
 
     const searchTerm = parseTeamSearchQuery(req.query.search);
@@ -1962,7 +2048,7 @@ export const getMyLegTeam = async (req, res) => {
         joinedAt: u?.createdAt || m.createdAt || null,
         leftLegDirectCount: m.leftLegDirectCount || 0,
         rightLegDirectCount: m.rightLegDirectCount || 0,
-        isMember: m.status === 'active',
+        isMember: m.status === "active",
       };
     });
 
@@ -1991,11 +2077,20 @@ export const getMyLevelTeam = async (req, res) => {
     const userId = req.user.id;
     const targetLevel = parseInt(req.query.level, 10) || null; // if null, fetch all levels
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 20, 1),
+      100,
+    );
 
     const membership = await getMembershipByUserId(userId);
     if (!membership) {
-      return handleResponse(res, 200, "Level team", { items: [], page, limit, total: 0, totalPages: 0 });
+      return handleResponse(res, 200, "Level team", {
+        items: [],
+        page,
+        limit,
+        total: 0,
+        totalPages: 0,
+      });
     }
 
     // Unilevel (sponsor) descendants
@@ -2015,7 +2110,10 @@ export const getMyLevelTeam = async (req, res) => {
     ]);
 
     const descendants = aggResult[0]?.descendants || [];
-    const allLevelMembers = descendants.map((d) => ({ ...d, level: d.depth + 1 }));
+    const allLevelMembers = descendants.map((d) => ({
+      ...d,
+      level: d.depth + 1,
+    }));
 
     const levelCounts = {};
     for (let i = 1; i <= 15; i++) levelCounts[i] = 0;
@@ -2034,18 +2132,28 @@ export const getMyLevelTeam = async (req, res) => {
     levelMembers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     const totalMembers = levelMembers.length;
-    const activePlanA = levelMembers.filter(m => m.status === 'active' && m.planType === 'A').length;
-    const activePlanB = levelMembers.filter(m => m.status === 'active' && m.planType === 'B').length;
-    const inactiveMembers = levelMembers.filter(m => m.status !== 'active').length;
+    const activePlanA = levelMembers.filter(
+      (m) => m.status === "active" && m.planType === "A",
+    ).length;
+    const activePlanB = levelMembers.filter(
+      (m) => m.status === "active" && m.planType === "B",
+    ).length;
+    const inactiveMembers = levelMembers.filter(
+      (m) => m.status !== "active",
+    ).length;
 
     let filteredMembers = levelMembers;
     const filter = req.query.filter;
-    if (filter === 'planA') {
-      filteredMembers = levelMembers.filter(m => m.status === 'active' && m.planType === 'A');
-    } else if (filter === 'planB') {
-      filteredMembers = levelMembers.filter(m => m.status === 'active' && m.planType === 'B');
-    } else if (filter === 'inactive') {
-      filteredMembers = levelMembers.filter(m => m.status !== 'active');
+    if (filter === "planA") {
+      filteredMembers = levelMembers.filter(
+        (m) => m.status === "active" && m.planType === "A",
+      );
+    } else if (filter === "planB") {
+      filteredMembers = levelMembers.filter(
+        (m) => m.status === "active" && m.planType === "B",
+      );
+    } else if (filter === "inactive") {
+      filteredMembers = levelMembers.filter((m) => m.status !== "active");
     }
 
     const searchTerm = parseTeamSearchQuery(req.query.search);
@@ -2077,7 +2185,7 @@ export const getMyLevelTeam = async (req, res) => {
         planType: m.planType,
         joinedAt: u?.createdAt || m.createdAt || null,
         level: m.level,
-        isMember: m.status === 'active',
+        isMember: m.status === "active",
       };
     });
 

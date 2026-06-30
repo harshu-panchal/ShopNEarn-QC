@@ -45,7 +45,9 @@ export const MLM_BINARY_PLACEMENT_STRATEGY = {
   SPILLOVER: "spillover", // honour sponsor preference; spillover to outer empty slot
   MANUAL: "manual", // sponsor explicitly picks the slot, no spillover
 };
-export const ALL_MLM_BINARY_PLACEMENT_STRATEGIES = Object.values(MLM_BINARY_PLACEMENT_STRATEGY);
+export const ALL_MLM_BINARY_PLACEMENT_STRATEGIES = Object.values(
+  MLM_BINARY_PLACEMENT_STRATEGY,
+);
 
 /** Per-bonus event type tag — used on MlmCommissionEvent + audit reports. */
 export const MLM_BONUS_TYPE = {
@@ -97,7 +99,9 @@ export const MLM_COMMISSION_EVENT_STATUS = {
   // until the sponsor activates Plan A.
   HELD_AWAITING_SPONSOR_ACTIVATION: "held_awaiting_sponsor_activation",
 };
-export const ALL_MLM_COMMISSION_EVENT_STATUSES = Object.values(MLM_COMMISSION_EVENT_STATUS);
+export const ALL_MLM_COMMISSION_EVENT_STATUSES = Object.values(
+  MLM_COMMISSION_EVENT_STATUS,
+);
 
 /** Withdrawal request lifecycle. */
 export const MLM_WITHDRAWAL_STATUS = {
@@ -142,14 +146,18 @@ export const MLM_MILESTONE_REWARD_TYPE = {
   EARNING_CREDIT: "EARNING_CREDIT",
   COUPON: "COUPON",
 };
-export const ALL_MLM_MILESTONE_REWARD_TYPES = Object.values(MLM_MILESTONE_REWARD_TYPE);
+export const ALL_MLM_MILESTONE_REWARD_TYPES = Object.values(
+  MLM_MILESTONE_REWARD_TYPE,
+);
 
 /** What "return clawback" does to credited bonuses. */
 export const MLM_RETURN_CLAWBACK_MODE = {
   CLAWBACK: "clawback", // reverse credits proportional to refunded amount
   FORFEIT_FUTURE: "forfeit_future", // keep credits, deny future bonuses for that order
 };
-export const ALL_MLM_RETURN_CLAWBACK_MODES = Object.values(MLM_RETURN_CLAWBACK_MODE);
+export const ALL_MLM_RETURN_CLAWBACK_MODES = Object.values(
+  MLM_RETURN_CLAWBACK_MODE,
+);
 
 /**
  * MLM joining payment mode. Controls which gateway code path
@@ -217,6 +225,9 @@ export const MLM_DEFAULTS = Object.freeze({
   //   2. Per activation — earnings credit each time a direct activates Plan A.
   directReferralActivationBonusEnabled: true,
   directReferralFirstPairEnabled: true,
+  // Flat fallback only when `binaryPairIncomeTiers` resolves to ₹0.
+  // Runtime first-pair income follows the same tier table as team pairs
+  // (e.g. 3+ active directs → ₹250).
   directReferralFirstPairAmount: 200,
   directReferralPerActivationEnabled: true,
   directReferralPerActivationAmount: 200,

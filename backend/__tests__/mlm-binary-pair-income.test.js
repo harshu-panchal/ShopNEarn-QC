@@ -2,6 +2,7 @@ import { describe, expect, test } from "@jest/globals";
 import {
   calculateBinaryPairs,
   resolvePairIncomeConfig,
+  resolveFirstDirectPairIncomeAmount,
 } from "../app/services/mlm/mlmBinaryPairIncomeService.js";
 import { MLM_DEFAULTS } from "../app/constants/mlm.js";
 
@@ -55,6 +56,21 @@ describe("mlmBinaryPairIncomeService (client PHP spec)", () => {
       pairIncome: 550,
       dailyPairCap: 20,
     });
+  });
+
+  test("resolveFirstDirectPairIncomeAmount follows pair tiers", () => {
+    expect(resolveFirstDirectPairIncomeAmount(MLM_DEFAULTS, 2, false, 200)).toBe(
+      200,
+    );
+    expect(resolveFirstDirectPairIncomeAmount(MLM_DEFAULTS, 3, false, 200)).toBe(
+      250,
+    );
+    expect(resolveFirstDirectPairIncomeAmount(MLM_DEFAULTS, 5, false, 200)).toBe(
+      300,
+    );
+    expect(resolveFirstDirectPairIncomeAmount(MLM_DEFAULTS, 1, false, 175)).toBe(
+      175,
+    );
   });
 
   test("PHP example income: 10 pairs × ₹300 at 5 directs", () => {

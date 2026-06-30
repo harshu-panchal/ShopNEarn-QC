@@ -13,7 +13,15 @@ import {
   MLM_PLAN_TYPE,
 } from "../../constants/mlm.js";
 import { creditWallet, debitWallet } from "../finance/walletService.js";
-import { getSignupBonusConfig, getDirectReferralActivationConfig } from "./mlmConfigService.js";
+import {
+  getMlmConfig,
+  getSignupBonusConfig,
+  getDirectReferralActivationConfig,
+} from "./mlmConfigService.js";
+import {
+  countActivePlanADirects,
+  resolveFirstDirectPairIncomeAmount,
+} from "./mlmBinaryPairIncomeService.js";
 import { classifyDirectReferralsByLegUnderRoot } from "./mlmBinaryTreeBuilder.js";
 import { creditBonusToEarningsWallet } from "./mlmBonusEngineService.js";
 import { roundCurrency } from "../../utils/money.js";
@@ -99,6 +107,14 @@ async function loadActiveDirectReferralLegPairCounts(
     directReferrals: directs,
   });
   return countDirectReferralLegPairsFromLegMap(directs, legByReferralId);
+}
+
+/** Active direct-referral L/R leg pair counts for a sponsor (exported for regen scripts). */
+export async function getActiveDirectReferralLegPairCounts(
+  sponsorMembership,
+  { session } = {},
+) {
+  return loadActiveDirectReferralLegPairCounts(sponsorMembership, { session });
 }
 
 async function resolveSponsorForDirectReferralBonus({
@@ -525,7 +541,7 @@ export async function applyDirectReferralFirstPairBonusInSession({
   }
 
   const cfg = await getDirectReferralActivationConfig();
-  if (!cfg.firstPair.enabled || cfg.firstPair.amount <= 0) {
+  if (!cfg.firstPair.enabled) {
     return { skipped: "DISABLED", event: null };
   }
 
@@ -580,7 +596,19 @@ export async function applyDirectReferralFirstPairBonusInSession({
     return { skipped: "BINARY_PAIR_ALREADY_PAID", event: null };
   }
 
-  const amount = roundCurrency(cfg.firstPair.amount);
+  const mlmCfg = await getMlmConfig();
+  const directCount = await countActivePlanADirects(sponsorUserId, { session });
+  const amount = roundCurrency(
+    resolveFirstDirectPairIncomeAmount(
+      mlmCfg,
+      directCount,
+      Boolean(sponsorMembership.binaryTopupMember),
+      cfg.firstPair.amount,
+    ),
+  );
+  if (amount <= 0) {
+    return { skipped: "DISABLED", event: null };
+  }
   const result = await creditDirectReferralEarning({
     sponsorUserId,
     sponsorMembership,
@@ -594,6 +622,8 @@ export async function applyDirectReferralFirstPairBonusInSession({
       pairIndex: 1,
       leftDirectCount: pairsAfter.left,
       rightDirectCount: pairsAfter.right,
+      directCount,
+      pairIncome: amount,
     },
     session,
     correlationId,
