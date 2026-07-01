@@ -21,7 +21,7 @@ const bonusTypeLabel = (t) => {
     SIGNUP_BONUS_SELF: "Welcome Signup Bonus",
     SIGNUP_BONUS_SPONSOR: "Referral Signup Bonus",
     DIRECT_REFERRAL_MILESTONE: "Matching Income",
-    DIRECT_REFERRAL_ACTIVATION: "First Direct Pair Income",
+    DIRECT_REFERRAL_ACTIVATION: "Pair Match Bonus",
     DIRECT_REFERRAL_PER_ACTIVATION: "Direct Referral Activation Income",
     BINARY_PAIR_MATCH: "Pair Match Bonus",
     REPURCHASE_BONUS: "Repurchase Bonus",
@@ -283,6 +283,21 @@ const MyEarningsPage = () => {
                           joinedAt={row.sourceUserId.joinedAt}
                           className="text-[10px] text-slate-500"
                         />
+                      )}
+                      {row.sourceUserId?.planAJoinedAt && (
+                        <p className="text-[10px] text-slate-500">
+                          Plan A activated on{" "}
+                          {new Date(row.sourceUserId.planAJoinedAt).toLocaleString(
+                            "en-IN",
+                            {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            },
+                          )}
+                        </p>
                       )}
                       {getEarningReason(row) && (
                         <p className="text-[11px] text-slate-500 mt-0.5">

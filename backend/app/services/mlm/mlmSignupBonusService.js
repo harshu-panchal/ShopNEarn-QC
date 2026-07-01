@@ -106,7 +106,7 @@ export function normalizeEarningsBonusType(bonusType, idempotencyKey) {
 
 /**
  * Customer-facing earnings breakdown — binary pair match #1 and one-time
- * first direct-pair income are the same payout and share one row.
+ * first direct-pair income are the same payout and share the Pair Match row.
  */
 export function resolveEarningsDisplayBonusType(event) {
   if (!event?.bonusType) return event?.bonusType;
@@ -129,7 +129,7 @@ export function resolveEarningsDisplayBonusType(event) {
     isDirectReferralFirstPairCommissionEvent(row)
     || isBinaryPairMatchIndexCommissionEvent(row, 1)
   ) {
-    return MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION;
+    return MLM_BONUS_TYPE.BINARY_PAIR_MATCH;
   }
 
   return row.bonusType;
@@ -204,9 +204,11 @@ export function groupEarningsEventsByDisplayType(events) {
     const canonical = [...firstPairCandidates].sort(
       (a, b) => commissionEventTimestamp(a) - commissionEventTimestamp(b),
     )[0];
-    byType.set(MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION, {
-      total: Number(canonical.cappedAmount) || 0,
-      count: 1,
+    const key = MLM_BONUS_TYPE.BINARY_PAIR_MATCH;
+    const prev = byType.get(key) || { total: 0, count: 0 };
+    byType.set(key, {
+      total: prev.total + (Number(canonical.cappedAmount) || 0),
+      count: prev.count + 1,
     });
   }
 

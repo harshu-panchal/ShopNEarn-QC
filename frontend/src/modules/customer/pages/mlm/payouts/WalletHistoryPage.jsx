@@ -49,8 +49,12 @@ const getMlmReason = (row) => {
   }
 
   if (type === "MLM_DIRECT_REFERRAL_PER_ACTIVATION") {
-    if (meta.activatedUserId) {
-      return `Reason: direct referral ${meta.activatedUserId} activated Plan A.`;
+    if (meta.activatedUserName || meta.activatedUserPublicId || meta.activatedUserId) {
+      const label = meta.activatedUserName || "Direct referral";
+      const publicId = meta.activatedUserPublicId
+        ? ` (${meta.activatedUserPublicId})`
+        : "";
+      return `Reason: ${label}${publicId} activated Plan A.`;
     }
     return "Reason: one direct referral activated Plan A.";
   }
@@ -60,7 +64,7 @@ const getMlmReason = (row) => {
 
 const TYPE_LABEL = {
   MLM_BINARY_PAIR_MATCH: "Pair Match Bonus",
-  MLM_DIRECT_REFERRAL_ACTIVATION: "First Direct Pair Income",
+  MLM_DIRECT_REFERRAL_ACTIVATION: "Pair Match Bonus",
   MLM_DIRECT_REFERRAL_PER_ACTIVATION: "Direct Referral Activation",
   MLM_DIRECT_REFERRAL_MILESTONE: "Direct Referral Milestone",
   MLM_BONUS_CREDIT: "Bonus Credit",
@@ -270,6 +274,20 @@ const WalletHistoryPage = () => {
                           </p>
                         )
                       )}
+                      {row.type === "MLM_DIRECT_REFERRAL_PER_ACTIVATION" &&
+                      row.metadata?.activatedUserJoinedAt ? (
+                        <MemberJoinedSubtitle
+                          joinedAt={row.metadata.activatedUserJoinedAt}
+                          className="text-[10px] text-slate-500 mt-0.5"
+                        />
+                      ) : null}
+                      {row.type === "MLM_DIRECT_REFERRAL_PER_ACTIVATION" &&
+                      row.metadata?.activatedUserPlanAJoinedAt ? (
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          Plan A activated on{" "}
+                          {formatDate(row.metadata.activatedUserPlanAJoinedAt)}
+                        </p>
+                      ) : null}
                       <p className="text-[10px] text-slate-400 mt-0.5">
                         {formatDate(row.createdAt)}
                       </p>

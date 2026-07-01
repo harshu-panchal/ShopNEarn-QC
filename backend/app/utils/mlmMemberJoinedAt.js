@@ -49,3 +49,47 @@ export async function lookupMembershipJoinedAtByUserIds(userIds) {
     ]),
   );
 }
+
+/**
+ * Bulk-resolve member timeline dates for customer ObjectIds.
+ * - joinedAt: account registration (Customer.createdAt fallback membership.createdAt)
+ * - planAJoinedAt: MLM Plan A activation timestamp when available
+ */
+export async function lookupMembershipTimelineByUserIds(userIds) {
+  const ids = [...new Set((userIds || []).filter(Boolean).map(String))];
+  if (!ids.length) return new Map();
+
+  const [customers, memberships] = await Promise.all([
+    Customer.find({ _id: { $in: ids } })
+      .select({ _id: 1, createdAt: 1 })
+      .lean(),
+    MlmMembership.find({ userId: { $in: ids } })
+      .select({ userId: 1, createdAt: 1, joinedAt: 1, planAJoinedAt: 1 })
+      .lean(),
+  ]);
+
+  const customerCreated = new Map(
+    customers.map((row) => [String(row._id), row.createdAt || null]),
+  );
+  const membershipByUserId = new Map(
+    memberships.map((row) => [String(row.userId), row]),
+  );
+
+  return new Map(
+    ids.map((id) => {
+      const membership = membershipByUserId.get(id) || null;
+      const joinedAt = customerCreated.get(id)
+        || membership?.createdAt
+        || membership?.joinedAt
+        || null;
+      const planAJoinedAt = membership?.planAJoinedAt || membership?.joinedAt || null;
+      return [
+        id,
+        {
+          joinedAt,
+          planAJoinedAt,
+        },
+      ];
+    }),
+  );
+}

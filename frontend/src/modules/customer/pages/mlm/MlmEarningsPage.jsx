@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, TrendingUp, ArrowDownLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { mlmApi } from '../../services/mlmApi';
+import MemberJoinedSubtitle from "@shared/components/mlm/MemberJoinedSubtitle";
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDate = (d) => new Date(d).toLocaleString('en-IN', {
@@ -16,6 +17,9 @@ const bonusTypeLabel = (t) => {
         DIRECT_REFERRAL_MILESTONE: 'Matching Income',
         // Plan A binary pair-match bonus — current Plan A payout.
         BINARY_PAIR_MATCH: 'Pair Match Bonus',
+        // First direct L+R pair payout is shown under pair-match.
+        DIRECT_REFERRAL_ACTIVATION: 'Pair Match Bonus',
+        DIRECT_REFERRAL_PER_ACTIVATION: 'Direct Referral Activation Income',
         REPURCHASE_BONUS: 'Repurchase Bonus',
         MENTOR_ROYALTY: 'Mentor Royalty',
         HOME_SHOPPING_SALES: 'Home Shopping Sales',
@@ -179,6 +183,17 @@ const MlmEarningsPage = () => {
                                                 {row.level ? <span className="text-xs text-slate-500 ml-1">L{row.level}</span> : null}
                                             </p>
                                             <p className="text-[11px] text-slate-500">{formatDate(row.createdAt)}</p>
+                                            {row.sourceUserId?.joinedAt && (
+                                                <MemberJoinedSubtitle
+                                                    joinedAt={row.sourceUserId.joinedAt}
+                                                    className="text-[10px] text-slate-500"
+                                                />
+                                            )}
+                                            {row.sourceUserId?.planAJoinedAt && (
+                                                <p className="text-[10px] text-slate-500">
+                                                    Plan A activated on {formatDate(row.sourceUserId.planAJoinedAt)}
+                                                </p>
+                                            )}
                                             {getEarningReason(row) && (
                                                 <p className="text-[11px] text-slate-500 mt-0.5">
                                                     {getEarningReason(row)}

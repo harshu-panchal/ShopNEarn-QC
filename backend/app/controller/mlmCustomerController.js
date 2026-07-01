@@ -50,6 +50,7 @@ import {
 } from "../validation/mlmValidation.js";
 import {
   lookupMembershipJoinedAtByUserIds,
+  lookupMembershipTimelineByUserIds,
   resolveMemberRegistrationAt,
 } from "../utils/mlmMemberJoinedAt.js";
 
@@ -607,16 +608,18 @@ export const getEarningsHistory = async (req, res) => {
     const sourceIds = items
       .map((row) => row.sourceUserId?._id || row.sourceUserId)
       .filter(Boolean);
-    const joinedAtByUser = await lookupMembershipJoinedAtByUserIds(sourceIds);
+    const timelineByUser = await lookupMembershipTimelineByUserIds(sourceIds);
     const enrichedItems = items.map((row) => {
       const source = row.sourceUserId;
       if (!source || typeof source !== "object") return row;
       const uid = String(source._id || source);
+      const timeline = timelineByUser.get(uid) || {};
       return {
         ...row,
         sourceUserId: {
           ...source,
-          joinedAt: joinedAtByUser.get(uid) || null,
+          joinedAt: timeline.joinedAt || null,
+          planAJoinedAt: timeline.planAJoinedAt || null,
         },
       };
     });
@@ -1890,7 +1893,7 @@ function extractSignupSponsorReferralObjectId(row) {
 }
 
 async function enrichWalletHistoryWithReferralDetails(items) {
-  const referralIds = [
+  const signupReferralIds = [
     ...new Set(
       items
         .filter(
@@ -1902,13 +1905,27 @@ async function enrichWalletHistoryWithReferralDetails(items) {
     ),
   ];
 
+  const activationReferralIds = [
+    ...new Set(
+      items
+        .filter(
+          (row) =>
+            row.type === LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_PER_ACTIVATION,
+        )
+        .map((row) => row.metadata?.activatedUserId)
+        .filter((id) => mongoose.Types.ObjectId.isValid(String(id)))
+        .map(String),
+    ),
+  ];
+
+  const referralIds = [...new Set([...signupReferralIds, ...activationReferralIds])];
   if (!referralIds.length) return items;
 
   const users = await Customer.find({ _id: { $in: referralIds } })
     .select("name userId phone createdAt")
     .lean();
   const userById = new Map(users.map((u) => [String(u._id), u]));
-  const joinedAtByUser = await lookupMembershipJoinedAtByUserIds(referralIds);
+  const timelineByUser = await lookupMembershipTimelineByUserIds(referralIds);
 
   return items.map((row) => {
     if (row.type !== LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SPONSOR) {
@@ -1930,7 +1947,28 @@ async function enrichWalletHistoryWithReferralDetails(items) {
         referralUserId: referral.userId || "",
         referralPhone: referral.phone || "",
         referralJoinedAt:
-          joinedAtByUser.get(referralObjectId) || referral.createdAt || null,
+          timelineByUser.get(referralObjectId)?.joinedAt || referral.createdAt || null,
+        referralPlanAJoinedAt:
+          timelineByUser.get(referralObjectId)?.planAJoinedAt || null,
+      },
+    };
+  }).map((row) => {
+    if (row.type !== LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_PER_ACTIVATION) {
+      return row;
+    }
+    const activatedUserId = String(row.metadata?.activatedUserId || "");
+    if (!mongoose.Types.ObjectId.isValid(activatedUserId)) return row;
+    const referral = userById.get(activatedUserId);
+    const timeline = timelineByUser.get(activatedUserId) || {};
+    return {
+      ...row,
+      metadata: {
+        ...(row.metadata || {}),
+        activatedUserName: referral?.name || null,
+        activatedUserPublicId: referral?.userId || null,
+        activatedUserPhone: referral?.phone || null,
+        activatedUserJoinedAt: timeline.joinedAt || referral?.createdAt || null,
+        activatedUserPlanAJoinedAt: timeline.planAJoinedAt || null,
       },
     };
   });
