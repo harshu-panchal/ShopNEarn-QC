@@ -14,7 +14,8 @@ import {
   MLM_PLAN_TYPE,
 } from "../../constants/mlm.js";
 import { roundCurrency } from "../../utils/money.js";
-import { creditWallet } from "../finance/walletService.js";
+import { createLedgerEntry } from "../finance/ledgerService.js";
+import { creditWallet, getOrCreateWallet } from "../finance/walletService.js";
 import {
   getDirectReferralMilestoneBonus,
   getMentorRoyaltyRate,
@@ -166,6 +167,9 @@ export async function creditBonusToEarningsWallet({
   correlationId = null,
   session,
   skipDailyCap = false,
+  // Rebuild ledger + commission rows without mutating wallet balances.
+  historyOnly = false,
+  ledgerRunningBalances = null,
 }) {
   if (!recipientUserId) throw new Error("recipientUserId is required");
   if (!idempotencyKey) throw new Error("idempotencyKey is required");
@@ -253,7 +257,46 @@ export async function creditBonusToEarningsWallet({
   }
 
   const ledgerType = ledgerTypeForBonusType(bonusType);
+  const ledgerMetadata = {
+    bucket: bucket === "pending" ? "pending" : "earnings",
+    mlmBonusType: bonusType,
+    level,
+    ratePercent,
+    sourceUserId: sourceUserId ? String(sourceUserId) : null,
+    ...meta,
+  };
 
+  let ledgerEntry = null;
+  if (historyOnly) {
+    const wallet = await getOrCreateWallet(OWNER_TYPE.CUSTOMER, recipientUserId, {
+      session,
+    });
+    const bucketKey = bucket === "pending" ? "pending" : "earnings";
+    const running = ledgerRunningBalances || { earnings: 0, pending: 0 };
+    const before = roundCurrency(running[bucketKey] || 0);
+    const after = roundCurrency(before + creditable);
+    running[bucketKey] = after;
+
+    ledgerEntry = await createLedgerEntry(
+      {
+        walletId: wallet._id,
+        actorType: OWNER_TYPE.CUSTOMER,
+        actorId: recipientUserId,
+        type: ledgerType,
+        direction: LEDGER_DIRECTION.CREDIT,
+        amount: creditable,
+        metadata: { ...ledgerMetadata, historyOnly: true },
+        description: description || `${bonusType}${level ? ` L${level}` : ""}`,
+        reference: idempotencyKey,
+        balanceBefore: before,
+        balanceAfter: after,
+        idempotencyKey,
+        correlationId,
+        orderId: sourceOrderId,
+      },
+      { session },
+    );
+  } else {
   // Credit wallet + write paired LedgerEntry atomically inside the session.
   // For MLM bonuses we credit the `pending` bucket so the existing
   // returnWindowReleaseJob can release to "available" later (Phase 2
@@ -268,13 +311,7 @@ export async function creditBonusToEarningsWallet({
     ledgerReference: idempotencyKey,
     ledgerDescription: description || `${bonusType}${level ? ` L${level}` : ""}`,
     orderId: sourceOrderId,
-    metadata: {
-      mlmBonusType: bonusType,
-      level,
-      ratePercent,
-      sourceUserId: sourceUserId ? String(sourceUserId) : null,
-      ...meta,
-    },
+    metadata: ledgerMetadata,
     idempotencyKey,
     correlationId,
     // The customer wallet shopping/earnings buckets are separate from
@@ -282,6 +319,8 @@ export async function creditBonusToEarningsWallet({
     // credits in the legacy mirror when we credit non-available buckets.
     syncUserWalletBalance: bucket === "available",
   });
+    ledgerEntry = result?.ledgerEntry || null;
+  }
 
   // Persist the richer audit row.
   const [eventDoc] = await MlmCommissionEvent.create(
@@ -301,16 +340,20 @@ export async function creditBonusToEarningsWallet({
         cappedAmount: creditable,
         rolloverAmount: rollover,
         walletBucket: bucket,
-        ledgerEntryId: result?.ledgerEntry?._id || null,
+        ledgerEntryId: ledgerEntry?._id || null,
         status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
         idempotencyKey,
         correlationId,
         description,
-        meta,
+        meta: { ...(meta || {}), ...(historyOnly ? { historyOnly: true } : {}) },
       },
     ],
     session ? { session } : {},
   );
+
+  if (historyOnly) {
+    return eventDoc;
+  }
 
   // Bump lifetime earnings for the auto-upgrade trigger. Plan type is
   // assigned per-bonus (Plan A bonuses count toward planA totals;

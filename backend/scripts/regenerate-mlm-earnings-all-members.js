@@ -1,15 +1,16 @@
 /**
  * regenerate-mlm-earnings-all-members.js
  *
- * Full earnings reset + regeneration for every MLM member:
- *   1. Delete all legacy earnings/pending wallet ledger rows (wallet history)
- *   2. Delete all earnings/pending commission events (earnings history)
- *   3. Reset earnings + pending wallet buckets to zero
- *   4. Regenerate from current tree/rules:
- *        - Direct referral per-activation income (each active Plan A direct)
- *        - First direct L+R pair income (tiered; mutually exclusive with binary P1)
- *        - Binary team pair match income (remaining eligible pairs)
- *   5. Re-apply paid-withdrawal offsets so wallet = credits − paid withdrawals
+ * Rebuild MLM earnings + wallet history for every member from current tree/rules.
+ * By default wallet balances are NOT changed — only ledger rows and commission
+ * events are purged and recreated (history-only mode).
+ *
+ *   1. Delete earnings/pending wallet ledger rows + commission events
+ *   2. Regenerate clean history (per-activation, first pair, binary pairs)
+ *   3. Wallet earnings/pending balances stay unchanged
+ *
+ * Pass `--reset-balances` to also zero wallets, re-credit balances, and apply
+ * paid-withdrawal offsets (destructive; not recommended for production cleanup).
  *
  * Shopping wallet, signup bonuses, and withdrawal ledger rows are NOT touched.
  *
@@ -17,6 +18,7 @@
  *   node scripts/regenerate-mlm-earnings-all-members.js
  *   node scripts/regenerate-mlm-earnings-all-members.js --apply
  *   node scripts/regenerate-mlm-earnings-all-members.js --apply --verbose
+ *   node scripts/regenerate-mlm-earnings-all-members.js --apply --reset-balances
  */
 import dotenv from "dotenv";
 import mongoose from "mongoose";
@@ -61,7 +63,9 @@ dotenv.config();
 
 const APPLY = process.argv.includes("--apply");
 const VERBOSE = process.argv.includes("--verbose");
-const MIGRATION_ID = "MLM-EARN-REGEN-V3-2026";
+const RESET_BALANCES = process.argv.includes("--reset-balances");
+const HISTORY_ONLY = !RESET_BALANCES;
+const MIGRATION_ID = "MLM-EARN-REGEN-V4-2026";
 const TOLERANCE = 1;
 
 const EARNINGS_LEDGER_TYPES = [
@@ -78,6 +82,25 @@ const EARNINGS_LEDGER_TYPES = [
   LEDGER_TRANSACTION_TYPE.MLM_BINARY_PAIR_MATCH_RELEASED_ON_DOWNLINE_ACTIVATION,
 ];
 
+const MIGRATION_MANUAL_ADJUSTMENT_CLAUSES = [
+  { "metadata.bucket": { $in: ["earnings", "pending"] } },
+  { "metadata.migrationId": { $exists: true } },
+  { idempotencyKey: { $regex: /^MLM-EARN-/ } },
+  { idempotencyKey: { $regex: /^MLM-DRA-/ } },
+  { idempotencyKey: { $regex: /^MLM-FIRST-PAIR/ } },
+  { idempotencyKey: { $regex: /^MLM-PER-ACTIVATION/ } },
+  { idempotencyKey: { $regex: /^MLM-EARNINGS-WALLET-ALIGN/ } },
+  { idempotencyKey: { $regex: /^MLM-WALLET-FIX/ } },
+  { idempotencyKey: { $regex: /-BPM-/ } },
+  { idempotencyKey: { $regex: /-DRPA-/ } },
+  { idempotencyKey: { $regex: /-WITHDRAW-OFFSET-/ } },
+  {
+    description: {
+      $regex: /Rollback duplicate direct referral|Align earnings wallet|Earnings regeneration:/i,
+    },
+  },
+];
+
 function earningsLedgerPurgeFilter(userId) {
   return {
     actorType: OWNER_TYPE.CUSTOMER,
@@ -86,16 +109,7 @@ function earningsLedgerPurgeFilter(userId) {
       { type: { $in: EARNINGS_LEDGER_TYPES } },
       {
         type: LEDGER_TRANSACTION_TYPE.MLM_MANUAL_ADJUSTMENT,
-        $or: [
-          { "metadata.bucket": { $in: ["earnings", "pending"] } },
-          { "metadata.migrationId": { $exists: true } },
-          { idempotencyKey: { $regex: /^MLM-EARN-/ } },
-          { idempotencyKey: { $regex: /^MLM-DRA-/ } },
-          { idempotencyKey: { $regex: /-BPM-/ } },
-          { idempotencyKey: { $regex: /-DRPA-/ } },
-          { idempotencyKey: { $regex: /^MLM-FIRST-PAIR/ } },
-          { idempotencyKey: { $regex: /^MLM-WALLET-FIX/ } },
-        ],
+        $or: MIGRATION_MANUAL_ADJUSTMENT_CLAUSES,
       },
     ],
   };
@@ -216,6 +230,7 @@ async function regenerateFirstDirectPairCredit({
   session,
   correlationId,
   totals,
+  regenOptions,
 }) {
   if (!draCfg.firstPair.enabled) {
     return { credited: 0, creditedFirstDirect: false };
@@ -261,6 +276,8 @@ async function regenerateFirstDirectPairCredit({
     idempotencyKey,
     correlationId,
     session,
+    skipDailyCap: true,
+    ...regenOptions,
   });
   const paid = roundCurrency(event?.cappedAmount || amount);
   totals.firstPairEvents += 1;
@@ -303,6 +320,7 @@ async function regeneratePerActivationCredits({
   session,
   correlationId,
   totals,
+  regenOptions,
 }) {
   if (!draCfg.enabled || !draCfg.perActivation.enabled || draCfg.perActivation.amount <= 0) {
     return 0;
@@ -345,6 +363,8 @@ async function regeneratePerActivationCredits({
       idempotencyKey,
       correlationId,
       session,
+      skipDailyCap: true,
+      ...regenOptions,
     });
     const paid = roundCurrency(event?.cappedAmount || amount);
     credited = roundCurrency(credited + paid);
@@ -361,6 +381,7 @@ async function regenerateBinaryPairCredits({
   correlationId,
   totals,
   skipPairIndexOne = false,
+  regenOptions,
 }) {
   const userId = membership.userId;
   const snapshot = await computeBinaryTeamPairSnapshot(membership, { session });
@@ -399,6 +420,8 @@ async function regenerateBinaryPairCredits({
       idempotencyKey,
       correlationId,
       session,
+      skipDailyCap: true,
+      ...regenOptions,
     });
     const paid = roundCurrency(event?.cappedAmount || pairIncome);
     credited = roundCurrency(credited + paid);
@@ -446,6 +469,7 @@ async function applyPaidWithdrawalOffset({
     idempotencyKey,
     correlationId,
     metadata: {
+      bucket: "earnings",
       migrationId: MIGRATION_ID,
       paidWithdrawn,
       creditedTotal,
@@ -521,12 +545,14 @@ async function regenerateMember(membership, cfg, draCfg, totals, session) {
     totals.wouldProcess += 1;
     totals.wouldPurgeLedger += purgeTargets.ledgerRows;
     totals.wouldPurgeEvents += purgeTargets.commissionRows;
-    totals.wouldZeroEarnings += beforeEarnings;
-    totals.wouldZeroPending += beforePending;
+    if (RESET_BALANCES) {
+      totals.wouldZeroEarnings += beforeEarnings;
+      totals.wouldZeroPending += beforePending;
+    }
     totals.wouldCredit += wouldCredit;
     if (VERBOSE) {
       log(
-        `WOULD ${code} purgeLedger=${purgeTargets.ledgerRows} purgeEvents=${purgeTargets.commissionRows} zero E=${beforeEarnings} P=${beforePending} → credit ₹${wouldCredit} (${pairsToPay} pairs)`,
+        `WOULD ${code} mode=${HISTORY_ONLY ? "history-only" : "reset-balances"} purgeLedger=${purgeTargets.ledgerRows} purgeEvents=${purgeTargets.commissionRows} wallet E=${beforeEarnings} P=${beforePending} → history ₹${wouldCredit} (${pairsToPay} pairs)`,
       );
     }
     return;
@@ -534,27 +560,39 @@ async function regenerateMember(membership, cfg, draCfg, totals, session) {
 
   const purgedLedger = await purgeEarningsLedgerHistory(userId, session);
   const purgedEvents = await purgeEarningsCommissionEvents(userId, session);
-  const { earnings: zeroedEarnings, pending: zeroedPending } =
-    await resetWalletEarningsBuckets(userId, session);
+  let zeroedEarnings = 0;
+  let zeroedPending = 0;
+  if (RESET_BALANCES) {
+    const reset = await resetWalletEarningsBuckets(userId, session);
+    zeroedEarnings = reset.earnings;
+    zeroedPending = reset.pending;
+  }
+
+  const membershipReset = {
+    pairsCompleted: 0,
+    lastPaidPairIndex: 0,
+    heldPairBonusForSponsor: 0,
+    binaryDailyPairTracker: { date: null, pairsPaid: 0 },
+    dailyCapTracker: { date: null, usedAmount: 0 },
+    "meta.earningsRegenMigrationId": MIGRATION_ID,
+    "meta.earningsRegenAt": new Date(),
+    "meta.earningsRegenMode": HISTORY_ONLY ? "history-only" : "reset-balances",
+  };
+  if (RESET_BALANCES) {
+    membershipReset.lifetimePlanAEarnings = 0;
+  }
 
   await MlmMembership.updateOne(
     { _id: membership._id },
-    {
-      $set: {
-        lifetimePlanAEarnings: 0,
-        pairsCompleted: 0,
-        lastPaidPairIndex: 0,
-        heldPairBonusForSponsor: 0,
-        binaryDailyPairTracker: { date: null, pairsPaid: 0 },
-        "meta.earningsRegenMigrationId": MIGRATION_ID,
-        "meta.earningsRegenAt": new Date(),
-      },
-    },
+    { $set: membershipReset },
     { session },
   );
 
   let creditedTotal = 0;
   const localTotals = { perActivationEvents: 0, pairEvents: 0, firstPairEvents: 0 };
+  const regenOptions = HISTORY_ONLY
+    ? { historyOnly: true, ledgerRunningBalances: { earnings: 0, pending: 0 } }
+    : {};
 
   if (membership.status === MLM_MEMBERSHIP_STATUS.ACTIVE) {
     const freshMembership = await MlmMembership.findById(membership._id).session(session);
@@ -567,6 +605,7 @@ async function regenerateMember(membership, cfg, draCfg, totals, session) {
         session,
         correlationId,
         totals: localTotals,
+        regenOptions,
       })),
     );
 
@@ -577,6 +616,7 @@ async function regenerateMember(membership, cfg, draCfg, totals, session) {
       session,
       correlationId,
       totals: localTotals,
+      regenOptions,
     });
     creditedTotal = roundCurrency(creditedTotal + firstPairResult.credited);
 
@@ -587,6 +627,7 @@ async function regenerateMember(membership, cfg, draCfg, totals, session) {
       correlationId,
       totals: localTotals,
       skipPairIndexOne: firstPairResult.creditedFirstDirect,
+      regenOptions,
     });
     creditedTotal = roundCurrency(creditedTotal + pairResult.credited);
     snapshot = pairResult.snapshot;
@@ -614,12 +655,51 @@ async function regenerateMember(membership, cfg, draCfg, totals, session) {
     );
   }
 
-  const withdrawAdjust = await applyPaidWithdrawalOffset({
-    userId,
-    creditedTotal,
-    session,
-    correlationId,
-  });
+  let withdrawAdjust = {
+    paidWithdrawn: 0,
+    debited: 0,
+    expectedWallet: creditedTotal,
+  };
+  if (RESET_BALANCES) {
+    withdrawAdjust = await applyPaidWithdrawalOffset({
+      userId,
+      creditedTotal,
+      session,
+      correlationId,
+    });
+  } else {
+    const paidWithdrawn = await sumPaidWithdrawals(userId, session);
+    withdrawAdjust = {
+      paidWithdrawn,
+      debited: 0,
+      expectedWallet: roundCurrency(Math.max(creditedTotal - paidWithdrawn, 0)),
+    };
+    const walletAfter = await Wallet.findOne({
+      ownerType: OWNER_TYPE.CUSTOMER,
+      ownerId: userId,
+    }).session(session);
+    const afterEarnings = roundCurrency(walletAfter?.earningsBalance || 0);
+    const afterPending = roundCurrency(walletAfter?.pendingBalance || 0);
+    if (
+      Math.abs(afterEarnings - beforeEarnings) > TOLERANCE
+      || Math.abs(afterPending - beforePending) > TOLERANCE
+    ) {
+      throw new Error(
+        `Wallet balance changed in history-only mode (before E=${beforeEarnings} P=${beforePending}, after E=${afterEarnings} P=${afterPending})`,
+      );
+    }
+    const historyDrift = roundCurrency(
+      afterEarnings + afterPending - withdrawAdjust.expectedWallet,
+    );
+    if (Math.abs(historyDrift) > TOLERANCE) {
+      totals.historyDrift += 1;
+      if (VERBOSE) {
+        log(
+          `WARN ${code} history gross=₹${creditedTotal} paidWithdrawn=₹${paidWithdrawn} expectedWallet=₹${withdrawAdjust.expectedWallet} actualWallet=₹${afterEarnings + afterPending}`,
+        );
+      }
+    }
+  }
 
   if (withdrawAdjust.paidWithdrawn > creditedTotal + TOLERANCE) {
     totals.overWithdrawn += 1;
@@ -650,14 +730,17 @@ async function regenerateMember(membership, cfg, draCfg, totals, session) {
 
   if (VERBOSE) {
     log(
-      `DONE ${code} purgedLedger=${purgedLedger} purgedEvents=${purgedEvents} credited=₹${creditedTotal} wallet→₹${withdrawAdjust.expectedWallet}`,
+      `DONE ${code} mode=${HISTORY_ONLY ? "history-only" : "reset-balances"} purgedLedger=${purgedLedger} purgedEvents=${purgedEvents} history=₹${creditedTotal} wallet E=${beforeEarnings} P=${beforePending}`,
     );
   }
 }
 
 async function main() {
   await connectDB();
-  log(APPLY ? "APPLY mode (writes enabled)" : "DRY-RUN (no writes)");
+  log(
+    APPLY ? "APPLY mode (writes enabled)" : "DRY-RUN (no writes)",
+    HISTORY_ONLY ? "| history-only (wallet balances preserved)" : "| reset-balances",
+  );
 
   const cfg = await getMlmConfig();
   const draCfg = await getDirectReferralActivationConfig();
@@ -668,6 +751,7 @@ async function main() {
     wouldProcess: 0,
     skippedPendingWithdrawal: 0,
     overWithdrawn: 0,
+    historyDrift: 0,
     errors: 0,
     purgedLedger: 0,
     purgedEvents: 0,
