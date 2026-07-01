@@ -104,33 +104,24 @@ import { formatMemberJoinedAt } from "../../utils/mlmMemberDisplay";
 // visuals, which keeps both consumers visually consistent at the
 // per-node level while letting the admin view fit more of the tree
 // in the same viewport.
-// PO-request Jun 2026 (round 3): compress further still. The slot
-// can't shrink below the intrinsic width of the pill it contains
-// (an over-wide pill spills sideways and overlaps the neighbour),
-// so this round shrinks BOTH the slot AND the pill in lockstep.
-//
-// New pill geometry (see `NodeCard` below): `px-1.5 py-1
-// text-[11px] font-mono font-bold` — a 8-char referral code now
-// renders at roughly 60 px wide instead of 80, freeing 16 px per
-// node that the slot can reclaim. `NODE_WIDTH = 60` matches the
-// new pill size with ~zero clearance, and `HORIZONTAL_GAP = 0`
-// keeps adjacent slots flush. Net leaf pitch is now 60 px, down
-// from 112 px before round 1 — a 46 % reduction.
-//
-// Drop NODE_WIDTH lower than 56 and the dashed "OPEN SLOT" circle
-// in `EmptyNodeCard` (which is 48 px diameter) starts to clip; the
-// pill text also becomes uncomfortably small below 11 px.
-const NODE_WIDTH = 60;
-const NODE_HEIGHT = 56;
+// Node pill geometry — readable tree labels (112px IDs/names).
+const NODE_TEXT_SCALE = 4;
+const NODE_ID_FONT_PX = 28 * NODE_TEXT_SCALE;
+const NODE_NAME_FONT_PX = 28 * NODE_TEXT_SCALE;
+const NODE_SLOT_LABEL_FONT_PX = 22 * NODE_TEXT_SCALE;
+const NODE_SLOT_ICON_PX = 26 * NODE_TEXT_SCALE;
+// Render box fits ~10-char IDs; vertical size unchanged from scale.
+const NODE_WIDTH = Math.round(NODE_ID_FONT_PX * 5.65) + 28;
+const NODE_HEIGHT = 104 * NODE_TEXT_SCALE;
+// Horizontal leaf pitch only — siblings sit much closer (ref-tree style).
+// Visual pills may slightly overlap at edges; vertical spacing is untouched.
+const HORIZONTAL_LEAF_PITCH = Math.round(NODE_WIDTH * 0.55);
 const HORIZONTAL_GAP = 0;
-const VERTICAL_GAP = 58;
-// Admin "compact" mode matches the customer default — both
-// surfaces collapse to the tightest practical packing. The prop
-// is retained so future divergence (either way) is a one-line
-// change rather than re-introducing the branching logic in
-// `place()`.
+const VERTICAL_GAP = 88 * NODE_TEXT_SCALE;
 const COMPACT_HORIZONTAL_GAP = 0;
-const COMPACT_VERTICAL_GAP = 28;
+const COMPACT_VERTICAL_GAP = 52 * NODE_TEXT_SCALE;
+const EDGE_STROKE_WIDTH = Math.max(4, Math.round(NODE_TEXT_SCALE * 1.1));
+const EDGE_STROKE_WIDTH_EMPTY = Math.max(3, Math.round(NODE_TEXT_SCALE * 0.85));
 
 /**
  * Resolve the canonical colour theme for a FILLED member node based
@@ -347,7 +338,7 @@ const GenealogyTreeCanvas = ({
   const stageRef = useRef(null);
 
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(0.75);
+  const [zoom, setZoom] = useState(1);
 
   // Member-details modal state. `selectedFilledNode` is the node
   // the user most recently CLICKED on (filled members only —
@@ -418,7 +409,7 @@ const GenealogyTreeCanvas = ({
       ? COMPACT_HORIZONTAL_GAP
       : HORIZONTAL_GAP;
     const verticalGap = compactSpacing ? COMPACT_VERTICAL_GAP : VERTICAL_GAP;
-    const slotWidth = NODE_WIDTH + horizontalGap;
+    const slotWidth = HORIZONTAL_LEAF_PITCH + horizontalGap;
 
     let leafIndex = 0;
 
@@ -439,7 +430,7 @@ const GenealogyTreeCanvas = ({
       let centerX;
       if (leftCenter === null && rightCenter === null) {
         // Leaf — take the next equispaced slot.
-        centerX = leafIndex * slotWidth + NODE_WIDTH / 2;
+        centerX = leafIndex * slotWidth + slotWidth / 2;
         leafIndex += 1;
       } else if (leftCenter !== null && rightCenter !== null) {
         centerX = (leftCenter + rightCenter) / 2;
@@ -610,7 +601,7 @@ const GenealogyTreeCanvas = ({
     if (treeWidth > 0 && treeHeight > 0) {
       const scaleX = (rect.width - 40) / treeWidth;
       const scaleY = (rect.height - 40) / treeHeight;
-      newZoom = Math.min(0.75, Math.min(scaleX, scaleY)); // 0.75 will show as 150%
+      newZoom = Math.min(1, Math.min(scaleX, scaleY));
       newZoom = Math.max(0.1, newZoom);
       setZoom(newZoom);
     }
@@ -861,9 +852,12 @@ const GenealogyTreeCanvas = ({
               const isEmptyEdge = edge.targetEmpty;
               const strokeColor = isEmptyEdge
                 ? edge.targetAddable
-                  ? "#cbd5e1"
-                  : "#e2e8f0"
-                : "#94a3b8";
+                  ? "#64748b"
+                  : "#94a3b8"
+                : "#334155";
+              const strokeWidth = isEmptyEdge
+                ? EDGE_STROKE_WIDTH_EMPTY
+                : EDGE_STROKE_WIDTH;
               return (
                 <g key={`${edge.fromId}-${edge.toId}`}>
                   <line
@@ -872,7 +866,8 @@ const GenealogyTreeCanvas = ({
                     x2={x1}
                     y2={midY}
                     stroke={strokeColor}
-                    strokeWidth={1}
+                    strokeWidth={strokeWidth}
+                    strokeLinecap="round"
                   />
                   <line
                     x1={x1}
@@ -880,8 +875,9 @@ const GenealogyTreeCanvas = ({
                     x2={x2}
                     y2={midY}
                     stroke={strokeColor}
-                    strokeWidth={1}
-                    strokeDasharray="4 3"
+                    strokeWidth={strokeWidth}
+                    strokeLinecap="round"
+                    strokeDasharray={isEmptyEdge ? "10 7" : undefined}
                   />
                   <line
                     x1={x2}
@@ -889,7 +885,8 @@ const GenealogyTreeCanvas = ({
                     x2={x2}
                     y2={y2}
                     stroke={strokeColor}
-                    strokeWidth={1}
+                    strokeWidth={strokeWidth}
+                    strokeLinecap="round"
                   />
                 </g>
               );
@@ -1023,16 +1020,28 @@ const NodeCard = ({ node, onTap, isSelected, highlightViewerSelf }) => {
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
       }}
-      className="flex flex-col items-center justify-start cursor-pointer select-none"
+      className="flex flex-col items-center justify-start cursor-pointer select-none overflow-visible"
     >
       <span
-        className={`px-1.5 py-1 rounded-md text-[11px] font-mono font-bold shadow-md whitespace-nowrap transition-transform ${pillClass} ${
-          isSelected ? `ring-2 ring-offset-1 ${accent.ring} scale-[1.05]` : ""
+        className={`rounded-2xl font-mono font-bold shadow-lg whitespace-nowrap transition-transform ${pillClass} ${
+          isSelected ? `ring-4 ring-offset-2 ${accent.ring} scale-[1.05]` : ""
         }`}
+        style={{
+          fontSize: NODE_ID_FONT_PX,
+          lineHeight: 1.1,
+          padding: `${8 * NODE_TEXT_SCALE}px ${10 * NODE_TEXT_SCALE}px`,
+        }}
       >
-        {data.referralCode || "—"}
+        {data.publicUserId || data.referralCode || "—"}
       </span>
-      <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700 truncate max-w-full text-center">
+      <span
+        className="font-bold uppercase tracking-wide text-slate-900 truncate max-w-full text-center leading-tight"
+        style={{
+          fontSize: NODE_NAME_FONT_PX,
+          lineHeight: 1.1,
+          marginTop: 8 * NODE_TEXT_SCALE,
+        }}
+      >
         {data.name || "Member"}
         {isRoot && highlightViewerSelf && data.__isViewerSelf && (
           <span className={`ml-1 normal-case font-bold ${accent.tooltipAccent}`}>
@@ -1104,18 +1113,28 @@ const EmptyNodeCard = ({ node, canAdd, rearrangeMode = false, onClick }) => {
       }
     >
       <div
-        className={`w-9 h-9 rounded-full bg-white flex items-center justify-center transition-colors ${ringClass}`}
+        className={`rounded-full bg-white flex items-center justify-center transition-colors ${ringClass}`}
+        style={{
+          width: NODE_SLOT_ICON_PX * 2.2,
+          height: NODE_SLOT_ICON_PX * 2.2,
+          borderWidth: 3 * NODE_TEXT_SCALE,
+        }}
       >
-        <UserPlus2 size={16} className={iconColor} />
+        <UserPlus2 size={NODE_SLOT_ICON_PX} className={iconColor} />
       </div>
       <span
-        className={`mt-1 text-[9px] font-bold uppercase tracking-wider text-center ${
+        className={`font-bold uppercase tracking-wide text-center leading-tight ${
           canAdd
             ? rearrangeMode
               ? "text-amber-700"
-              : "text-sky-600"
-            : "text-slate-300"
+              : "text-sky-700"
+            : "text-slate-400"
         }`}
+        style={{
+          fontSize: NODE_SLOT_LABEL_FONT_PX,
+          lineHeight: 1.1,
+          marginTop: 8 * NODE_TEXT_SCALE,
+        }}
       >
         {canAdd ? (rearrangeMode ? "Move Here" : "Open Slot") : "Future"}
       </span>
@@ -1457,8 +1476,8 @@ const MemberDetailModal = ({
     data.registeredAt || data.joinedAt || null;
   const leftActive = Number(data.leftLegActiveDownlineCount ?? 0);
   const rightActive = Number(data.rightLegActiveDownlineCount ?? 0);
-  const left = Number(data.leftLegTeamActiveCount ?? 0);
-  const right = Number(data.rightLegTeamActiveCount ?? 0);
+  const left = Number(data.leftLegTotalDownlineCount ?? 0);
+  const right = Number(data.rightLegTotalDownlineCount ?? 0);
   const pairsPaid = Number(data.pairsCompleted || 0);
   const pairsEligible = Number(data.binaryPairsEligible ?? pairsPaid);
   const pairsRemaining = Math.max(0, pairsEligible - pairsPaid);
@@ -1573,12 +1592,12 @@ const MemberDetailModal = ({
           )}
         </div>
 
-        {/* Pair-matching volume — active Plan A team counts (same as Binary Network dashboard). */}
+        {/* Team totals — full leg size with active count in brackets. */}
         <div className="px-4 py-3 border-t border-slate-100 grid grid-cols-3 gap-1.5">
           <Stat
             icon={<ChevronLeft size={11} />}
             label="Left Team"
-            subtitle="active Plan A"
+            subtitle="team active"
             value={
               <>
                 {left}{" "}
@@ -1590,7 +1609,7 @@ const MemberDetailModal = ({
           <Stat
             icon={<ChevronRight size={11} />}
             label="Right Team"
-            subtitle="active Plan A"
+            subtitle="team active"
             value={
               <>
                 {right}{" "}

@@ -30,7 +30,9 @@ import {
 } from "../services/mlm/mlmConfigService.js";
 import { getBinaryPairIncomePreview } from "../services/mlm/mlmBinaryPairIncomeService.js";
 import { buildWalletHistoryQuery, WALLET_HISTORY_CATEGORIES } from "../services/finance/walletHistoryQuery.js";
-import { normalizeEarningsBonusType } from "../services/mlm/mlmSignupBonusService.js";
+import {
+  groupEarningsEventsByDisplayType,
+} from "../services/mlm/mlmSignupBonusService.js";
 import {
   cancelWithdrawalRequestByCustomer,
   createWithdrawalRequest,
@@ -82,24 +84,6 @@ function creditedShoppingEventMatch(userId, extra = {}) {
     walletBucket: "shopping",
     ...extra,
   };
-}
-
-/** Group credited earnings events by display bonus type (legacy DRA → DRPA). */
-function groupEarningsEventsByDisplayType(events) {
-  const byType = new Map();
-  for (const row of events) {
-    const key = normalizeEarningsBonusType(row.bonusType, row.idempotencyKey);
-    const prev = byType.get(key) || { total: 0, count: 0 };
-    byType.set(key, {
-      total: prev.total + (Number(row.cappedAmount) || 0),
-      count: prev.count + 1,
-    });
-  }
-  return [...byType.entries()].map(([bonusType, stats]) => ({
-    bonusType,
-    total: stats.total,
-    count: stats.count,
-  }));
 }
 
 /** Denormalised counters can drift negative after reparent/delete flows. */
@@ -237,7 +221,9 @@ async function buildEarningsSummaryPayload(userId, membership) {
       { $group: { _id: null, total: { $sum: "$cappedAmount" } } },
     ]),
     MlmCommissionEvent.find(creditedEarningsEventMatch(userId))
-      .select("bonusType cappedAmount idempotencyKey")
+      .select(
+        "bonusType cappedAmount idempotencyKey meta status sourceUserId creditedAt createdAt updatedAt",
+      )
       .lean(),
     MlmCommissionEvent.aggregate([
       { $match: creditedShoppingEventMatch(userId) },
@@ -2047,6 +2033,56 @@ async function loadCustomerRowsForMembers(members) {
   return new Map(userRows.map((u) => [String(u._id), u]));
 }
 
+async function loadCustomerRowsForUserIds(userIds) {
+  const ids = [...new Set((userIds || []).filter(Boolean).map(String))];
+  if (!ids.length) return new Map();
+  const userRows = await mongoose
+    .model("User")
+    .find(
+      { _id: { $in: ids } },
+      { name: 1, phone: 1, userId: 1, createdAt: 1 },
+    )
+    .lean();
+  return new Map(userRows.map((u) => [String(u._id), u]));
+}
+
+async function fetchBinaryDescendantGraph(rootUserId) {
+  const aggResult = await MlmMembership.aggregate([
+    { $match: { userId: rootUserId } },
+    {
+      $graphLookup: {
+        from: MlmMembership.collection.name,
+        startWith: "$userId",
+        connectFromField: "userId",
+        connectToField: "binaryParentId",
+        as: "descendants",
+        maxDepth: 64,
+      },
+    },
+  ]);
+  const descendants = aggResult[0]?.descendants || [];
+  const parentLinkByUser = new Map();
+  for (const d of descendants) {
+    parentLinkByUser.set(String(d.userId), {
+      parent: d.binaryParentId ? String(d.binaryParentId) : null,
+      position: d.binaryPosition || null,
+    });
+  }
+  return { descendants, parentLinkByUser };
+}
+
+function resolveLegUnderRootFromLinks(memberUserId, rootUserId, parentLinkByUser) {
+  let cursor = String(memberUserId);
+  const rootKey = String(rootUserId);
+  for (let i = 0; i < 64; i += 1) {
+    const link = parentLinkByUser.get(cursor);
+    if (!link || !link.parent) return null;
+    if (link.parent === rootKey) return link.position;
+    cursor = link.parent;
+  }
+  return null;
+}
+
 function filterMembersBySearch(members, userById, searchTerm) {
   if (!searchTerm) return members;
   return members.filter((m) => {
@@ -2353,99 +2389,112 @@ export const getMyLevelTeam = async (req, res) => {
 /**
  * GET /api/customer/mlm/network/total-team
  *
- * Direct referrals only, split into left and right legs under the
- * caller's binary root (same leg classification as genealogy binary).
+ * Full binary downline (left + right) as a single paginated statement
+ * list with sponsor and placement columns.
  */
 export const getMyTotalTeam = async (req, res) => {
   try {
     const userId = req.user.id;
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 50, 1),
+      200,
+    );
+    const legFilter = String(req.query.leg || "ALL").toUpperCase();
+    const searchTerm = parseTeamSearchQuery(req.query.search);
+
     const membership = await getMembershipByUserId(userId);
     if (!membership) {
       return handleResponse(res, 200, "Total team", {
         isMember: false,
-        leftLeg: [],
-        rightLeg: [],
+        items: [],
+        page,
+        limit,
+        total: 0,
+        totalPages: 0,
       });
     }
 
     const rootUserId = membership.userId?._id || membership.userId;
+    const { descendants, parentLinkByUser } =
+      await fetchBinaryDescendantGraph(rootUserId);
 
-    let directReferrals = await MlmMembership.find({
-      sponsorId: rootUserId,
-    }).lean();
-
-    // Defensive fallback for legacy/drifted rows where sponsor edges
-    // are missing but members are still directly placed under root in
-    // the binary tree.
-    if (
-      directReferrals.length === 0 &&
-      ((membership.leftLegDirectCount || 0) > 0 ||
-        (membership.rightLegDirectCount || 0) > 0)
-    ) {
-      directReferrals = await MlmMembership.find({
-        binaryParentId: rootUserId,
-      })
-        .sort({ createdAt: 1 })
-        .lean();
+    let teamMembers = [];
+    for (const m of descendants) {
+      const leg =
+        resolveLegUnderRootFromLinks(m.userId, rootUserId, parentLinkByUser) ||
+        m.binaryPosition ||
+        null;
+      if (leg !== "L" && leg !== "R") continue;
+      if (legFilter === "L" && leg !== "L") continue;
+      if (legFilter === "R" && leg !== "R") continue;
+      teamMembers.push({ ...m, legUnderRoot: leg });
     }
 
-    const legByUserId = await classifyDirectReferralsByLegUnderRoot({
-      rootMembership: membership,
-      directReferrals,
-    });
+    teamMembers.sort(
+      (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0),
+    );
 
-    const userById = await loadCustomerRowsForMembers(directReferrals);
+    let filteredMembers = teamMembers;
+    if (searchTerm) {
+      const userById = await loadCustomerRowsForMembers(filteredMembers);
+      filteredMembers = filterMembersBySearch(
+        filteredMembers,
+        userById,
+        searchTerm,
+      );
+    }
 
-    const shape = (m, leg) => {
+    const total = filteredMembers.length;
+    const paginated = filteredMembers.slice((page - 1) * limit, page * limit);
+
+    const relatedUserIds = new Set();
+    for (const m of paginated) {
+      relatedUserIds.add(String(m.userId));
+      if (m.sponsorId) relatedUserIds.add(String(m.sponsorId));
+      if (m.binaryParentId) relatedUserIds.add(String(m.binaryParentId));
+    }
+    const userById = await loadCustomerRowsForUserIds([...relatedUserIds]);
+
+    const items = paginated.map((m) => {
       const u = userById.get(String(m.userId));
+      const sponsor = m.sponsorId ? userById.get(String(m.sponsorId)) : null;
+      const placement = m.binaryParentId
+        ? userById.get(String(m.binaryParentId))
+        : null;
+      const joinedAt = resolveMemberRegistrationAt({
+        ...m,
+        userId: u || m.userId,
+      });
       return {
         userId: m.userId,
-        name: u?.name || null,
-        phone: maskPhoneForDownline(u?.phone || null),
-        referralCode: m.referralCode,
         publicUserId: u?.userId || m.referralCode || null,
+        name: u?.name || null,
+        sponsorPublicUserId: sponsor?.userId || null,
+        sponsorName: sponsor?.name || null,
+        placementPublicUserId: placement?.userId || null,
+        position: m.legUnderRoot === "L" ? "Left" : "Right",
+        joinedAt,
         status: m.status,
         planType: m.planType,
-        position: leg,
-        joinedAt: resolveMemberRegistrationAt({ ...m, userId: u || m.userId }),
-        directReferralsCount: m.directReferralsCount || 0,
-        totalDownlineCount: m.totalDownlineCount || 0,
-        activeDownlineCount: m.activeDownlineCount || 0,
-        pairsCompleted: m.pairsCompleted || 0,
-        leftLegDirectCount: m.leftLegDirectCount || 0,
-        rightLegDirectCount: m.rightLegDirectCount || 0,
-        lifetimeEarnings:
-          (m.lifetimePlanAEarnings || 0) + (m.lifetimePlanBEarnings || 0),
+        referralCode: m.referralCode,
       };
-    };
+    });
 
-    const leftLeg = [];
-    const rightLeg = [];
-    for (const m of directReferrals) {
-      // Fallback to member.binaryPosition when ancestry walk cannot
-      // resolve leg due to legacy/partial tree-link drift.
-      const leg = legByUserId.get(String(m.userId)) || m.binaryPosition || null;
-      if (leg === "L") leftLeg.push(shape(m, leg));
-      else if (leg === "R") rightLeg.push(shape(m, leg));
-    }
-
-    const sortByJoined = (a, b) =>
-      new Date(a.joinedAt || 0) - new Date(b.joinedAt || 0);
-    leftLeg.sort(sortByJoined);
-    rightLeg.sort(sortByJoined);
-
-    const countActive = (rows) =>
-      rows.filter((r) => r.status === MLM_MEMBERSHIP_STATUS.ACTIVE).length;
+    const downlineStats = await computeBinaryDownlineStats(rootUserId);
 
     return handleResponse(res, 200, "Total team", {
       isMember: true,
-      leftLegCount: membership.leftLegDirectCount || leftLeg.length,
-      rightLegCount: membership.rightLegDirectCount || rightLeg.length,
-      leftLegActiveCount: countActive(leftLeg),
-      rightLegActiveCount: countActive(rightLeg),
-      pairsCompleted: membership.pairsCompleted || 0,
-      leftLeg,
-      rightLeg,
+      leftLegCount: downlineStats.leftLegTotalDownlineCount,
+      rightLegCount: downlineStats.rightLegTotalDownlineCount,
+      leftLegActiveCount: downlineStats.leftLegActiveDownlineCount,
+      rightLegActiveCount: downlineStats.rightLegActiveDownlineCount,
+      pairsCompleted: clampMlmCount(membership.pairsCompleted),
+      items,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
     });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);

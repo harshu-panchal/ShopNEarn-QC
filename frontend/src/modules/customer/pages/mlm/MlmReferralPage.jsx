@@ -344,16 +344,16 @@ const LegBalanceCard = ({ membership, config }) => {
             <div className="grid grid-cols-3 gap-3 mb-3">
                 <LegBox
                   label="Left Team"
-                  count={binary.leftLegTeamActiveCount ?? 0}
-                  activeCount={binary.leftLegActiveDownlineCount}
+                  count={binary.leftLegTotalDownlineCount ?? 0}
+                  activeCount={binary.leftLegActiveDownlineCount ?? 0}
                   icon={<ArrowLeft size={18} />}
                   weaker={isTeamLegWeaker(binary, "left")}
                 />
                 <LegBox label="Pairs Paid" count={binary.pairsCompleted} accent />
                 <LegBox
                   label="Right Team"
-                  count={binary.rightLegTeamActiveCount ?? 0}
-                  activeCount={binary.rightLegActiveDownlineCount}
+                  count={binary.rightLegTotalDownlineCount ?? 0}
+                  activeCount={binary.rightLegActiveDownlineCount ?? 0}
                   icon={<ArrowRight size={18} />}
                   weaker={isTeamLegWeaker(binary, "right")}
                 />

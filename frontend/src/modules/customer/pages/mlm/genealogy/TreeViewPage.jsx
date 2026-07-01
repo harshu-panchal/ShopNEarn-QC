@@ -151,33 +151,36 @@ const TreeViewPage = () => {
   // the freshly placed node. Throwing back to the canvas keeps the
   // modal open with the user's input so they can correct an
   // invalid field without retyping everything.
-  const handleAddMember = useCallback(async ({ parentMembershipId, leg, form }) => {
-    try {
-      const res = await mlmApi.addMemberAtSlot({
-        parentMembershipId,
-        leg,
-        name: form.name,
-        email: form.email,
-        phone: form.phone,
-        password: form.password,
-      });
-      const newMember =
-        res.data?.result?.newMember ?? res.data?.data?.newMember ?? null;
-      const credentialEcho = newMember?.publicUserId
-        ? ` (User ID ${newMember.publicUserId})`
-        : "";
-      toast.success(
-        `Member added to your network${credentialEcho}. Login details have been emailed.`,
-      );
-      setReloadKey((k) => k + 1);
-    } catch (err) {
-      const msg = err?.response?.data?.message || "Failed to add member.";
-      toast.error(msg);
-      // Re-throw so the modal surfaces the error inline and keeps
-      // the form values intact.
-      throw new Error(msg);
-    }
-  }, []);
+  const handleAddMember = useCallback(
+    async ({ parentMembershipId, leg, form }) => {
+      try {
+        const res = await mlmApi.addMemberAtSlot({
+          parentMembershipId,
+          leg,
+          name: form.name,
+          email: form.email,
+          phone: form.phone,
+          password: form.password,
+        });
+        const newMember =
+          res.data?.result?.newMember ?? res.data?.data?.newMember ?? null;
+        const credentialEcho = newMember?.publicUserId
+          ? ` (User ID ${newMember.publicUserId})`
+          : "";
+        toast.success(
+          `Member added to your network${credentialEcho}. Login details have been emailed.`,
+        );
+        setReloadKey((k) => k + 1);
+      } catch (err) {
+        const msg = err?.response?.data?.message || "Failed to add member.";
+        toast.error(msg);
+        // Re-throw so the modal surfaces the error inline and keeps
+        // the form values intact.
+        throw new Error(msg);
+      }
+    },
+    [],
+  );
 
   // Inject `__isViewerSelf` so the NodeCard can append "(You)" to
   // the customer's own root when they're viewing their own tree.
@@ -207,8 +210,7 @@ const TreeViewPage = () => {
           type="button"
           onClick={handleBackOneLevel}
           className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-100 text-[11px] font-bold text-slate-600"
-          title="Back one level"
-        >
+          title="Back one level">
           <ArrowLeft size={12} />
           Back
         </button>
@@ -227,8 +229,7 @@ const TreeViewPage = () => {
           type="button"
           onClick={handleResetToOwnTree}
           className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-100 text-[11px] font-bold text-slate-600"
-          title="Return to your own tree"
-        >
+          title="Return to your own tree">
           My tree
         </button>
       </div>

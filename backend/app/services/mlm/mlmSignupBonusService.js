@@ -28,6 +28,8 @@ import { roundCurrency } from "../../utils/money.js";
 import {
   directReferralActivationFirstPairIdempotencyKey,
   hasCreditedBinaryPairMatchIndex,
+  isBinaryPairMatchIndexCommissionEvent,
+  isDirectReferralFirstPairCommissionEvent,
 } from "./mlmFirstPairIncomeGuard.js";
 
 export { directReferralActivationFirstPairIdempotencyKey } from "./mlmFirstPairIncomeGuard.js";
@@ -52,6 +54,38 @@ export function parseLegacyPerActivationDraKey(idempotencyKey) {
   };
 }
 
+/** Resolve which direct referral a per-activation credit belongs to. */
+export function resolvePerActivationActivatedUserId(event) {
+  if (!event) return null;
+
+  const source = event.sourceUserId?._id || event.sourceUserId;
+  if (source) return String(source);
+
+  const legacy = parseLegacyPerActivationDraKey(event.idempotencyKey);
+  if (legacy?.activatedUserId) return String(legacy.activatedUserId);
+
+  const key = String(event.idempotencyKey || "");
+  const drpaMatch = key.match(/DRPA-[0-9a-f]{24}-([0-9a-f]{24})$/i);
+  if (drpaMatch) return drpaMatch[1];
+
+  const backfillMatch = key.match(/MLM-DRA-BACKFILL-\d{4}-DRPA-[0-9a-f]{24}-([0-9a-f]{24})$/i);
+  if (backfillMatch) return backfillMatch[1];
+
+  if (event.meta?.activatedUserId) return String(event.meta.activatedUserId);
+  return null;
+}
+
+export function isPerActivationIncomeCommissionEvent(event) {
+  if (!event?.bonusType) return false;
+  if (event.bonusType === MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION) {
+    return true;
+  }
+  return isLegacyPerActivationDirectReferralCredit({
+    bonusType: event.bonusType,
+    idempotencyKey: event.idempotencyKey,
+  });
+}
+
 export function isLegacyPerActivationDirectReferralCredit({
   bonusType,
   idempotencyKey,
@@ -68,6 +102,129 @@ export function normalizeEarningsBonusType(bonusType, idempotencyKey) {
     return MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION;
   }
   return bonusType;
+}
+
+/**
+ * Customer-facing earnings breakdown — binary pair match #1 and one-time
+ * first direct-pair income are the same payout and share one row.
+ */
+export function resolveEarningsDisplayBonusType(event) {
+  if (!event?.bonusType) return event?.bonusType;
+
+  const row = {
+    ...event,
+    status: event.status || MLM_COMMISSION_EVENT_STATUS.CREDITED,
+  };
+
+  if (
+    isLegacyPerActivationDirectReferralCredit({
+      bonusType: row.bonusType,
+      idempotencyKey: row.idempotencyKey,
+    })
+  ) {
+    return MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION;
+  }
+
+  if (
+    isDirectReferralFirstPairCommissionEvent(row)
+    || isBinaryPairMatchIndexCommissionEvent(row, 1)
+  ) {
+    return MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION;
+  }
+
+  return row.bonusType;
+}
+
+function commissionEventTimestamp(event) {
+  const d = event?.creditedAt || event?.createdAt || event?.updatedAt;
+  return d ? new Date(d).getTime() : 0;
+}
+
+function comparePerActivationEvents(a, b) {
+  const aRegen = String(a.idempotencyKey || "").includes("REGEN");
+  const bRegen = String(b.idempotencyKey || "").includes("REGEN");
+  if (aRegen !== bRegen) return aRegen ? 1 : -1;
+
+  const tsDiff = commissionEventTimestamp(a) - commissionEventTimestamp(b);
+  if (tsDiff !== 0) return tsDiff;
+
+  return String(a.idempotencyKey || "").localeCompare(
+    String(b.idempotencyKey || ""),
+  );
+}
+
+/** True when a credited row is the one-time first-pair payout (DRA or BPM #1). */
+export function isFirstPairIncomeCommissionEvent(event) {
+  if (!event) return false;
+  const row = {
+    ...event,
+    status: event.status || MLM_COMMISSION_EVENT_STATUS.CREDITED,
+  };
+  return (
+    isDirectReferralFirstPairCommissionEvent(row)
+    || isBinaryPairMatchIndexCommissionEvent(row, 1)
+  );
+}
+
+/**
+ * Group credited earnings for customer breakdown.
+ * First-pair income is one payout — if legacy data has both DRA and BPM #1,
+ * only the earliest credited row is counted.
+ */
+export function groupEarningsEventsByDisplayType(events) {
+  const byType = new Map();
+  const firstPairCandidates = [];
+  const perActivationByDirect = new Map();
+
+  for (const row of events) {
+    if (isFirstPairIncomeCommissionEvent(row)) {
+      firstPairCandidates.push(row);
+      continue;
+    }
+
+    if (isPerActivationIncomeCommissionEvent(row)) {
+      const activatedId = resolvePerActivationActivatedUserId(row);
+      const bucketKey = activatedId || `__unkeyed__:${row.idempotencyKey}`;
+      if (!perActivationByDirect.has(bucketKey)) {
+        perActivationByDirect.set(bucketKey, []);
+      }
+      perActivationByDirect.get(bucketKey).push(row);
+      continue;
+    }
+
+    const key = resolveEarningsDisplayBonusType(row);
+    const prev = byType.get(key) || { total: 0, count: 0 };
+    byType.set(key, {
+      total: prev.total + (Number(row.cappedAmount) || 0),
+      count: prev.count + 1,
+    });
+  }
+
+  if (firstPairCandidates.length > 0) {
+    const canonical = [...firstPairCandidates].sort(
+      (a, b) => commissionEventTimestamp(a) - commissionEventTimestamp(b),
+    )[0];
+    byType.set(MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION, {
+      total: Number(canonical.cappedAmount) || 0,
+      count: 1,
+    });
+  }
+
+  for (const rows of perActivationByDirect.values()) {
+    const canonical = [...rows].sort(comparePerActivationEvents)[0];
+    const key = MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION;
+    const prev = byType.get(key) || { total: 0, count: 0 };
+    byType.set(key, {
+      total: prev.total + (Number(canonical.cappedAmount) || 0),
+      count: prev.count + 1,
+    });
+  }
+
+  return [...byType.entries()].map(([bonusType, stats]) => ({
+    bonusType,
+    total: stats.total,
+    count: stats.count,
+  }));
 }
 
 /** Count active Plan A directs on each binary leg under the sponsor. */
@@ -483,7 +640,7 @@ export async function applyDirectReferralPerActivationBonusInSession({
   );
 
   const existing = await MlmCommissionEvent.findOne(
-    { idempotencyKey },
+    { idempotencyKey, status: MLM_COMMISSION_EVENT_STATUS.CREDITED },
     null,
     { session },
   );

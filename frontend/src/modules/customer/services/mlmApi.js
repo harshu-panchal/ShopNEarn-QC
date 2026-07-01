@@ -143,8 +143,8 @@ export const mlmApi = {
     getWithDedupe("/customer/mlm/network/leg-team", params, { ttl: 2000 }),
   getLevelTeam: (params) =>
     getWithDedupe("/customer/mlm/network/level-team", params, { ttl: 2000 }),
-  getTotalTeam: () =>
-    getWithDedupe("/customer/mlm/network/total-team", {}, { ttl: 5000 }),
+  getTotalTeam: (params) =>
+    getWithDedupe("/customer/mlm/network/total-team", params, { ttl: 5000 }),
   getNetworkMemberDetail: (memberId) =>
     getWithDedupe(`/customer/mlm/network/members/${memberId}`, {}, { ttl: 5000 }),
 };

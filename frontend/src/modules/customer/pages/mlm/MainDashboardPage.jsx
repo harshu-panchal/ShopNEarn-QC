@@ -536,20 +536,20 @@ const MemberDashboard = ({ overview, navigate, user, login }) => {
               <div className="grid grid-cols-3 gap-3 mb-3">
                 <LegBox
                   label="Left Team"
-                  count={binary.leftLegTeamActiveCount ?? 0}
-                  activeCount={binary.leftLegActiveDownlineCount}
+                  count={binary.leftLegTotalDownlineCount ?? 0}
+                  activeCount={binary.leftLegActiveDownlineCount ?? 0}
                   icon={<ArrowLeft size={18} />}
                   weaker={isTeamLegWeaker(binary, "left")}
-                  subtitle="active Plan A"
+                  subtitle="team active"
                 />
                 <LegBox label="Pairs Paid" count={binary.pairsCompleted} accent />
                 <LegBox
                   label="Right Team"
-                  count={binary.rightLegTeamActiveCount ?? 0}
-                  activeCount={binary.rightLegActiveDownlineCount}
+                  count={binary.rightLegTotalDownlineCount ?? 0}
+                  activeCount={binary.rightLegActiveDownlineCount ?? 0}
                   icon={<ArrowRight size={18} />}
                   weaker={isTeamLegWeaker(binary, "right")}
-                  subtitle="active Plan A"
+                  subtitle="team active"
                 />
               </div>
               <p className="text-[11px] text-slate-500 leading-relaxed">

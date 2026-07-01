@@ -26,11 +26,12 @@ import {
 import { classifyDirectReferralsByLegUnderRoot } from "../app/services/mlm/mlmBinaryTreeBuilder.js";
 import {
   applyDirectReferralFirstPairBonusStandalone,
-  applyDirectReferralPerActivationBonusStandalone,
   countDirectReferralLegPairsFromLegMap,
   directReferralActivationFirstPairIdempotencyKey,
   directReferralPerActivationIdempotencyKey,
 } from "../app/services/mlm/mlmSignupBonusService.js";
+import { creditBonusToEarningsWallet } from "../app/services/mlm/mlmBonusEngineService.js";
+import { syncCustomerMlmProjection } from "../app/services/mlm/mlmMembershipService.js";
 import { hasCreditedFirstPairMatchingIncome } from "../app/services/mlm/mlmFirstPairIncomeGuard.js";
 import { getDirectReferralActivationConfig } from "../app/services/mlm/mlmConfigService.js";
 
@@ -44,9 +45,14 @@ function tag(...args) {
   console.log("[backfill-mlm-direct-referral-activation]", ...args);
 }
 
+function backfillPerActivationKey(sponsorUserId, activatedUserId) {
+  return `${MIGRATION_ID}-DRPA-${String(sponsorUserId)}-${String(activatedUserId)}`;
+}
+
 async function perActivationAlreadyCredited(sponsorUserId, activatedUserId) {
   const keys = [
     directReferralPerActivationIdempotencyKey(sponsorUserId, activatedUserId),
+    backfillPerActivationKey(sponsorUserId, activatedUserId),
     `${MLM_IDEMPOTENCY_PREFIX.DIRECT_REFERRAL_ACTIVATION}-${String(sponsorUserId)}-${String(activatedUserId)}`,
   ];
   const existing = await MlmCommissionEvent.findOne({
@@ -135,20 +141,54 @@ async function main() {
     }
 
     try {
-      const res = await applyDirectReferralPerActivationBonusStandalone({
-        activatedUserId: referral.userId,
-        activatedMembership: referral,
-        correlationId: `${MIGRATION_ID}-PER-${String(referral._id)}`,
-      });
-      if (res?.skipped === "ALREADY_CREDITED") {
-        totals.perActivationSkipped += 1;
-      } else if (res?.skipped) {
-        if (VERBOSE) tag(`SKIP per ${referral.referralCode}: ${res.skipped}`);
-      } else if (res?.amount) {
+      const session = await mongoose.startSession();
+      let creditedAmount = 0;
+      try {
+        await session.withTransaction(async () => {
+          const idempotencyKey = backfillPerActivationKey(
+            sponsor.userId,
+            referral.userId,
+          );
+          const event = await creditBonusToEarningsWallet({
+            recipientUserId: sponsor.userId,
+            bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION,
+            planType: MLM_PLAN_TYPE.A,
+            bonusAmount: cfg.perActivation.amount,
+            sourceUserId: referral.userId,
+            bucket: "earnings",
+            description: "Direct referral Plan A activation income (backfill)",
+            meta: {
+              incomeType: "PER_ACTIVATION",
+              activatedUserId: String(referral.userId),
+              sponsorUserId: String(sponsor.userId),
+              backfillMigrationId: MIGRATION_ID,
+            },
+            idempotencyKey,
+            correlationId: `${MIGRATION_ID}-PER-${String(referral._id)}`,
+            skipDailyCap: true,
+            session,
+          });
+          creditedAmount = Number(event?.cappedAmount) || 0;
+          if (creditedAmount > 0) {
+            await syncCustomerMlmProjection(sponsor.userId, { session });
+          }
+        });
+      } finally {
+        await session.endSession();
+      }
+
+      if (creditedAmount > 0) {
         totals.perActivationCredited += 1;
-        totals.totalAmount += res.amount;
+        totals.totalAmount += creditedAmount;
         if (VERBOSE) {
-          tag(`OK per-activation ${sponsor.referralCode} +₹${res.amount} (${referral.referralCode})`);
+          tag(
+            `OK per-activation ${sponsor.referralCode} +₹${creditedAmount} (${referral.referralCode})`,
+          );
+        }
+      } else {
+        totals.perActivationSkipped += 1;
+        if (VERBOSE) {
+          tag(`SKIP per ${referral.referralCode}: no credit applied`);
         }
       }
     } catch (err) {

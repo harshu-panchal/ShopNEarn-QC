@@ -6,6 +6,10 @@ import {
   isDirectReferralFirstPairCommissionEvent,
 } from "../app/services/mlm/mlmFirstPairIncomeGuard.js";
 import {
+  groupEarningsEventsByDisplayType,
+  resolveEarningsDisplayBonusType,
+} from "../app/services/mlm/mlmSignupBonusService.js";
+import {
   MLM_BONUS_TYPE,
   MLM_COMMISSION_EVENT_STATUS,
 } from "../app/constants/mlm.js";
@@ -85,5 +89,92 @@ describe("mlmFirstPairIncomeGuard", () => {
         1,
       ),
     ).toBe(false);
+  });
+});
+
+describe("resolveEarningsDisplayBonusType", () => {
+  const sponsorId = "6a2280b34931c0271e9eb53d";
+
+  test("binary pair match #1 maps to first direct pair income row", () => {
+    expect(
+      resolveEarningsDisplayBonusType({
+        recipientId: sponsorId,
+        bonusType: MLM_BONUS_TYPE.BINARY_PAIR_MATCH,
+        idempotencyKey: binaryPairMatchIdempotencyKey(sponsorId, 1),
+        meta: { pairIndex: 1 },
+      }),
+    ).toBe(MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION);
+  });
+
+  test("binary pair match #2 stays on pair match bonus row", () => {
+    expect(
+      resolveEarningsDisplayBonusType({
+        recipientId: sponsorId,
+        bonusType: MLM_BONUS_TYPE.BINARY_PAIR_MATCH,
+        idempotencyKey: binaryPairMatchIdempotencyKey(sponsorId, 2),
+        meta: { pairIndex: 2 },
+      }),
+    ).toBe(MLM_BONUS_TYPE.BINARY_PAIR_MATCH);
+  });
+
+  test("groupEarningsEventsByDisplayType dedupes duplicate first-pair rows", () => {
+    const rows = groupEarningsEventsByDisplayType([
+      {
+        recipientId: sponsorId,
+        bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION,
+        status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+        idempotencyKey: directReferralActivationFirstPairIdempotencyKey(sponsorId),
+        cappedAmount: 250,
+        createdAt: new Date("2026-01-02T00:00:00Z"),
+      },
+      {
+        recipientId: sponsorId,
+        bonusType: MLM_BONUS_TYPE.BINARY_PAIR_MATCH,
+        status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+        idempotencyKey: binaryPairMatchIdempotencyKey(sponsorId, 1),
+        cappedAmount: 300,
+        createdAt: new Date("2026-01-03T00:00:00Z"),
+      },
+    ]);
+
+    expect(rows).toEqual([
+      {
+        bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION,
+        total: 250,
+        count: 1,
+      },
+    ]);
+  });
+
+  test("groupEarningsEventsByDisplayType dedupes duplicate per-activation rows", () => {
+    const activatedId = "6a2280b34931c0271e9eb53d";
+    const rows = groupEarningsEventsByDisplayType([
+      {
+        recipientId: sponsorId,
+        bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION,
+        status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+        sourceUserId: activatedId,
+        idempotencyKey: `MLM-EARN-REGEN-V3-2026-DRPA-${sponsorId}-${activatedId}`,
+        cappedAmount: 200,
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+      },
+      {
+        recipientId: sponsorId,
+        bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION,
+        status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+        sourceUserId: activatedId,
+        idempotencyKey: `MLM-DRPA-${sponsorId}-${activatedId}`,
+        cappedAmount: 200,
+        createdAt: new Date("2026-01-03T00:00:00Z"),
+      },
+    ]);
+
+    expect(rows).toEqual([
+      {
+        bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION,
+        total: 200,
+        count: 1,
+      },
+    ]);
   });
 });

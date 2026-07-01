@@ -165,6 +165,7 @@ export async function creditBonusToEarningsWallet({
   idempotencyKey,
   correlationId = null,
   session,
+  skipDailyCap = false,
 }) {
   if (!recipientUserId) throw new Error("recipientUserId is required");
   if (!idempotencyKey) throw new Error("idempotencyKey is required");
@@ -213,11 +214,13 @@ export async function creditBonusToEarningsWallet({
   }
 
   // Apply daily cap (Phase 1 is a no-op when no cap configured).
-  const { creditable, rollover } = await applyDailyCap({
-    membership,
-    requestedAmount: requested,
-    session,
-  });
+  const { creditable, rollover } = skipDailyCap
+    ? { creditable: requested, rollover: 0 }
+    : await applyDailyCap({
+        membership,
+        requestedAmount: requested,
+        session,
+      });
 
   if (creditable <= 0) {
     // Whole amount was rolled over; record an audit row only.
