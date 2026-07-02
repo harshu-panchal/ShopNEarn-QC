@@ -7,8 +7,6 @@ import React, {
 } from "react";
 import {
   Loader2,
-  Plus,
-  Minus,
   Move,
   Sparkles,
   Users,
@@ -44,11 +42,11 @@ import { formatMemberJoinedAt } from "../../utils/mlmMemberDisplay";
  *
  * Responsibilities:
  *   - Tidy-tree layout math (nodes locked in deterministic positions)
- *   - Pan + zoom of the whole canvas
+ *   - Native vertical/horizontal scroll of the whole canvas (no zoom)
  *   - Hover tooltip with the full member detail card for filled nodes
  *   - Tap-to-recenter callback (parent decides what to fetch)
  *   - Tap-to-add callback for empty slots whose parent is filled
- *   - Depth selector + zoom controls
+ *   - Depth selector + re-center control
  *   - Empty / loading / "not a member" states
  *
  * EMPTY-SLOT MODEL (Genealogy redesign):
@@ -77,13 +75,14 @@ import { formatMemberJoinedAt } from "../../utils/mlmMemberDisplay";
  *   - Per-node drag is intentionally disabled — every node sits at
  *     the position computed by the tidy-tree algorithm so the chart
  *     remains visually consistent for every viewer (no per-user
- *     drift). To move the chart, drag the background to pan or use
- *     the zoom controls.
+ *     drift). To move the chart, use the native scrollbars, a
+ *     trackpad/wheel, or drag the background (drag-to-scroll). Zoom
+ *     is intentionally disabled — the render is a fixed 1:1 scale.
  *   - Tap detection on a node piggybacks on the browser's synthetic
- *     `click` event so the canvas's `pointerdown -> pan` flow on the
- *     background is unaffected: a true tap (no movement) fires
+ *     `click` event so the canvas's `pointerdown -> drag-scroll` flow
+ *     on the background is unaffected: a true tap (no movement) fires
  *     `onNodeTap` (filled) or opens the add modal (empty addable),
- *     a press-and-drag pans the canvas as usual.
+ *     a press-and-drag scrolls the canvas.
  */
 
 // Node "slot" dimensions. The visual node is a coloured pill holding
@@ -104,8 +103,17 @@ import { formatMemberJoinedAt } from "../../utils/mlmMemberDisplay";
 // visuals, which keeps both consumers visually consistent at the
 // per-node level while letting the admin view fit more of the tree
 // in the same viewport.
-// Node pill geometry — readable tree labels (112px IDs/names).
-const NODE_TEXT_SCALE = 4;
+// Node pill geometry. Every dimension below (fonts, box, gaps,
+// padding, icons) derives from this single scale factor, so the
+// whole tree shrinks/grows proportionally by changing it alone.
+//
+// The canvas renders at a fixed 1:1 (zoom was removed — users
+// scroll vertically/horizontally instead), so this is the ACTUAL
+// on-screen size. It was previously 4 (oversized on purpose so the
+// old fit-to-zoom could scale it down for crispness); at 1:1 that
+// made a single node fill the viewport, so it's dialled back to a
+// directly-readable size.
+const NODE_TEXT_SCALE = 0.32;
 const NODE_ID_FONT_PX = 28 * NODE_TEXT_SCALE;
 const NODE_NAME_FONT_PX = 28 * NODE_TEXT_SCALE;
 const NODE_SLOT_LABEL_FONT_PX = 22 * NODE_TEXT_SCALE;
@@ -120,8 +128,8 @@ const HORIZONTAL_GAP = 0;
 const VERTICAL_GAP = 88 * NODE_TEXT_SCALE;
 const COMPACT_HORIZONTAL_GAP = 0;
 const COMPACT_VERTICAL_GAP = 52 * NODE_TEXT_SCALE;
-const EDGE_STROKE_WIDTH = Math.max(4, Math.round(NODE_TEXT_SCALE * 1.1));
-const EDGE_STROKE_WIDTH_EMPTY = Math.max(3, Math.round(NODE_TEXT_SCALE * 0.85));
+const EDGE_STROKE_WIDTH = Math.max(1.5, NODE_TEXT_SCALE * 3);
+const EDGE_STROKE_WIDTH_EMPTY = Math.max(1, NODE_TEXT_SCALE * 2);
 
 /**
  * Resolve the canonical colour theme for a FILLED member node based
@@ -337,8 +345,6 @@ const GenealogyTreeCanvas = ({
   const containerRef = useRef(null);
   const stageRef = useRef(null);
 
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
 
   // Member-details modal state. `selectedFilledNode` is the node
   // the user most recently CLICKED on (filled members only —
@@ -490,7 +496,13 @@ const GenealogyTreeCanvas = ({
 
   const positionedNodes = nodes;
 
-  // ----- Pan (drag on background) -----
+  // ----- Drag-to-scroll (grab the background and drag) -----
+  //
+  // Zoom is intentionally disabled: the canvas is a fixed 1:1 render
+  // and the container scrolls natively (vertical + horizontal). A
+  // press-and-drag on the background nudges the native scroll offset
+  // so users on a trackpad/mouse without visible scrollbars can still
+  // move around, exactly like dragging a map.
   const PAN_THRESHOLD_PX = 5;
   const panState = useRef({
     pending: false,
@@ -498,24 +510,22 @@ const GenealogyTreeCanvas = ({
     pointerId: null,
     startX: 0,
     startY: 0,
-    panX: 0,
-    panY: 0,
+    scrollLeft: 0,
+    scrollTop: 0,
   });
-  const onPanStart = useCallback(
-    (e) => {
-      if (e.button !== undefined && e.button !== 0) return;
-      panState.current = {
-        pending: true,
-        active: false,
-        pointerId: e.pointerId,
-        startX: e.clientX,
-        startY: e.clientY,
-        panX: pan.x,
-        panY: pan.y,
-      };
-    },
-    [pan],
-  );
+  const onPanStart = useCallback((e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const c = containerRef.current;
+    panState.current = {
+      pending: true,
+      active: false,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      scrollLeft: c?.scrollLeft || 0,
+      scrollTop: c?.scrollTop || 0,
+    };
+  }, []);
   const onPanMove = useCallback((e) => {
     const s = panState.current;
     if (!s.pending && !s.active) return;
@@ -527,7 +537,11 @@ const GenealogyTreeCanvas = ({
       s.pending = false;
       e.currentTarget.setPointerCapture?.(s.pointerId);
     }
-    setPan({ x: s.panX + dx, y: s.panY + dy });
+    const c = containerRef.current;
+    if (c) {
+      c.scrollLeft = s.scrollLeft - dx;
+      c.scrollTop = s.scrollTop - dy;
+    }
   }, []);
   const onPanEnd = useCallback((e) => {
     const s = panState.current;
@@ -540,81 +554,23 @@ const GenealogyTreeCanvas = ({
       pointerId: null,
       startX: 0,
       startY: 0,
-      panX: 0,
-      panY: 0,
+      scrollLeft: 0,
+      scrollTop: 0,
     };
   }, []);
 
-  // ----- Zoom (wheel + buttons) -----
-  const adjustZoomCentered = useCallback((delta) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const cx = rect.width / 2;
-    const cy = rect.height / 2;
-
-    setZoom((z) => {
-      const newZoom = Math.max(0.1, Math.min(2.5, z + delta));
-      if (newZoom === z) return z;
-      
-      setPan((p) => {
-        const treeCx = (cx - p.x) / z;
-        const treeCy = (cy - p.y) / z;
-        return {
-          x: cx - treeCx * newZoom,
-          y: cy - treeCy * newZoom,
-        };
-      });
-      return newZoom;
-    });
-  }, []);
-
-  const onWheel = useCallback((e) => {
-    if (!e.ctrlKey && !e.metaKey) return;
-    e.preventDefault();
-    if (!containerRef.current) return;
-    
-    const rect = containerRef.current.getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-
-    setZoom((z) => {
-      const newZoom = Math.max(0.1, Math.min(2.5, z + (e.deltaY < 0 ? 0.08 : -0.08)));
-      if (newZoom === z) return z;
-      
-      setPan((p) => {
-        const treeCx = (cx - p.x) / z;
-        const treeCy = (cy - p.y) / z;
-        return {
-          x: cx - treeCx * newZoom,
-          y: cy - treeCy * newZoom,
-        };
-      });
-      return newZoom;
-    });
-  }, []);
-
-  const fitToCenter = useCallback(() => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    
-    let newZoom = zoom;
-    if (treeWidth > 0 && treeHeight > 0) {
-      const scaleX = (rect.width - 40) / treeWidth;
-      const scaleY = (rect.height - 40) / treeHeight;
-      newZoom = Math.min(1, Math.min(scaleX, scaleY));
-      newZoom = Math.max(0.1, newZoom);
-      setZoom(newZoom);
-    }
-
-    setPan({
-      x: (rect.width - treeWidth * newZoom) / 2,
-      y: 32,
-    });
-  }, [treeWidth, treeHeight, zoom]);
+  // Center the tree horizontally (root at the top) by setting the
+  // native scroll offset. Replaces the old fit-to-zoom behaviour.
+  const centerScroll = useCallback(() => {
+    const c = containerRef.current;
+    if (!c) return;
+    c.scrollLeft = Math.max(0, (treeWidth - c.clientWidth) / 2);
+    c.scrollTop = 0;
+  }, [treeWidth]);
 
   useEffect(() => {
     if (!loading && treeWidth > 0) {
-      fitToCenter();
+      centerScroll();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, treeWidth, tree]);
@@ -791,24 +747,8 @@ const GenealogyTreeCanvas = ({
         </div>
         <div className="flex items-center gap-1 flex-wrap">
           <button
-            onClick={() => adjustZoomCentered(-0.05)}
+            onClick={centerScroll}
             className="w-8 h-8 rounded-md border border-slate-200 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-600"
-            aria-label="Zoom out"
-            type="button"
-          >
-            <Minus size={14} />
-          </button>
-          <button
-            onClick={() => adjustZoomCentered(0.05)}
-            className="w-8 h-8 rounded-md border border-slate-200 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-600"
-            aria-label="Zoom in"
-            type="button"
-          >
-            <Plus size={14} />
-          </button>
-          <button
-            onClick={fitToCenter}
-            className="w-8 h-8 rounded-md border border-slate-200 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-600 ml-1"
             aria-label="Center tree"
             type="button"
           >
@@ -817,20 +757,19 @@ const GenealogyTreeCanvas = ({
         </div>
       </div>
 
-      {/* Canvas */}
+      {/* Canvas — native scroll (vertical + horizontal), no zoom. */}
       <div
         ref={containerRef}
-        className="relative w-full flex-1 min-h-0 bg-[radial-gradient(circle_at_1px_1px,_#e2e8f0_1px,_transparent_0)] [background-size:16px_16px] overflow-hidden"
-        onWheel={onWheel}
+        className="relative w-full flex-1 min-h-0 bg-[radial-gradient(circle_at_1px_1px,_#e2e8f0_1px,_transparent_0)] [background-size:16px_16px] overflow-auto touch-pan-x touch-pan-y cursor-grab active:cursor-grabbing"
+        onPointerDown={onPanStart}
+        onPointerMove={onPanMove}
+        onPointerUp={onPanEnd}
+        onPointerLeave={onPanEnd}
       >
         <div
           ref={stageRef}
           style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            transformOrigin: "0 0",
+            position: "relative",
             width: treeWidth,
             height: treeHeight,
           }}
@@ -926,13 +865,13 @@ const GenealogyTreeCanvas = ({
                 Click a member to open their details — use the “Show Genealogy”
                 button inside to view their downline • Tap a{" "}
                 <span className="text-sky-600 font-bold">blue</span> open slot to
-                add a new member • Drag the background to pan • Hold ⌘/Ctrl +
-                scroll to zoom.
+                add a new member • Drag the background or use the scrollbars to
+                move around.
               </span>
               <span className="sm:hidden">
                 Tap a member to see details · Show Genealogy in the popup to
-                drill in · Tap blue slots to add a member · Drag to pan · Pinch
-                to zoom.
+                drill in · Tap blue slots to add a member · Drag or swipe to
+                scroll.
               </span>
             </>
           )}
@@ -1472,8 +1411,11 @@ const MemberDetailModal = ({
   const referralCode = data.referralCode || null;
   const status = data.status || "unknown";
   const planType = data.planType || "—";
+  const sponsorName = data.sponsorName || null;
   const joinedAt =
     data.registeredAt || data.joinedAt || null;
+  const planAJoinedAt = data.planAJoinedAt || null;
+  const isPlanAActive = status === "active";
   const leftActive = Number(data.leftLegActiveDownlineCount ?? 0);
   const rightActive = Number(data.rightLegActiveDownlineCount ?? 0);
   const left = Number(data.leftLegTotalDownlineCount ?? 0);
@@ -1566,6 +1508,13 @@ const MemberDetailModal = ({
               mono
             />
           )}
+          {sponsorName && (
+            <TooltipRow
+              icon={<UserPlus2 size={13} className="text-slate-400" />}
+              label="Sponsor"
+              value={sponsorName}
+            />
+          )}
           <TooltipRow
             icon={<Sparkles size={13} className={accent.tooltipAccent} />}
             label="Plan"
@@ -1576,6 +1525,13 @@ const MemberDetailModal = ({
             label="Joined"
             value={formatMemberJoinedAt(joinedAt)}
           />
+          {isPlanAActive && planAJoinedAt && (
+            <TooltipRow
+              icon={<Calendar size={13} className={accent.tooltipAccent} />}
+              label="Plan A Activated"
+              value={formatMemberJoinedAt(planAJoinedAt)}
+            />
+          )}
           {phone && (
             <TooltipRow
               icon={<PhoneIcon size={13} className="text-slate-400" />}

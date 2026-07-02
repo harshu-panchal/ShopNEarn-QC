@@ -182,7 +182,7 @@ const MlmEarningsPage = () => {
                                                 {bonusTypeLabel(row.bonusType)}
                                                 {row.level ? <span className="text-xs text-slate-500 ml-1">L{row.level}</span> : null}
                                             </p>
-                                            <p className="text-[11px] text-slate-500">{formatDate(row.createdAt)}</p>
+                                            <p className="text-[11px] text-slate-500">{formatDate(row.earnedAt || row.createdAt)}</p>
                                             {row.sourceUserId?.joinedAt && (
                                                 <MemberJoinedSubtitle
                                                     joinedAt={row.sourceUserId.joinedAt}

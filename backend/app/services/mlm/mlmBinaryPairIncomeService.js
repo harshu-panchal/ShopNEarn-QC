@@ -217,6 +217,135 @@ export async function countActivePlanADirects(sponsorUserId, { session } = {}) {
   );
 }
 
+async function loadActivePlanAMembersInSubtree(rootUserId, { session } = {}) {
+  if (!rootUserId) return [];
+
+  const pipeline = [
+    { $match: { userId: new mongoose.Types.ObjectId(String(rootUserId)) } },
+    {
+      $graphLookup: {
+        from: MlmMembership.collection.name,
+        startWith: "$userId",
+        connectFromField: "userId",
+        connectToField: "binaryParentId",
+        as: "descendants",
+        maxDepth: 64,
+      },
+    },
+    {
+      $project: {
+        members: {
+          $concatArrays: [
+            {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$status", MLM_MEMBERSHIP_STATUS.ACTIVE] },
+                    { $eq: ["$planType", MLM_PLAN_TYPE.A] },
+                  ],
+                },
+                [
+                  {
+                    userId: "$userId",
+                    planAJoinedAt: "$planAJoinedAt",
+                    createdAt: "$createdAt",
+                  },
+                ],
+                [],
+              ],
+            },
+            {
+              $map: {
+                input: {
+                  $filter: {
+                    input: "$descendants",
+                    as: "d",
+                    cond: {
+                      $and: [
+                        { $eq: ["$$d.status", MLM_MEMBERSHIP_STATUS.ACTIVE] },
+                        { $eq: ["$$d.planType", MLM_PLAN_TYPE.A] },
+                      ],
+                    },
+                  },
+                },
+                as: "d",
+                in: {
+                  userId: "$$d.userId",
+                  planAJoinedAt: "$$d.planAJoinedAt",
+                  createdAt: "$$d.createdAt",
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
+    { $unwind: "$members" },
+    { $replaceRoot: { newRoot: "$members" } },
+    {
+      $project: {
+        userId: 1,
+        activatedAt: {
+          $ifNull: ["$planAJoinedAt", "$createdAt"],
+        },
+      },
+    },
+  ];
+
+  const agg = session
+    ? await MlmMembership.aggregate(pipeline).session(session)
+    : await MlmMembership.aggregate(pipeline);
+
+  return agg.filter((row) => row.activatedAt);
+}
+
+/**
+ * Replay downline Plan A activations chronologically to find when each
+ * team binary pair index first became eligible.
+ */
+export async function computeBinaryTeamPairEarnedAtByIndex(
+  membership,
+  { session } = {},
+) {
+  const earnedAtByPair = new Map();
+  if (!membership?.userId) return earnedAtByPair;
+
+  const [leftMembers, rightMembers] = await Promise.all([
+    loadActivePlanAMembersInSubtree(membership.binaryLeftChildId, { session }),
+    loadActivePlanAMembersInSubtree(membership.binaryRightChildId, { session }),
+  ]);
+
+  const activations = [
+    ...leftMembers.map((row) => ({
+      leg: "L",
+      at: new Date(row.activatedAt),
+    })),
+    ...rightMembers.map((row) => ({
+      leg: "R",
+      at: new Date(row.activatedAt),
+    })),
+  ]
+    .filter((row) => Number.isFinite(row.at?.getTime()))
+    .sort((a, b) => a.at - b.at);
+
+  let leftActive = 0;
+  let rightActive = 0;
+  let prevPairs = 0;
+
+  for (const activation of activations) {
+    if (activation.leg === "L") leftActive += 1;
+    else rightActive += 1;
+
+    const { pairs } = calculateBinaryPairs(leftActive, rightActive);
+    while (prevPairs < pairs) {
+      prevPairs += 1;
+      earnedAtByPair.set(prevPairs, activation.at);
+    }
+  }
+
+  return earnedAtByPair;
+}
+
 /**
  * Preview the next binary pair payout for dashboard/API surfaces.
  * Uses the same tier resolution as `computeAndCreditBinaryTeamPairIncome`.

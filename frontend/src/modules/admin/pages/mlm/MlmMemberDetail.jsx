@@ -981,7 +981,7 @@ const MlmMemberDetail = () => {
                         Click any node to open its detail card — use the “Show Genealogy”
                         button inside to re-render the tree rooted at that member (no page
                         change) · use Back / Reset in the toolbar to walk up · drag the
-                        background to pan · hold ⌘/Ctrl + scroll to zoom.
+                        background or use the scrollbars to move around.
                     </p>
                     </div>
                     <button
@@ -1037,7 +1037,7 @@ const MlmMemberDetail = () => {
                                             open a member → Move in tree… → tap an{' '}
                                             <span className="text-amber-700 font-bold">amber</span> Move
                                             Here slot (directly under a filled parent) ·
-                                            Back / Reset to walk up · drag to pan · ⌘/Ctrl + scroll to zoom.
+                                            Back / Reset to walk up · drag or scroll to move around.
                                         </>
                                     ) : (
                                         <>
@@ -1045,15 +1045,15 @@ const MlmMemberDetail = () => {
                                             Genealogy” inside to re-render the tree rooted on that
                                             member · tap a <span className="text-sky-600 font-bold">blue</span> open
                                             slot to add a new member directly under that parent · use
-                                            Back / Reset to walk up · drag the background to pan · hold
-                                            ⌘/Ctrl + scroll to zoom.
+                                            Back / Reset to walk up · drag the background or use the
+                                            scrollbars to move around.
                                         </>
                                     )}
                                 </span>
                                 <span className="sm:hidden">
                                     Tap a member to open details · Show Genealogy to drill in ·
-                                    tap blue slots to add members · Back to walk up · drag to
-                                    pan · pinch to zoom.
+                                    tap blue slots to add members · Back to walk up · drag or
+                                    swipe to scroll.
                                 </span>
                             </>
                         }

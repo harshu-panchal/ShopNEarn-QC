@@ -305,7 +305,7 @@ const MyEarningsPage = () => {
                         </p>
                       )}
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        {formatDate(row.createdAt)}
+                        {formatDate(row.earnedAt || row.createdAt)}
                       </p>
                       {row.status === "capped_rollover" && (
                         <p className="text-[10px] text-amber-600 font-semibold mt-0.5">

@@ -34,6 +34,10 @@ import {
   groupEarningsEventsByDisplayType,
 } from "../services/mlm/mlmSignupBonusService.js";
 import {
+  enrichCommissionEventsWithEarnedAt,
+  enrichWalletHistoryWithEarnedAt,
+} from "../services/mlm/mlmEarningsDisplayService.js";
+import {
   cancelWithdrawalRequestByCustomer,
   createWithdrawalRequest,
   listWithdrawalsForCustomer,
@@ -609,7 +613,7 @@ export const getEarningsHistory = async (req, res) => {
       .map((row) => row.sourceUserId?._id || row.sourceUserId)
       .filter(Boolean);
     const timelineByUser = await lookupMembershipTimelineByUserIds(sourceIds);
-    const enrichedItems = items.map((row) => {
+    const withTimeline = items.map((row) => {
       const source = row.sourceUserId;
       if (!source || typeof source !== "object") return row;
       const uid = String(source._id || source);
@@ -623,6 +627,10 @@ export const getEarningsHistory = async (req, res) => {
         },
       };
     });
+    const enrichedItems = await enrichCommissionEventsWithEarnedAt(
+      userId,
+      withTimeline,
+    );
 
     return handleResponse(res, 200, "Earnings history", {
       items: enrichedItems,
@@ -1182,8 +1190,11 @@ export const getDashboardOverview = async (req, res) => {
  * leg counts, lifetime earnings) so a hover/click on any node never
  * has to issue a second roundtrip.
  */
-function shapeCustomerNode(member, position) {
+function shapeCustomerNode(member, position, sponsorNameById = null) {
   const u = member.userId || {};
+  const sponsorKey = member.sponsorId
+    ? String(member.sponsorId?._id || member.sponsorId)
+    : null;
   return {
     _id: member._id,
     userId: member.userId,
@@ -1197,6 +1208,8 @@ function shapeCustomerNode(member, position) {
     joinedAt: resolveMemberRegistrationAt(member),
     registeredAt: resolveMemberRegistrationAt(member),
     planAJoinedAt: member.planAJoinedAt || null,
+    sponsorName:
+      (sponsorKey && sponsorNameById?.get(sponsorKey)) || null,
     directReferralsCount: member.directReferralsCount || 0,
     totalDownlineCount: member.totalDownlineCount || 0,
     activeDownlineCount: member.activeDownlineCount || 0,
@@ -1222,9 +1235,9 @@ function shapeCustomerNode(member, position) {
  * payload shape (recursive). Returns `null` for a `null` node so
  * the frontend's empty-slot rendering keeps working unchanged.
  */
-function shapeCustomerTree(node) {
+function shapeCustomerTree(node, sponsorNameById = null) {
   if (!node) return null;
-  const shaped = shapeCustomerNode(node.raw, node.position);
+  const shaped = shapeCustomerNode(node.raw, node.position, sponsorNameById);
   shaped.leftLegTotalDownlineCount =
     node.raw.trueLeftLegTotalDownlineCount || 0;
   shaped.rightLegTotalDownlineCount =
@@ -1245,9 +1258,33 @@ function shapeCustomerTree(node) {
   // exist" nodes and diverges wildly from the PHP-spec 2:1 / 1:1
   // pairing algorithm the wallet engine actually uses.
 
-  shaped.left = shapeCustomerTree(node.left);
-  shaped.right = shapeCustomerTree(node.right);
+  shaped.left = shapeCustomerTree(node.left, sponsorNameById);
+  shaped.right = shapeCustomerTree(node.right, sponsorNameById);
   return shaped;
+}
+
+/**
+ * Collect every distinct sponsorId referenced in the raw tree and
+ * resolve each to a display name so node tooltips can show "Sponsor".
+ */
+async function buildSponsorNameMapForTree(rawTree) {
+  const sponsorIds = new Set();
+  const walk = (node) => {
+    if (!node) return;
+    const sponsorId = node.raw?.sponsorId;
+    if (sponsorId) sponsorIds.add(String(sponsorId?._id || sponsorId));
+    walk(node.left);
+    walk(node.right);
+  };
+  walk(rawTree);
+
+  if (!sponsorIds.size) return new Map();
+
+  const users = await mongoose
+    .model("User")
+    .find({ _id: { $in: Array.from(sponsorIds) } }, { name: 1 })
+    .lean();
+  return new Map(users.map((u) => [String(u._id), u.name || null]));
 }
 
 /**
@@ -1373,7 +1410,8 @@ export const getMyGenealogyTree = async (req, res) => {
       rootMembership,
       depthLeft: depth,
     });
-    const tree = shapeCustomerTree(rawTree);
+    const sponsorNameById = await buildSponsorNameMapForTree(rawTree);
+    const tree = shapeCustomerTree(rawTree, sponsorNameById);
 
     // Emit a single console.warn line per request when the
     // bottom-up assembly disagreed with the parent's denormalised
@@ -1581,9 +1619,11 @@ export const getMyMatchingReport = async (req, res) => {
       MlmCommissionEvent.countDocuments(query),
     ]);
 
+    const itemsWithEarnedAt = await enrichCommissionEventsWithEarnedAt(userId, items);
+
     // Gather every contributor userId to do ONE user lookup.
     const contributorIds = new Set();
-    for (const ev of items) {
+    for (const ev of itemsWithEarnedAt) {
       if (ev.meta?.leftContributorUserId)
         contributorIds.add(String(ev.meta.leftContributorUserId));
       if (ev.meta?.rightContributorUserId)
@@ -1627,7 +1667,9 @@ export const getMyMatchingReport = async (req, res) => {
         leftTeamActive: ev.meta?.leftTeamActive ?? ev.meta?.leftActive ?? null,
         rightTeamActive:
           ev.meta?.rightTeamActive ?? ev.meta?.rightActive ?? null,
-        createdAt: ev.createdAt,
+        createdAt: ev.earnedAt || ev.createdAt,
+        recordedAt: ev.recordedAt || ev.createdAt,
+        earnedAt: ev.earnedAt || ev.createdAt,
         releasedAt: ev.releasedAt || null,
         left: left
           ? {
@@ -2032,9 +2074,10 @@ export const getMyWalletHistory = async (req, res) => {
         metadata: row.metadata || {},
       })),
     );
+    const withEarnedAt = await enrichWalletHistoryWithEarnedAt(userId, shaped);
 
     return handleResponse(res, 200, "Wallet history", {
-      items: shaped,
+      items: withEarnedAt,
       page,
       limit,
       total,

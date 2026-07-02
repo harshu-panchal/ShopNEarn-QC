@@ -289,7 +289,7 @@ const WalletHistoryPage = () => {
                         </p>
                       ) : null}
                       <p className="text-[10px] text-slate-400 mt-0.5">
-                        {formatDate(row.createdAt)}
+                        {formatDate(row.earnedAt || row.createdAt)}
                       </p>
                     </div>
                   </div>
