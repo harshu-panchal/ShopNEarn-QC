@@ -16,6 +16,7 @@ import {
   Hash,
   ChevronLeft,
   ChevronRight,
+  ChevronsDown,
   Crown,
   UserPlus2,
   X,
@@ -113,7 +114,7 @@ import { formatMemberJoinedAt } from "../../utils/mlmMemberDisplay";
 // old fit-to-zoom could scale it down for crispness); at 1:1 that
 // made a single node fill the viewport, so it's dialled back to a
 // directly-readable size.
-const NODE_TEXT_SCALE = 0.32;
+const NODE_TEXT_SCALE = 0.5;
 const NODE_ID_FONT_PX = 28 * NODE_TEXT_SCALE;
 const NODE_NAME_FONT_PX = 28 * NODE_TEXT_SCALE;
 const NODE_SLOT_LABEL_FONT_PX = 22 * NODE_TEXT_SCALE;
@@ -247,8 +248,27 @@ function augmentWithEmptySlots(tree, emptySlotMaxDepth) {
     const cloned = { ...node };
     const ownId = nodeIdFor(node);
 
+    // A `null` child can mean one of two very different things:
+    //   1. The slot is genuinely vacant — render an addable "Open
+    //      Slot" so the user can place a member there.
+    //   2. The backend TRUNCATED the tree at the selected depth even
+    //      though real members exist further down this leg. The
+    //      builder still ships the TRUE leg totals on every node, so a
+    //      positive `*LegTotalDownlineCount` on a `null` child means
+    //      "there are members below the cutoff" — render a
+    //      non-addable "More below" marker (that drills in on click)
+    //      instead of a misleading empty slot.
+    const leftTotal = Number(node.leftLegTotalDownlineCount) || 0;
+    const rightTotal = Number(node.rightLegTotalDownlineCount) || 0;
+
     if (cloned.left) {
       cloned.left = build(cloned.left, emptySlotMaxDepth, ownId, "L");
+    } else if (leftTotal > 0) {
+      cloned.left = synthesiseTruncated({
+        parentId: ownId,
+        side: "L",
+        moreCount: leftTotal,
+      });
     } else if (emptySlotMaxDepth > 0) {
       cloned.left = synthesiseEmpty({
         parentId: ownId,
@@ -262,6 +282,12 @@ function augmentWithEmptySlots(tree, emptySlotMaxDepth) {
     }
     if (cloned.right) {
       cloned.right = build(cloned.right, emptySlotMaxDepth, ownId, "R");
+    } else if (rightTotal > 0) {
+      cloned.right = synthesiseTruncated({
+        parentId: ownId,
+        side: "R",
+        moreCount: rightTotal,
+      });
     } else if (emptySlotMaxDepth > 0) {
       cloned.right = synthesiseEmpty({
         parentId: ownId,
@@ -271,6 +297,24 @@ function augmentWithEmptySlots(tree, emptySlotMaxDepth) {
       });
     }
     return cloned;
+  }
+
+  // A "more below" marker for a leg the depth cap truncated. It is an
+  // empty-family node (so it flows through the same layout/render
+  // path) but is neither addable nor recursive — clicking it drills
+  // into the parent to load the next levels.
+  function synthesiseTruncated({ parentId, side, moreCount }) {
+    return {
+      __empty: true,
+      __truncated: true,
+      __id: `__more:${parentId}:${side}`,
+      __addable: false,
+      __parentFilledId: parentId,
+      __leg: side,
+      __moreCount: moreCount,
+      left: null,
+      right: null,
+    };
   }
 
   function synthesiseEmpty({ parentId, side, addable, remainingDepth }) {
@@ -467,6 +511,7 @@ const GenealogyTreeCanvas = ({
           side: "L",
           targetEmpty: !!node.left.__empty,
           targetAddable: !!node.left.__addable,
+          targetTruncated: !!node.left.__truncated,
         });
       }
       if (node.right) {
@@ -476,6 +521,7 @@ const GenealogyTreeCanvas = ({
           side: "R",
           targetEmpty: !!node.right.__empty,
           targetAddable: !!node.right.__addable,
+          targetTruncated: !!node.right.__truncated,
         });
       }
 
@@ -599,6 +645,18 @@ const GenealogyTreeCanvas = ({
   // Empty-slot tap (only fires for ADDABLE empties).
   const handleEmptyClick = useCallback(
     (emptyNode) => {
+      // "More below" marker — the depth cap hid real members on this
+      // leg. Drill into the parent filled node so the canvas re-roots
+      // there and loads the next levels (same action as tapping the
+      // parent and choosing "Show Genealogy").
+      if (emptyNode?.data?.__truncated) {
+        const parentId = emptyNode.data.__parentFilledId;
+        const parent = filledById.get(parentId);
+        if (parent && onNodeTap) {
+          onNodeTap({ data: parent });
+        }
+        return;
+      }
       if (rearrangeMode && onMoveToSlot && emptyNode?.data?.__addable) {
         const parentId = emptyNode.data.__parentFilledId;
         const parent = filledById.get(parentId);
@@ -642,7 +700,7 @@ const GenealogyTreeCanvas = ({
         siblingFilled: !!siblingIsFilled,
       });
     },
-    [onAddMember, filledById, rearrangeMode, onMoveToSlot],
+    [onAddMember, filledById, rearrangeMode, onMoveToSlot, onNodeTap],
   );
 
   const handleAddSubmit = useCallback(
@@ -731,6 +789,10 @@ const GenealogyTreeCanvas = ({
             <LegendSwatch tone="bg-emerald-500" label="Paid (Plan A)" />
             <LegendSwatch tone="bg-blue-500" label="Plan B" />
             <LegendSwatch tone="bg-red-500" label="Unpaid" />
+            <span className="inline-flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full border-2 border-sky-500 bg-sky-100 inline-block"></span>
+              More below
+            </span>
             {onAddMember && (
               <>
                 <span className="inline-flex items-center gap-1">
@@ -772,6 +834,11 @@ const GenealogyTreeCanvas = ({
             position: "relative",
             width: treeWidth,
             height: treeHeight,
+            // Center the tree horizontally when it's narrower than the
+            // viewport. `margin: 0 auto` collapses to 0 automatically
+            // once the tree overflows, so wide trees still scroll from
+            // the left edge with no clipping.
+            margin: "0 auto",
           }}
         >
           <svg
@@ -789,14 +856,22 @@ const GenealogyTreeCanvas = ({
               const y2 = to.y;
               const midY = (y1 + y2) / 2;
               const isEmptyEdge = edge.targetEmpty;
-              const strokeColor = isEmptyEdge
-                ? edge.targetAddable
-                  ? "#64748b"
-                  : "#94a3b8"
-                : "#334155";
-              const strokeWidth = isEmptyEdge
-                ? EDGE_STROKE_WIDTH_EMPTY
-                : EDGE_STROKE_WIDTH;
+              // Truncated ("more below") edges represent REAL members
+              // beyond the depth cap, so draw them solid + coloured
+              // like a filled edge rather than a dashed empty one.
+              const isTruncatedEdge = edge.targetTruncated;
+              const strokeColor = isTruncatedEdge
+                ? "#0ea5e9"
+                : isEmptyEdge
+                  ? edge.targetAddable
+                    ? "#64748b"
+                    : "#94a3b8"
+                  : "#334155";
+              const strokeWidth =
+                isEmptyEdge && !isTruncatedEdge
+                  ? EDGE_STROKE_WIDTH_EMPTY
+                  : EDGE_STROKE_WIDTH;
+              const isDashedEdge = isEmptyEdge && !isTruncatedEdge;
               return (
                 <g key={`${edge.fromId}-${edge.toId}`}>
                   <line
@@ -816,7 +891,7 @@ const GenealogyTreeCanvas = ({
                     stroke={strokeColor}
                     strokeWidth={strokeWidth}
                     strokeLinecap="round"
-                    strokeDasharray={isEmptyEdge ? "10 7" : undefined}
+                    strokeDasharray={isDashedEdge ? "10 7" : undefined}
                   />
                   <line
                     x1={x2}
@@ -841,6 +916,7 @@ const GenealogyTreeCanvas = ({
                   !!n.data.__addable &&
                   (!!onAddMember || (rearrangeMode && !!onMoveToSlot))
                 }
+                truncated={!!n.data.__truncated}
                 rearrangeMode={rearrangeMode && !!onMoveToSlot}
                 onClick={handleEmptyClick}
               />
@@ -1007,30 +1083,53 @@ const NodeCard = ({ node, onTap, isSelected, highlightViewerSelf }) => {
  * slot so the icon sits exactly under the connecting edge from the
  * parent, regardless of how much horizontal padding the slot has.
  */
-const EmptyNodeCard = ({ node, canAdd, rearrangeMode = false, onClick }) => {
+const EmptyNodeCard = ({
+  node,
+  canAdd,
+  truncated = false,
+  rearrangeMode = false,
+  onClick,
+}) => {
+  // Truncated markers are always interactive (they drill into the
+  // parent), independent of the add/move affordances.
+  const clickable = truncated || canAdd;
   const handleClick = useCallback(
     (e) => {
       e.stopPropagation();
-      if (!canAdd) return;
+      if (!clickable) return;
       onClick?.(node);
     },
-    [node, canAdd, onClick],
+    [node, clickable, onClick],
   );
 
-  const wrapperClass = canAdd
-    ? "cursor-pointer group"
-    : "cursor-default";
+  const moreCount = Number(node?.data?.__moreCount) || 0;
 
-  const iconColor = canAdd
-    ? rearrangeMode
-      ? "text-amber-500"
-      : "text-sky-500"
-    : "text-slate-300";
-  const ringClass = canAdd
-    ? rearrangeMode
-      ? "border-2 border-dashed border-amber-300 group-hover:border-amber-500 group-hover:bg-amber-50/60"
-      : "border-2 border-dashed border-sky-300 group-hover:border-sky-500 group-hover:bg-sky-50/60"
-    : "border-2 border-dashed border-slate-200 bg-slate-50/40";
+  const wrapperClass = clickable ? "cursor-pointer group" : "cursor-default";
+
+  const iconColor = truncated
+    ? "text-sky-600"
+    : canAdd
+      ? rearrangeMode
+        ? "text-amber-500"
+        : "text-sky-500"
+      : "text-slate-300";
+  const ringClass = truncated
+    ? "border-2 border-sky-400 bg-sky-50 group-hover:border-sky-600 group-hover:bg-sky-100"
+    : canAdd
+      ? rearrangeMode
+        ? "border-2 border-dashed border-amber-300 group-hover:border-amber-500 group-hover:bg-amber-50/60"
+        : "border-2 border-dashed border-sky-300 group-hover:border-sky-500 group-hover:bg-sky-50/60"
+      : "border-2 border-dashed border-slate-200 bg-slate-50/40";
+
+  const label = truncated
+    ? moreCount > 0
+      ? `+${moreCount} below`
+      : "More below"
+    : canAdd
+      ? rearrangeMode
+        ? "Move Here"
+        : "Open Slot"
+      : "Future";
 
   return (
     <div
@@ -1044,11 +1143,13 @@ const EmptyNodeCard = ({ node, canAdd, rearrangeMode = false, onClick }) => {
       }}
       className={`flex flex-col items-center justify-start select-none ${wrapperClass}`}
       title={
-        canAdd
-          ? rearrangeMode
-            ? "Move selected member to this slot"
-            : "Add a new member to this slot"
-          : "Future slot — fill the parent first"
+        truncated
+          ? "More members below — click to expand this branch"
+          : canAdd
+            ? rearrangeMode
+              ? "Move selected member to this slot"
+              : "Add a new member to this slot"
+            : "Future slot — fill the parent first"
       }
     >
       <div
@@ -1059,15 +1160,21 @@ const EmptyNodeCard = ({ node, canAdd, rearrangeMode = false, onClick }) => {
           borderWidth: 3 * NODE_TEXT_SCALE,
         }}
       >
-        <UserPlus2 size={NODE_SLOT_ICON_PX} className={iconColor} />
+        {truncated ? (
+          <ChevronsDown size={NODE_SLOT_ICON_PX} className={iconColor} />
+        ) : (
+          <UserPlus2 size={NODE_SLOT_ICON_PX} className={iconColor} />
+        )}
       </div>
       <span
         className={`font-bold uppercase tracking-wide text-center leading-tight ${
-          canAdd
-            ? rearrangeMode
-              ? "text-amber-700"
-              : "text-sky-700"
-            : "text-slate-400"
+          truncated
+            ? "text-sky-700"
+            : canAdd
+              ? rearrangeMode
+                ? "text-amber-700"
+                : "text-sky-700"
+              : "text-slate-400"
         }`}
         style={{
           fontSize: NODE_SLOT_LABEL_FONT_PX,
@@ -1075,7 +1182,7 @@ const EmptyNodeCard = ({ node, canAdd, rearrangeMode = false, onClick }) => {
           marginTop: 8 * NODE_TEXT_SCALE,
         }}
       >
-        {canAdd ? (rearrangeMode ? "Move Here" : "Open Slot") : "Future"}
+        {label}
       </span>
     </div>
   );

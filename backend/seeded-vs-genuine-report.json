@@ -1,0 +1,6054 @@
+{
+  "GENUINE": [
+    {
+      "referralCode": "SE9JZSTHV7",
+      "userId": "6a2271674931c0271e9ea085",
+      "status": "active",
+      "createdAt": "2026-06-05T06:49:16.312Z",
+      "ledgerEntries": 12,
+      "ledgerNet": 6800,
+      "creditedEvents": 11,
+      "wallet": {
+        "earnings": 1600,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEQV7D3BVZ",
+      "userId": "6a2271dd4931c0271e9ea112",
+      "status": "active",
+      "createdAt": "2026-06-05T06:51:15.452Z",
+      "ledgerEntries": 9,
+      "ledgerNet": 6200,
+      "creditedEvents": 8,
+      "wallet": {
+        "earnings": 1000,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE5NPUJJY9",
+      "userId": "6a2272424931c0271e9ea187",
+      "status": "active",
+      "createdAt": "2026-06-05T06:52:55.250Z",
+      "ledgerEntries": 8,
+      "ledgerNet": 6000,
+      "creditedEvents": 7,
+      "wallet": {
+        "earnings": 800,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE96AQDVKY",
+      "userId": "6a2272994931c0271e9ea200",
+      "status": "active",
+      "createdAt": "2026-06-05T06:54:23.410Z",
+      "ledgerEntries": 8,
+      "ledgerNet": 6000,
+      "creditedEvents": 7,
+      "wallet": {
+        "earnings": 800,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE448GRAMF",
+      "userId": "6a2272d64931c0271e9ea256",
+      "status": "active",
+      "createdAt": "2026-06-05T06:55:22.159Z",
+      "ledgerEntries": 8,
+      "ledgerNet": 6000,
+      "creditedEvents": 7,
+      "wallet": {
+        "earnings": 800,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEY6ND8RV5",
+      "userId": "6a2274d14931c0271e9ea4b4",
+      "status": "active",
+      "createdAt": "2026-06-05T07:03:50.596Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 5800,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 600,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEK2HHQRVV",
+      "userId": "6a2275494931c0271e9ea53e",
+      "status": "active",
+      "createdAt": "2026-06-05T07:05:50.295Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 5800,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 600,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEUJVWKGYE",
+      "userId": "6a2275a84931c0271e9ea5a9",
+      "status": "active",
+      "createdAt": "2026-06-05T07:07:26.047Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 5800,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 600,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEA2GHR93W",
+      "userId": "6a2276134931c0271e9ea62e",
+      "status": "active",
+      "createdAt": "2026-06-05T07:09:12.713Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 5800,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 600,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEMUAAFDSP",
+      "userId": "6a2276814931c0271e9ea6c1",
+      "status": "active",
+      "createdAt": "2026-06-05T07:11:02.689Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 5800,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 600,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEXQHVBZ9G",
+      "userId": "6a2276d74931c0271e9ea757",
+      "status": "active",
+      "createdAt": "2026-06-05T07:12:27.868Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 5800,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 600,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEJAT6ECQ2",
+      "userId": "6a2277274931c0271e9ea7c8",
+      "status": "active",
+      "createdAt": "2026-06-05T07:13:48.560Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 5800,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 600,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE4C7NGSFB",
+      "userId": "6a2278a44931c0271e9ea91e",
+      "status": "active",
+      "createdAt": "2026-06-05T07:20:09.243Z",
+      "ledgerEntries": 13,
+      "ledgerNet": 6250,
+      "creditedEvents": 12,
+      "wallet": {
+        "earnings": 800,
+        "shopping": 5450,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEMFUFM8DD",
+      "userId": "6a2278f54931c0271e9ea989",
+      "status": "active",
+      "createdAt": "2026-06-05T07:21:29.949Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 5350,
+      "creditedEvents": 3,
+      "wallet": {
+        "earnings": 200,
+        "shopping": 5150,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SECABCZJ8X",
+      "userId": "6a2279404931c0271e9ea9f2",
+      "status": "active",
+      "createdAt": "2026-06-05T07:22:44.326Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEE9ZK8DRJ",
+      "userId": "6a22798f4931c0271e9eaa5a",
+      "status": "active",
+      "createdAt": "2026-06-05T07:24:03.876Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SERXKU5XJV",
+      "userId": "6a2279ea4931c0271e9eab09",
+      "status": "active",
+      "createdAt": "2026-06-05T07:25:36.341Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SETU4QH9VQ",
+      "userId": "6a227acc4931c0271e9eac79",
+      "status": "active",
+      "createdAt": "2026-06-05T07:29:20.561Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEEK46TG6A",
+      "userId": "6a227b404931c0271e9ead82",
+      "status": "active",
+      "createdAt": "2026-06-05T07:31:17.173Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEEMC8DPAH",
+      "userId": "6a227b9f4931c0271e9eae65",
+      "status": "active",
+      "createdAt": "2026-06-05T07:32:52.322Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SETKDPM2DS",
+      "userId": "6a227bf34931c0271e9eaf25",
+      "status": "active",
+      "createdAt": "2026-06-05T07:34:16.204Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEUZ2TDJQ8",
+      "userId": "6a227c3d4931c0271e9eafb8",
+      "status": "active",
+      "createdAt": "2026-06-05T07:35:29.839Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEYGG5WQJQ",
+      "userId": "6a227c934931c0271e9eb033",
+      "status": "active",
+      "createdAt": "2026-06-05T07:36:55.617Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEDKTC6X25",
+      "userId": "6a227ce54931c0271e9eb09d",
+      "status": "active",
+      "createdAt": "2026-06-05T07:38:17.599Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEQWC7TX75",
+      "userId": "6a227d2e4931c0271e9eb139",
+      "status": "active",
+      "createdAt": "2026-06-05T07:39:30.759Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SERGHETDWC",
+      "userId": "6a227d834931c0271e9eb1aa",
+      "status": "active",
+      "createdAt": "2026-06-05T07:40:55.717Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEGAYXZSFJ",
+      "userId": "6a227dcd4931c0271e9eb224",
+      "status": "active",
+      "createdAt": "2026-06-05T07:42:09.836Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEYAVNVWRH",
+      "userId": "6a227e144931c0271e9eb283",
+      "status": "active",
+      "createdAt": "2026-06-05T07:43:20.783Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5150,
+      "creditedEvents": 2,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5150,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE8P8JS4GC",
+      "userId": "6a227f2b4931c0271e9eb37f",
+      "status": "active",
+      "createdAt": "2026-06-05T07:47:59.599Z",
+      "ledgerEntries": 16,
+      "ledgerNet": 6750,
+      "creditedEvents": 15,
+      "wallet": {
+        "earnings": 1250,
+        "shopping": 5500,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE2CXE6WVG",
+      "userId": "6a2280484931c0271e9eb46a",
+      "status": "active",
+      "createdAt": "2026-06-05T07:52:44.824Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5150,
+      "creditedEvents": 2,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5150,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEXGSM8CJ7",
+      "userId": "6a2281774931c0271e9eb637",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-05T07:57:48.414Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEX6Y5WXK2",
+      "userId": "6a22820e4931c0271e9eb6c1",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-05T08:00:18.233Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SETXK35633",
+      "userId": "6a2282714931c0271e9eb757",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-05T08:01:57.363Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEFZCDTY98",
+      "userId": "6a2282ce4931c0271e9eb7c2",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-05T08:03:30.340Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SESMVR6PPX",
+      "userId": "6a22831d4931c0271e9eb82f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-05T08:04:50.711Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEQBU4WGQ5",
+      "userId": "6a22836c4931c0271e9eb8b5",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-05T08:06:08.317Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SECUXARNPW",
+      "userId": "6a2283bb4931c0271e9eb93a",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-05T08:07:27.403Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE6SK53WHX",
+      "userId": "6a2283ff4931c0271e9eb9a9",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-05T08:08:35.364Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEPXYFNUWY",
+      "userId": "6a2284434931c0271e9eba1e",
+      "status": "active",
+      "createdAt": "2026-06-05T08:09:42.995Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 5200,
+      "creditedEvents": 3,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEW2YHR3Y6",
+      "userId": "6a2285364931c0271e9ebb06",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-05T08:13:47.133Z",
+      "ledgerEntries": 47,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE5SX3GFX8",
+      "userId": "6a228f764931c0271e9ec2a6",
+      "status": "active",
+      "createdAt": "2026-06-05T08:57:30.343Z",
+      "ledgerEntries": 14,
+      "ledgerNet": 6550,
+      "creditedEvents": 13,
+      "wallet": {
+        "earnings": 1100,
+        "shopping": 5450,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEQY727C5K",
+      "userId": "6a2291994931c0271e9ec4b9",
+      "status": "active",
+      "createdAt": "2026-06-05T09:06:38.112Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEVGPE5VTN",
+      "userId": "6a2292514931c0271e9ec59c",
+      "status": "active",
+      "createdAt": "2026-06-05T09:09:41.294Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5150,
+      "creditedEvents": 2,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5150,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEVNTHPJP4",
+      "userId": "6a2292c24931c0271e9ec64b",
+      "status": "active",
+      "createdAt": "2026-06-05T09:11:34.434Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE48XFDM88",
+      "userId": "6a22933a4931c0271e9ec6e7",
+      "status": "active",
+      "createdAt": "2026-06-05T09:13:34.780Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEF4AU54H8",
+      "userId": "6a2293fa4931c0271e9ec7a6",
+      "status": "active",
+      "createdAt": "2026-06-05T09:16:46.667Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE5NANWH7T",
+      "userId": "6a2294704931c0271e9ec826",
+      "status": "active",
+      "createdAt": "2026-06-05T09:18:45.287Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SETFKXR45A",
+      "userId": "6a2294d04931c0271e9ec89b",
+      "status": "active",
+      "createdAt": "2026-06-05T09:20:20.355Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEKBHSDV2Y",
+      "userId": "6a229ac04931c0271e9ece66",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-05T09:45:40.642Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE7DXGKF3M",
+      "userId": "6a22a05d4931c0271e9ed330",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-05T10:09:38.463Z",
+      "ledgerEntries": 5,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEQ3VVYDJ7",
+      "userId": "6a22a6414931c0271e9ed8ba",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-05T10:38:46.191Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE9UJ5N8RJ",
+      "userId": "6a22ad3b4931c0271e9ee0f9",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-05T11:07:42.180Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEVVRVHNYJ",
+      "userId": "6a23e414de26b57cc5e8f324",
+      "status": "active",
+      "createdAt": "2026-06-06T09:11:30.022Z",
+      "ledgerEntries": 15,
+      "ledgerNet": 5750,
+      "creditedEvents": 14,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5750,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEZHBN3XUM",
+      "userId": "6a23e4c1de26b57cc5e8f41d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-06T09:13:49.747Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEUYDT37TJ",
+      "userId": "6a23e66dde26b57cc5e8f5b0",
+      "status": "active",
+      "createdAt": "2026-06-06T09:20:49.442Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SET7ZMACD4",
+      "userId": "6a23e794de26b57cc5e8f6b9",
+      "status": "active",
+      "createdAt": "2026-06-06T09:25:45.168Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEP5AWN3S6",
+      "userId": "6a23eb78de26b57cc5e8f98f",
+      "status": "active",
+      "createdAt": "2026-06-06T09:42:28.224Z",
+      "ledgerEntries": 10,
+      "ledgerNet": 5500,
+      "creditedEvents": 9,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5500,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE7AVAFH68",
+      "userId": "6a23ebeade26b57cc5e8fa0d",
+      "status": "active",
+      "createdAt": "2026-06-06T09:44:14.130Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE3V293FSF",
+      "userId": "6a23ec5dde26b57cc5e8fa88",
+      "status": "active",
+      "createdAt": "2026-06-06T09:46:09.858Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 5350,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5350,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE5WF2CAJW",
+      "userId": "6a23ecc4de26b57cc5e8fb00",
+      "status": "active",
+      "createdAt": "2026-06-06T09:47:52.320Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SET7T378YC",
+      "userId": "6a23ed4bde26b57cc5e8fb84",
+      "status": "active",
+      "createdAt": "2026-06-06T09:50:07.190Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEM27BBX58",
+      "userId": "6a23f403bda67ce607d1f2ec",
+      "status": "active",
+      "createdAt": "2026-06-06T10:18:48.425Z",
+      "ledgerEntries": 9,
+      "ledgerNet": 5450,
+      "creditedEvents": 8,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5450,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE34Z2SNR7",
+      "userId": "6a24011fbda67ce607d1fc68",
+      "status": "active",
+      "createdAt": "2026-06-06T11:14:55.148Z",
+      "ledgerEntries": 20,
+      "ledgerNet": 6000,
+      "creditedEvents": 19,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 6000,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEVMJBV2P5",
+      "userId": "6a240211bda67ce607d1fdd1",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-06T11:19:05.997Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEFH59SHZH",
+      "userId": "6a23f8bebda67ce607d1f624",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-06T15:23:39.316Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEET3D48E2",
+      "userId": "6a243cd02a7ae5383dbf66b8",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-06T15:29:26.752Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEKVATNJ2W",
+      "userId": "6a2441ab2a7ae5383dbf6a36",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-06T15:50:08.987Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEY8R5FJ66",
+      "userId": "6a2442d82a7ae5383dbf6b85",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-06T15:55:09.575Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEVW556E2M",
+      "userId": "6a24434f2a7ae5383dbf6c49",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-06T15:57:08.577Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE4XQDS4RQ",
+      "userId": "6a2444d72a7ae5383dbf6dc8",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-06T16:03:41.094Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE5NCQQ5FN",
+      "userId": "6a244a3b2a7ae5383dbf710f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-06T16:26:41.420Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE6MYKB4CW",
+      "userId": "6a244c842a7ae5383dbf7345",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-06T16:36:26.804Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEAKMPFUY9",
+      "userId": "6a244d0b2a7ae5383dbf73c7",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-06T16:38:43.804Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEWT95ETP9",
+      "userId": "6a2455072a7ae5383dbf7aa7",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-06T17:12:45.583Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE8C6SE4B4",
+      "userId": "6a253b122a7ae5383dc00259",
+      "status": "active",
+      "createdAt": "2026-06-07T09:34:17.190Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5000,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5000,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEV7YBWNS6",
+      "userId": "6a253bc02a7ae5383dc002fe",
+      "status": "active",
+      "createdAt": "2026-06-07T09:37:11.061Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5000,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5000,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEYHFQNSXQ",
+      "userId": "6a253e142a7ae5383dc004d7",
+      "status": "active",
+      "createdAt": "2026-06-07T09:47:06.088Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5000,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5000,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEKVDQK7AP",
+      "userId": "6a253fd82a7ae5383dc00638",
+      "status": "active",
+      "createdAt": "2026-06-07T09:54:38.194Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5000,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5000,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEPGSGEZZV",
+      "userId": "6a2540692a7ae5383dc006f5",
+      "status": "active",
+      "createdAt": "2026-06-07T09:57:01.195Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5000,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5000,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE43KDFXJY",
+      "userId": "6a2540e62a7ae5383dc00775",
+      "status": "active",
+      "createdAt": "2026-06-07T09:59:07.764Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5000,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5000,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SECAJBS5KG",
+      "userId": "6a2541192a7ae5383dc007af",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-07T09:59:57.653Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEDF3W84XB",
+      "userId": "6a2541362a7ae5383dc007f4",
+      "status": "active",
+      "createdAt": "2026-06-07T10:00:26.755Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5000,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5000,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE3REW4GWE",
+      "userId": "6a2541802a7ae5383dc00846",
+      "status": "active",
+      "createdAt": "2026-06-07T10:01:41.522Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5000,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5000,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SETDKQEDUD",
+      "userId": "6a2541bc2a7ae5383dc00896",
+      "status": "active",
+      "createdAt": "2026-06-07T10:02:41.312Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5000,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5000,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEM8KTGWKT",
+      "userId": "6a268d189204083e8b9d685f",
+      "status": "active",
+      "createdAt": "2026-06-08T09:36:28.521Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEEPV5XBFP",
+      "userId": "6a268e839204083e8b9d69bd",
+      "status": "active",
+      "createdAt": "2026-06-08T09:42:36.341Z",
+      "ledgerEntries": 17,
+      "ledgerNet": 5800,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 600,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SECUMBZ82A",
+      "userId": "6a26a1d79204083e8b9d78d7",
+      "status": "active",
+      "createdAt": "2026-06-08T11:05:00.276Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE4EUQ27Z9",
+      "userId": "6a27aab07305dd6e11eefbed",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-09T05:56:00.748Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEZ6NPDVYD",
+      "userId": "6a27adf47305dd6e11eeff7a",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-09T06:11:49.482Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEV42KBERE",
+      "userId": "6a27afdd7305dd6e11ef012a",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-09T06:17:23.131Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEUA9YGB77",
+      "userId": "6a27bcca0ad2b9c1f14cad7d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-09T07:12:18.748Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE4W4VM54Z",
+      "userId": "6a27c33f0ad2b9c1f14cb1ab",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-09T07:39:49.331Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEF7JAC4YC",
+      "userId": "6a27df060ad2b9c1f14cc638",
+      "status": "active",
+      "createdAt": "2026-06-09T09:38:21.660Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEV6NF94GZ",
+      "userId": "6a27f0230ad2b9c1f14cd681",
+      "status": "active",
+      "createdAt": "2026-06-09T10:51:19.943Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEYGFHWJ45",
+      "userId": "6a27f2bb0ad2b9c1f14cd903",
+      "status": "active",
+      "createdAt": "2026-06-09T11:02:19.036Z",
+      "ledgerEntries": 10,
+      "ledgerNet": 5400,
+      "creditedEvents": 7,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5400,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE49DCR554",
+      "userId": "6a27f9040ad2b9c1f14ce0ed",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-09T11:30:38.045Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SEQKEZCYRY",
+      "userId": "6a2802c60ad2b9c1f14cea88",
+      "status": "active",
+      "createdAt": "2026-06-09T12:13:43.636Z",
+      "ledgerEntries": 13,
+      "ledgerNet": 5550,
+      "creditedEvents": 10,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5550,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE26788120",
+      "userId": "6a2906522c09a80df2b66c18",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-10T06:38:15.612Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE19729615",
+      "userId": "6a2939854c7c781b40d79a29",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-10T10:17:04.481Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE31256737",
+      "userId": "6a293939ee562a0636ac1481",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-10T10:19:34.633Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE10500114",
+      "userId": "6a293adb3452e722c9878fa8",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-10T10:22:19.659Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE47719169",
+      "userId": "6a2948fb3452e722c98799ae",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-10T11:22:43.802Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE31639232",
+      "userId": "6a294c3c3452e722c9879dd2",
+      "status": "active",
+      "createdAt": "2026-06-10T11:36:34.189Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE20337753",
+      "userId": "6a294c9f3452e722c9879e4c",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-10T11:38:12.779Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE63628797",
+      "userId": "6a294de23452e722c9879fcb",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-10T11:43:36.273Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE44533876",
+      "userId": "6a294e253452e722c987a033",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-10T11:44:48.886Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE06195367",
+      "userId": "6a294ed73452e722c987a11c",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-10T11:47:39.401Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE21399191",
+      "userId": "6a294f543452e722c987a1d7",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-10T11:49:44.604Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE63711429",
+      "userId": "6a294fb23452e722c987a26d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-10T11:51:18.054Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE34643497",
+      "userId": "6a2950203452e722c987a31b",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-10T11:53:08.421Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE96430468",
+      "userId": "6a29980e3452e722c987d02f",
+      "status": "active",
+      "createdAt": "2026-06-10T17:09:00.722Z",
+      "ledgerEntries": 6,
+      "ledgerNet": 5050,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5050,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE02570822",
+      "userId": "6a299db53452e722c987d3e0",
+      "status": "active",
+      "createdAt": "2026-06-10T17:24:19.862Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5000,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5000,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE69940524",
+      "userId": "6a2a234c3452e722c9881d78",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T02:54:15.027Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE89293659",
+      "userId": "6a2a63223452e722c988431d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T07:27:00.175Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE84256902",
+      "userId": "6a2a67043452e722c98845f2",
+      "status": "active",
+      "createdAt": "2026-06-11T07:43:10.425Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE60350617",
+      "userId": "6a2a73363452e722c9884d9e",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T08:35:09.623Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE97236010",
+      "userId": "6a2a7daf3452e722c9885514",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T09:19:53.227Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE93334565",
+      "userId": "6a2a81cc3452e722c98858b5",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T09:37:52.918Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE20855019",
+      "userId": "6a29a6323452e722c987d9ef",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T10:20:30.755Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE58452347",
+      "userId": "6a2a8c983452e722c988620a",
+      "status": "active",
+      "createdAt": "2026-06-11T10:23:31.723Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 5200,
+      "creditedEvents": 3,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE19356174",
+      "userId": "6a2a946a3452e722c9886b09",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T10:56:49.071Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE82486879",
+      "userId": "6a2a96723452e722c9886dac",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T11:05:27.682Z",
+      "ledgerEntries": 9,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE99992748",
+      "userId": "6a2aab6f096a1573c50b98d5",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T12:35:04.738Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE03862753",
+      "userId": "6a2aa1c6096a1573c50b923e",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T12:37:02.709Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE45086618",
+      "userId": "6a2aad1c096a1573c50b9acb",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T12:42:08.547Z",
+      "ledgerEntries": 6,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE59127268",
+      "userId": "6a2ab392096a1573c50b9fb7",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T13:09:42.231Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE86760197",
+      "userId": "6a2ab460096a1573c50ba0c4",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T13:13:07.736Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE94131224",
+      "userId": "6a2ab5f1096a1573c50ba276",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T13:19:49.409Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE44076576",
+      "userId": "6a2ab70f096a1573c50ba42f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T13:24:35.756Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE20509912",
+      "userId": "6a2abc3a096a1573c50ba913",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T13:46:39.580Z",
+      "ledgerEntries": 5,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE08173898",
+      "userId": "6a2abc73096a1573c50ba983",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T13:47:36.461Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE58595851",
+      "userId": "6a2abcab096a1573c50ba9eb",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T13:48:32.299Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE43121024",
+      "userId": "6a2abcfa096a1573c50baa5f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T13:49:51.387Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE03177385",
+      "userId": "6a2af1c3096a1573c50bca18",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T17:35:04.251Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE35611797",
+      "userId": "6a2af298096a1573c50bcadb",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T17:38:37.944Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE66802676",
+      "userId": "6a2af36f096a1573c50bcb95",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T17:42:12.216Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE93737627",
+      "userId": "6a2af3c5096a1573c50bcc0e",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T17:43:37.355Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE30007117",
+      "userId": "6a2af404096a1573c50bcc89",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T17:44:40.615Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE10884184",
+      "userId": "6a2af462096a1573c50bcd5b",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T17:46:15.305Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE85375390",
+      "userId": "6a2af4a3096a1573c50bcdc9",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T17:47:19.550Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE57261790",
+      "userId": "6a2af4e6096a1573c50bce4c",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T17:48:26.510Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE82167614",
+      "userId": "6a2af520096a1573c50bcecb",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T17:49:24.773Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE98217516",
+      "userId": "6a2af563096a1573c50bcf4e",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T17:50:31.664Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE25401670",
+      "userId": "6a2af5f2096a1573c50bd038",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T17:52:54.125Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE60263197",
+      "userId": "6a2af77e096a1573c50bd160",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T17:59:30.458Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE16709966",
+      "userId": "6a2af7f8096a1573c50bd1e9",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T18:01:33.346Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE69328016",
+      "userId": "6a2af8ae096a1573c50bd2e7",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T18:04:34.684Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE40096913",
+      "userId": "6a2af90f096a1573c50bd363",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T18:06:11.239Z",
+      "ledgerEntries": 8,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE76315765",
+      "userId": "6a2af974096a1573c50bd3e3",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T18:07:52.300Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE90094097",
+      "userId": "6a2afa26096a1573c50bd490",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T18:10:50.483Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE39205755",
+      "userId": "6a2b0004096a1573c50bd9d9",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T18:35:52.457Z",
+      "ledgerEntries": 16,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE09169785",
+      "userId": "6a2b01f7096a1573c50bdbc3",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-11T18:44:25.594Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE26406447",
+      "userId": "6a2ba3cf096a1573c50c3577",
+      "status": "active",
+      "createdAt": "2026-06-12T06:14:47.643Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE43485048",
+      "userId": "6a2bb102096a1573c50c40d9",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T07:11:28.931Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE10762512",
+      "userId": "6a2bc0acf3d52b37207c39e3",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T08:18:26.345Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE63927699",
+      "userId": "6a2bc714f3d52b37207c3fb8",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T08:45:15.640Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE37090528",
+      "userId": "6a2bc7bff3d52b37207c415d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T08:48:05.767Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE98355385",
+      "userId": "6a2bc989f3d52b37207c43c0",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T08:58:03.283Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE26004796",
+      "userId": "6a2bcb1ef3d52b37207c4584",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T09:02:29.877Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE26221774",
+      "userId": "6a2bcbe7f3d52b37207c469d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T09:05:52.898Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE77622609",
+      "userId": "6a2be3d217d60299ddb9e9e7",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T10:47:58.103Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE72567210",
+      "userId": "6a2be7c217d60299ddb9ef5f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T11:05:12.418Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE14407570",
+      "userId": "6a2beaac17d60299ddb9f598",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T11:17:10.113Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE77508596",
+      "userId": "6a2bff8a17d60299ddba160c",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T12:46:23.637Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE68312667",
+      "userId": "6a2c010117d60299ddba18de",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T12:52:25.644Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE55916298",
+      "userId": "6a2c021917d60299ddba1a91",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T12:57:04.940Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE27816404",
+      "userId": "6a2c607612995cd67aaf6a39",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-12T19:45:04.884Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE36878139",
+      "userId": "6a2d1d3412995cd67aaff49f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-13T09:05:00.870Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE94559932",
+      "userId": "6a2d1d4612995cd67aaff4f9",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-13T09:21:16.679Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE37193827",
+      "userId": "6a2d261912995cd67ab000be",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-13T09:43:36.157Z",
+      "ledgerEntries": 5,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE78532524",
+      "userId": "6a2d3c9e12995cd67ab01964",
+      "status": "active",
+      "createdAt": "2026-06-13T11:21:09.590Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE45608814",
+      "userId": "6a2d3f2412995cd67ab01b85",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-13T11:29:53.462Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE96677297",
+      "userId": "6a2d4e3b12995cd67ab03cd5",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-13T12:34:11.074Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE83266379",
+      "userId": "6a2d530a12995cd67ab04590",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-13T12:54:49.608Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE02949199",
+      "userId": "6a2d65ce0e129c1ec55776f1",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-13T14:15:27.588Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE87535957",
+      "userId": "6a2e517c0e129c1ec557fc51",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T07:00:17.384Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE89080124",
+      "userId": "6a2e51eb0e129c1ec557fce2",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T07:02:07.948Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE42499048",
+      "userId": "6a2e52410e129c1ec557fd62",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T07:03:34.014Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE28389818",
+      "userId": "6a2e52dc0e129c1ec557fdff",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T07:06:08.993Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE43041828",
+      "userId": "6a2e536b0e129c1ec557fe97",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T07:08:31.445Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE34433205",
+      "userId": "6a2e53f20e129c1ec557ff2e",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T07:10:46.752Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE61509049",
+      "userId": "6a2da4030e129c1ec55799b5",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T07:18:56.782Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE73492734",
+      "userId": "6a2e5afb0e129c1ec558043f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T07:40:47.919Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE31664406",
+      "userId": "6a2e71530e129c1ec55814a9",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T09:16:10.871Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE57703935",
+      "userId": "6a2e72220e129c1ec5581581",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T09:19:36.540Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE30628118",
+      "userId": "6a2e726a0e129c1ec55815fb",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T09:20:48.489Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE21404407",
+      "userId": "6a2e72aa0e129c1ec5581666",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T09:21:52.383Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE05820010",
+      "userId": "6a2ebe720e129c1ec55842a2",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T14:46:12.095Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE07002949",
+      "userId": "6a2ec0e50e129c1ec5584461",
+      "status": "active",
+      "createdAt": "2026-06-14T14:55:41.114Z",
+      "ledgerEntries": 12,
+      "ledgerNet": 1100,
+      "creditedEvents": 12,
+      "wallet": {
+        "earnings": 600,
+        "shopping": 500,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE07701094",
+      "userId": "6a2ec5fc0e129c1ec5584878",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T15:17:41.291Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE29074464",
+      "userId": "6a2ec7cb0e129c1ec55849ea",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T15:25:07.553Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE44380604",
+      "userId": "6a2ec24d0e129c1ec55845a2",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-14T16:42:47.791Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE89739805",
+      "userId": "6a2f99a80e129c1ec558cb77",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-15T06:20:59.874Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE93091329",
+      "userId": "6a2fb0400e129c1ec558ecf4",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-15T07:56:54.278Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE36265908",
+      "userId": "6a3034e209873d769b42d7c5",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-15T17:22:58.207Z",
+      "ledgerEntries": 10,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE14425058",
+      "userId": "6a30bda009873d769b432442",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T03:06:15.587Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE78784137",
+      "userId": "6a30c60309873d769b4329f6",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T03:42:02.535Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE92126839",
+      "userId": "6a3104ba09873d769b437a0f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T08:09:36.893Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE96830589",
+      "userId": "6a31085a09873d769b438041",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T08:25:03.990Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE57783805",
+      "userId": "6a310a5909873d769b438314",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T08:33:35.326Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE78351157",
+      "userId": "6a310ecd09873d769b438a1c",
+      "status": "active",
+      "createdAt": "2026-06-16T08:52:35.186Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE02341289",
+      "userId": "6a31174809873d769b4398e1",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T09:34:44.776Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE92592488",
+      "userId": "6a311aa809873d769b439de6",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T09:43:17.414Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE29654518",
+      "userId": "6a31202209873d769b43a497",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T10:06:31.225Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE23236810",
+      "userId": "6a31205f09873d769b43a50b",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T10:07:31.667Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE22929916",
+      "userId": "6a3122a209873d769b43a75b",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T10:17:52.836Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE66965768",
+      "userId": "6a30e6a709873d769b434d9d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T11:09:35.486Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE66680316",
+      "userId": "6a31322709873d769b43c2e4",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T11:23:25.147Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE16555183",
+      "userId": "6a31330e09873d769b43c4c2",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T11:27:16.747Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE44877810",
+      "userId": "6a3147a009873d769b43decd",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T12:55:07.979Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE52044988",
+      "userId": "6a31495709873d769b43e180",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T13:02:21.758Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE69750480",
+      "userId": "6a314bf109873d769b43e454",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T13:13:52.633Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 50,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 50,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE83968420",
+      "userId": "6a314d5509873d769b43e4f9",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T13:19:25.196Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE80241147",
+      "userId": "6a31501509873d769b43e731",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T13:31:09.156Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE61368880",
+      "userId": "6a3150a009873d769b43e7da",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T13:33:31.254Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE25054556",
+      "userId": "6a31582809873d769b43ed4d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T14:05:49.638Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE03533498",
+      "userId": "6a315adc09873d769b43ef93",
+      "status": "active",
+      "createdAt": "2026-06-16T14:17:09.610Z",
+      "ledgerEntries": 11,
+      "ledgerNet": 5500,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 200,
+        "shopping": 5300,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE04413726",
+      "userId": "6a31591709873d769b43ee45",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T14:28:40.823Z",
+      "ledgerEntries": 5,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE39654875",
+      "userId": "6a31622809873d769b43f564",
+      "status": "active",
+      "createdAt": "2026-06-16T14:48:17.799Z",
+      "ledgerEntries": 5,
+      "ledgerNet": 5250,
+      "creditedEvents": 4,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5250,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE38588236",
+      "userId": "6a3163b209873d769b43f6ac",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T14:54:51.280Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE25453033",
+      "userId": "6a316a7009873d769b43fc1e",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T15:23:39.831Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE26049572",
+      "userId": "6a316cf609873d769b43fe65",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T15:34:24.579Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE07034811",
+      "userId": "6a316db609873d769b43ff45",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-16T15:37:34.289Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE07295833",
+      "userId": "6a322248f222fbbb21ce479c",
+      "status": "active",
+      "createdAt": "2026-06-17T04:27:59.574Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5000,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5000,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE47021687",
+      "userId": "6a3222b8f222fbbb21ce4837",
+      "status": "active",
+      "createdAt": "2026-06-17T04:29:51.169Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 5000,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5000,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE65389543",
+      "userId": "6a325add0f6aad51d36d1737",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-17T08:30:28.889Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE76018546",
+      "userId": "6a326a275d90c62d6f7fab55",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-17T09:34:41.627Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE79103213",
+      "userId": "6a326b7b5d90c62d6f7fad7a",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-17T09:40:48.896Z",
+      "ledgerEntries": 5,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE32092557",
+      "userId": "6a326f545d90c62d6f7fb191",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-17T09:56:36.827Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE41829395",
+      "userId": "6a328a8e5d90c62d6f7fcd39",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-17T11:52:46.058Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE62986840",
+      "userId": "6a2ed8310e129c1ec55854db",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-17T12:55:46.686Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE14555789",
+      "userId": "6a32a7215d90c62d6f7fe227",
+      "status": "active",
+      "createdAt": "2026-06-17T13:54:49.651Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 250,
+      "creditedEvents": 4,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 250,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE80627828",
+      "userId": "6a325ac10f6aad51d36d169f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-17T14:29:04.263Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE74035856",
+      "userId": "6a3385565d90c62d6f806278",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T05:43:13.406Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE50743555",
+      "userId": "6a338e325d90c62d6f80695c",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T06:20:43.368Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE54744933",
+      "userId": "6a338ee65d90c62d6f806a43",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T06:23:46.681Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE35012554",
+      "userId": "6a33a5115d90c62d6f8079bf",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T07:58:22.669Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE46064985",
+      "userId": "6a33c0835d90c62d6f808c35",
+      "status": "active",
+      "createdAt": "2026-06-18T09:55:33.121Z",
+      "ledgerEntries": 23,
+      "ledgerNet": 6150,
+      "creditedEvents": 22,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 6150,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE24247741",
+      "userId": "6a33c33c5d90c62d6f808e06",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T10:07:00.334Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE06985559",
+      "userId": "6a326b365d90c62d6f7fad3c",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T10:14:09.044Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE87522357",
+      "userId": "6a33c75d5d90c62d6f809160",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T10:24:34.999Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE12072709",
+      "userId": "6a334eaa5d90c62d6f804392",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T12:16:23.448Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE36206215",
+      "userId": "6a33ea62b172125887f389c4",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T12:53:54.076Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE82201602",
+      "userId": "6a33b5945d90c62d6f8084d8",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T13:05:26.269Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE05048806",
+      "userId": "6a33f237b172125887f38ffe",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T13:27:19.372Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE46631000",
+      "userId": "6a33f2f1b172125887f3908d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T13:30:25.620Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE34239953",
+      "userId": "6a33ffe9b172125887f3994f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T14:27:13.657Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE08783791",
+      "userId": "6a34015ab172125887f39ac9",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T14:32:02.590Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE53421327",
+      "userId": "6a3401e0b172125887f39b65",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T14:34:08.624Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE55572759",
+      "userId": "6a34368cb172125887f3bc3f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-18T18:19:07.481Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE27110664",
+      "userId": "6a34bda9b172125887f40680",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-19T03:55:29.434Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE40859801",
+      "userId": "6a34d27cb172125887f41382",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-19T05:24:24.922Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE14764162",
+      "userId": "6a34d329b172125887f41428",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-19T05:27:14.236Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE84232666",
+      "userId": "6a34e65e658cbbd89a7f9f34",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-19T06:49:13.219Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE32498104",
+      "userId": "6a34e68d658cbbd89a7f9f94",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-19T06:50:03.098Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE75369933",
+      "userId": "6a35245d016587f48dde7153",
+      "status": "active",
+      "createdAt": "2026-06-19T11:13:42.055Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE16962730",
+      "userId": "6a35532f0d3a77d39fd71476",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-19T14:33:25.660Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE86347321",
+      "userId": "6a3555ae0d3a77d39fd7167f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-19T14:44:05.879Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE29415505",
+      "userId": "6a3557170d3a77d39fd717bc",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-19T14:50:29.176Z",
+      "ledgerEntries": 3,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE75555287",
+      "userId": "6a3562440d3a77d39fd72076",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-19T15:37:51.522Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE33605198",
+      "userId": "6a2f7fe40e129c1ec558b193",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-19T18:43:40.860Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE33530909",
+      "userId": "6a361655dfce50e68620c7a5",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-20T04:26:19.656Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE67122506",
+      "userId": "6a3634c1de4178940d0c5c43",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-20T06:35:56.725Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE29329684",
+      "userId": "6a364b67f80be3f9b619b843",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-20T08:12:35.617Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE44268678",
+      "userId": "6a36565bf80be3f9b619c140",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-20T08:59:40.767Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE90392508",
+      "userId": "6a366cabfb8a533ccb5c9043",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-20T10:34:35.027Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE68745297",
+      "userId": "6a368d9054c25ab80faf7edb",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-20T12:54:48.838Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE96876541",
+      "userId": "6a369655972f46875c2aed64",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-20T13:32:10.934Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE34180384",
+      "userId": "6a36b447ac43430b437ce5e1",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-20T15:40:00.869Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE26216651",
+      "userId": "6a36bfb4ac43430b437ced59",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-20T16:33:24.958Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE04875352",
+      "userId": "6a3786aeac43430b437d6af0",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-21T06:37:51.542Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE23454311",
+      "userId": "6a379b14ac43430b437d8390",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-21T08:04:43.679Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE23726992",
+      "userId": "6a379c32ac43430b437d8512",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-21T08:09:30.799Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE86379125",
+      "userId": "6a37aca43279f33169f929c0",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-21T09:19:47.912Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE50998345",
+      "userId": "6a37eb333279f33169f95a0d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-21T13:46:37.032Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE05682411",
+      "userId": "6a3809803279f33169f96d66",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-21T15:57:01.795Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE50403813",
+      "userId": "6a380dec3279f33169f9705c",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-21T16:14:43.650Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE63069513",
+      "userId": "6a38becb3279f33169f9d4f1",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-22T04:54:22.059Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE05927779",
+      "userId": "6a38c3143279f33169f9d871",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-22T05:07:46.701Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE27378746",
+      "userId": "6a38d97c3279f33169f9ea75",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-22T06:48:06.354Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE31401846",
+      "userId": "6a38dcc73279f33169f9eda5",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-22T06:57:28.057Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE97638903",
+      "userId": "6a38f38e3279f33169f9fd81",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-22T08:34:30.847Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE02135773",
+      "userId": "6a3901f63279f33169fa0b5d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-22T09:35:57.545Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE22617401",
+      "userId": "6a2acfdf096a1573c50bb649",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-23T06:44:47.058Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE96344418",
+      "userId": "6a3ab98fea19e348531f7117",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-23T17:40:13.247Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE90843497",
+      "userId": "6a3b8f7cea19e348531feb7c",
+      "status": "active",
+      "createdAt": "2026-06-24T08:04:22.031Z",
+      "ledgerEntries": 14,
+      "ledgerNet": 7200,
+      "creditedEvents": 13,
+      "wallet": {
+        "earnings": 2000,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE60897118",
+      "userId": "6a3b8fa7ea19e348531febdf",
+      "status": "active",
+      "createdAt": "2026-06-24T08:05:04.042Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE70437998",
+      "userId": "6a3b8fd2ea19e348531fec45",
+      "status": "active",
+      "createdAt": "2026-06-24T08:05:47.947Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE58888223",
+      "userId": "6a3b9012ea19e348531fed34",
+      "status": "active",
+      "createdAt": "2026-06-24T08:06:51.290Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE79699573",
+      "userId": "6a3b9b61ea19e348531ff6a4",
+      "status": "active",
+      "createdAt": "2026-06-24T08:55:19.086Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 5350,
+      "creditedEvents": 3,
+      "wallet": {
+        "earnings": 200,
+        "shopping": 5150,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE77217907",
+      "userId": "6a3ba0a2ea19e348531ffbc5",
+      "status": "active",
+      "createdAt": "2026-06-24T09:17:33.216Z",
+      "ledgerEntries": 21,
+      "ledgerNet": 8150,
+      "creditedEvents": 20,
+      "wallet": {
+        "earnings": 2650,
+        "shopping": 5500,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE11914188",
+      "userId": "6a3ba126ea19e348531ffcbc",
+      "status": "active",
+      "createdAt": "2026-06-24T09:19:42.796Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 5350,
+      "creditedEvents": 3,
+      "wallet": {
+        "earnings": 200,
+        "shopping": 5150,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE53299638",
+      "userId": "6a3ba161ea19e348531ffd40",
+      "status": "active",
+      "createdAt": "2026-06-24T09:20:41.714Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE93473079",
+      "userId": "6a3ba1dcea19e348531ffe0b",
+      "status": "active",
+      "createdAt": "2026-06-24T09:22:45.702Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 5350,
+      "creditedEvents": 3,
+      "wallet": {
+        "earnings": 200,
+        "shopping": 5150,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE14843561",
+      "userId": "6a3ba21bea19e348531ffe92",
+      "status": "active",
+      "createdAt": "2026-06-24T09:23:47.879Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE00896620",
+      "userId": "6a3ba32aea19e348531fff81",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-24T09:28:28.940Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE73710277",
+      "userId": "6a3baecdea19e348532006c7",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-24T10:18:07.239Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE89886366",
+      "userId": "6a3bb579ea19e34853200d56",
+      "status": "active",
+      "createdAt": "2026-06-24T10:46:30.004Z",
+      "ledgerEntries": 4,
+      "ledgerNet": 5350,
+      "creditedEvents": 3,
+      "wallet": {
+        "earnings": 200,
+        "shopping": 5150,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE06573140",
+      "userId": "6a3bb692ea19e34853200e9c",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-24T10:51:10.580Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE34938971",
+      "userId": "6a3bbaebea19e348532014c9",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-24T11:09:41.916Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE51699831",
+      "userId": "6a3bbdc5ea19e3485320189c",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-24T11:21:52.437Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE87258142",
+      "userId": "6a3bc369ea19e34853201e1d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-24T11:45:55.497Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE81373207",
+      "userId": "6a3bc9d1ea19e348532022bb",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-24T12:13:14.778Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE97489477",
+      "userId": "6a3bd4d5ea19e34853202a47",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-24T13:00:16.001Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE39155294",
+      "userId": "6a3bd9ddea19e34853202d5b",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-24T13:21:52.233Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE77243740",
+      "userId": "6a3bdc2079d2f58fb213580f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-24T13:31:27.166Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE40595457",
+      "userId": "6a3c0f4b8f833dda577f751c",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-24T17:09:42.849Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE98346122",
+      "userId": "6a3c177e8f833dda577f7c7b",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-24T17:44:36.055Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE11887366",
+      "userId": "6a3d05c28f833dda578006a0",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-25T10:41:19.707Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE24522964",
+      "userId": "6a3d165d8f833dda57801057",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-25T11:52:10.009Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE66233282",
+      "userId": "6a3d18db8f833dda578011fc",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-25T12:02:45.133Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE86898606",
+      "userId": "6a3d1b558f833dda5780139f",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-25T12:13:36.809Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE88649575",
+      "userId": "6a3d1e418f833dda5780159c",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-25T12:25:47.488Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE65743258",
+      "userId": "6a3d43838f833dda57802b09",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-25T15:04:42.618Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE51665611",
+      "userId": "6a3e35118f833dda5780b4b6",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-26T08:15:21.994Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE01804974",
+      "userId": "6a3e394d8f833dda5780b8d2",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-26T08:33:25.110Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE54002733",
+      "userId": "6a3e3dd78f833dda5780bba7",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-26T08:52:49.103Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE98980905",
+      "userId": "6a3e41898f833dda5780bebf",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-26T09:08:39.927Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE03551096",
+      "userId": "6a3e47f18f833dda5780c36a",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-26T09:35:52.000Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE48998784",
+      "userId": "6a3e4a158f833dda5780c597",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-26T09:45:03.376Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE13549063",
+      "userId": "6a3e8d228f833dda5780edcf",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-26T14:31:06.627Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE27253578",
+      "userId": "6a3f93b7aa8c4ea025605102",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-27T09:11:45.188Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE81458679",
+      "userId": "6a3f98b7aa8c4ea0256054a4",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-27T09:32:50.326Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE48475725",
+      "userId": "6a40f4104ec1773e5084756a",
+      "status": "active",
+      "createdAt": "2026-06-28T10:14:48.804Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE52442260",
+      "userId": "6a40f4934ec1773e5084763b",
+      "status": "active",
+      "createdAt": "2026-06-28T10:16:59.853Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE84584137",
+      "userId": "6a40f4e44ec1773e508476cb",
+      "status": "active",
+      "createdAt": "2026-06-28T10:18:20.093Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE00581684",
+      "userId": "6a40f50e4ec1773e50847745",
+      "status": "active",
+      "createdAt": "2026-06-28T10:19:02.625Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE53505191",
+      "userId": "6a40f5824ec1773e508477f8",
+      "status": "active",
+      "createdAt": "2026-06-28T10:20:58.164Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE67616536",
+      "userId": "6a40f6d84ec1773e5084797a",
+      "status": "active",
+      "createdAt": "2026-06-28T10:26:40.383Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE83686013",
+      "userId": "6a40f88c4ec1773e50847c4b",
+      "status": "active",
+      "createdAt": "2026-06-28T10:33:56.256Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE36986880",
+      "userId": "6a40fb514ec1773e50848230",
+      "status": "active",
+      "createdAt": "2026-06-28T10:45:45.554Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE41908698",
+      "userId": "6a40fcb24ec1773e50848593",
+      "status": "active",
+      "createdAt": "2026-06-28T10:51:38.163Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 5800,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 600,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE73351203",
+      "userId": "6a4117834ec1773e50849818",
+      "status": "active",
+      "createdAt": "2026-06-28T12:46:03.338Z",
+      "ledgerEntries": 13,
+      "ledgerNet": 7000,
+      "creditedEvents": 12,
+      "wallet": {
+        "earnings": 1800,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE41056582",
+      "userId": "6a4117b34ec1773e50849895",
+      "status": "active",
+      "createdAt": "2026-06-28T12:46:51.301Z",
+      "ledgerEntries": 9,
+      "ledgerNet": 6200,
+      "creditedEvents": 8,
+      "wallet": {
+        "earnings": 1000,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE83672173",
+      "userId": "6a4117ef4ec1773e5084992c",
+      "status": "active",
+      "createdAt": "2026-06-28T12:47:52.058Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE63401275",
+      "userId": "6a4118144ec1773e508499a7",
+      "status": "active",
+      "createdAt": "2026-06-28T12:48:27.700Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE41298119",
+      "userId": "6a4118724ec1773e50849a3a",
+      "status": "active",
+      "createdAt": "2026-06-28T12:50:02.150Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE51769363",
+      "userId": "6a4128664ec1773e5084a99c",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-28T13:58:11.209Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE14716789",
+      "userId": "6a433ccee1b12b6ebaa410b5",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-30T03:57:46.768Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE15762609",
+      "userId": "6a436f3de1b12b6ebaa43380",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-30T07:24:45.780Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE47434473",
+      "userId": "6a3fb5c0aa8c4ea025606ea3",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-30T10:32:30.996Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE88390712",
+      "userId": "6a44e6b8d7437e536db3a1e3",
+      "status": "registered_unpaid",
+      "createdAt": "2026-07-01T10:14:24.810Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE30198833",
+      "userId": "6a453f7bd7437e536db3e008",
+      "status": "registered_unpaid",
+      "createdAt": "2026-07-01T16:25:47.022Z",
+      "ledgerEntries": 1,
+      "ledgerNet": 100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE77307729",
+      "userId": "6a460ab8d7437e536db45f03",
+      "status": "active",
+      "createdAt": "2026-07-02T06:52:48.991Z",
+      "ledgerEntries": 8,
+      "ledgerNet": 6000,
+      "creditedEvents": 7,
+      "wallet": {
+        "earnings": 800,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE28253881",
+      "userId": "6a460ae9d7437e536db45fdb",
+      "status": "active",
+      "createdAt": "2026-07-02T06:53:38.156Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE46286141",
+      "userId": "6a460b9fd7437e536db46388",
+      "status": "active",
+      "createdAt": "2026-07-02T06:56:39.233Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 5800,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 600,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE49214086",
+      "userId": "6a460bccd7437e536db46423",
+      "status": "active",
+      "createdAt": "2026-07-02T06:57:24.413Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 5800,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 600,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE13294987",
+      "userId": "6a461232d7437e536db46daa",
+      "status": "active",
+      "createdAt": "2026-07-02T07:24:41.399Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 5800,
+      "creditedEvents": 6,
+      "wallet": {
+        "earnings": 600,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE63311968",
+      "userId": "6a46125bd7437e536db46e45",
+      "status": "active",
+      "createdAt": "2026-07-02T07:25:22.854Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE75002698",
+      "userId": "6a461c31ce879100a221f56b",
+      "status": "active",
+      "createdAt": "2026-07-02T08:07:13.055Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE63494817",
+      "userId": "6a461c7cce879100a221f5cb",
+      "status": "active",
+      "createdAt": "2026-07-02T08:08:28.464Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE13565881",
+      "userId": "6a461ca4ce879100a221f61a",
+      "status": "active",
+      "createdAt": "2026-07-02T08:09:08.070Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE31044992",
+      "userId": "6a461cc4ce879100a221f65e",
+      "status": "active",
+      "createdAt": "2026-07-02T08:09:40.167Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE67979410",
+      "userId": "6a4623cdce879100a22205be",
+      "status": "active",
+      "createdAt": "2026-07-02T08:39:48.575Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE63036687",
+      "userId": "6a462458ce879100a2220689",
+      "status": "active",
+      "createdAt": "2026-07-02T08:42:08.249Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE47548328",
+      "userId": "6a46286cce879100a2220d3c",
+      "status": "active",
+      "createdAt": "2026-07-02T08:59:31.627Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE09365585",
+      "userId": "6a462898ce879100a2220dc0",
+      "status": "active",
+      "createdAt": "2026-07-02T09:00:19.631Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE46288233",
+      "userId": "6a462f50ce879100a2221c24",
+      "status": "active",
+      "createdAt": "2026-07-02T09:29:24.668Z",
+      "ledgerEntries": 2,
+      "ledgerNet": 5100,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    }
+  ],
+  "MIXED": [
+    {
+      "referralCode": "SE6A7787QN",
+      "userId": "6a2539dc2a7ae5383dc00165",
+      "status": "active",
+      "createdAt": "2026-06-07T09:29:11.084Z",
+      "ledgerEntries": 41,
+      "ledgerNet": 9200,
+      "creditedEvents": 18,
+      "wallet": {
+        "earnings": 8850,
+        "shopping": 5150,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 4800
+    },
+    {
+      "referralCode": "SEJC7RDHX5",
+      "userId": "6a23e42ede26b57cc5e8f340",
+      "status": "active",
+      "createdAt": "2026-06-06T09:11:14.543Z",
+      "ledgerEntries": 27,
+      "ledgerNet": 9650,
+      "creditedEvents": 26,
+      "wallet": {
+        "earnings": 8050,
+        "shopping": 5600,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 4000
+    },
+    {
+      "referralCode": "SE6GEE23H8",
+      "userId": "6a2290d54931c0271e9ec3ed",
+      "status": "active",
+      "createdAt": "2026-06-05T09:03:21.896Z",
+      "ledgerEntries": 21,
+      "ledgerNet": 8700,
+      "creditedEvents": 20,
+      "wallet": {
+        "earnings": 6450,
+        "shopping": 5450,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 3200
+    },
+    {
+      "referralCode": "SE4TXR5A7V",
+      "userId": "6a228ef14931c0271e9ec219",
+      "status": "active",
+      "createdAt": "2026-06-05T08:55:21.481Z",
+      "ledgerEntries": 28,
+      "ledgerNet": 11500,
+      "creditedEvents": 27,
+      "wallet": {
+        "earnings": 8450,
+        "shopping": 5450,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 2400
+    },
+    {
+      "referralCode": "SEUHTFTX5K",
+      "userId": "6a226e054931c0271e9e9e67",
+      "status": "active",
+      "createdAt": "2026-06-05T06:34:49.809Z",
+      "ledgerEntries": 77,
+      "ledgerNet": 35350,
+      "creditedEvents": 57,
+      "wallet": {
+        "earnings": 30900,
+        "shopping": 5450,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 1000
+    },
+    {
+      "referralCode": "SEUJMP3M85",
+      "userId": "6a2280b34931c0271e9eb53d",
+      "status": "active",
+      "createdAt": "2026-06-05T07:54:32.097Z",
+      "ledgerEntries": 40,
+      "ledgerNet": 9550,
+      "creditedEvents": 39,
+      "wallet": {
+        "earnings": 4000,
+        "shopping": 6150,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 600
+    },
+    {
+      "referralCode": "SE41171865",
+      "userId": "6a2a62de3452e722c988426f",
+      "status": "active",
+      "createdAt": "2026-06-11T07:25:23.560Z",
+      "ledgerEntries": 15,
+      "ledgerNet": 7000,
+      "creditedEvents": 11,
+      "wallet": {
+        "earnings": 1050,
+        "shopping": 5350,
+        "pending": 0
+      },
+      "walletVsLedgerGap": -600
+    },
+    {
+      "referralCode": "SE17902084",
+      "userId": "6a2d3fb012995cd67ab01c79",
+      "status": "active",
+      "createdAt": "2026-06-13T11:32:04.403Z",
+      "ledgerEntries": 28,
+      "ledgerNet": 8400,
+      "creditedEvents": 26,
+      "wallet": {
+        "earnings": 2100,
+        "shopping": 5900,
+        "pending": 0
+      },
+      "walletVsLedgerGap": -400
+    },
+    {
+      "referralCode": "SE12169918",
+      "userId": "6a3b8f4cea19e348531feaff",
+      "status": "active",
+      "createdAt": "2026-06-24T08:03:30.118Z",
+      "ledgerEntries": 30,
+      "ledgerNet": 12300,
+      "creditedEvents": 29,
+      "wallet": {
+        "earnings": 7200,
+        "shopping": 5450,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 350
+    },
+    {
+      "referralCode": "SEXC4HJTEX",
+      "userId": "6a1ee14717db6b876bfb6941",
+      "status": "active",
+      "createdAt": "2026-06-02T13:58:20.957Z",
+      "ledgerEntries": 23,
+      "ledgerNet": 13650,
+      "creditedEvents": 21,
+      "wallet": {
+        "earnings": 3650,
+        "shopping": 10250,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 250
+    },
+    {
+      "referralCode": "SE3FX978WM",
+      "userId": "6a2274784931c0271e9ea44d",
+      "status": "active",
+      "createdAt": "2026-06-05T07:02:21.357Z",
+      "ledgerEntries": 19,
+      "ledgerNet": 8200,
+      "creditedEvents": 18,
+      "wallet": {
+        "earnings": 3200,
+        "shopping": 5200,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 200
+    },
+    {
+      "referralCode": "SEQ8H8W36Y",
+      "userId": "6a23e583de26b57cc5e8f4d3",
+      "status": "active",
+      "createdAt": "2026-06-06T09:16:55.704Z",
+      "ledgerEntries": 5,
+      "ledgerNet": 5550,
+      "creditedEvents": 3,
+      "wallet": {
+        "earnings": 200,
+        "shopping": 5150,
+        "pending": 0
+      },
+      "walletVsLedgerGap": -200
+    },
+    {
+      "referralCode": "SE12063631",
+      "userId": "6a2a8b8f3452e722c988603c",
+      "status": "active",
+      "createdAt": "2026-06-11T10:19:01.430Z",
+      "ledgerEntries": 16,
+      "ledgerNet": 6000,
+      "creditedEvents": 12,
+      "wallet": {
+        "earnings": 200,
+        "shopping": 5600,
+        "pending": 0
+      },
+      "walletVsLedgerGap": -200
+    },
+    {
+      "referralCode": "SE54146233",
+      "userId": "6a2ec3b30e129c1ec5584679",
+      "status": "active",
+      "createdAt": "2026-06-14T15:07:53.582Z",
+      "ledgerEntries": 7,
+      "ledgerNet": 5650,
+      "creditedEvents": 5,
+      "wallet": {
+        "earnings": 200,
+        "shopping": 5250,
+        "pending": 0
+      },
+      "walletVsLedgerGap": -200
+    },
+    {
+      "referralCode": "SE90994515",
+      "userId": "6a2fca2cc960606d7bf5ae5a",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-15T09:47:25.372Z",
+      "ledgerEntries": 11,
+      "ledgerNet": 4900,
+      "creditedEvents": 1,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 5100,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 200
+    }
+  ],
+  "SEEDED": [],
+  "SEEDED_EMPTY": [
+    {
+      "referralCode": "SE62707490",
+      "userId": "6a368a7d54c25ab80faf7b52",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-20T12:41:58.659Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE52470484",
+      "userId": "6a365cb3f80be3f9b619c646",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-21T11:57:31.999Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE83579552",
+      "userId": "6a37f0c53279f33169f95e1a",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-21T14:10:26.991Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE46656240",
+      "userId": "6a37f9833279f33169f9638a",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-21T14:47:40.866Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE39576457",
+      "userId": "6a38e4743279f33169f9f353",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-22T07:30:17.297Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE58416096",
+      "userId": "6a3c18298f833dda577f7d51",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-24T17:47:27.774Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE55199314",
+      "userId": "6a3f9c09aa8c4ea02560576d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-27T09:46:56.297Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE32249687",
+      "userId": "6a401487aa8c4ea02560adb2",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-27T18:21:03.656Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE06287171",
+      "userId": "6a4016adaa8c4ea02560afc4",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-27T18:30:13.410Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE89263941",
+      "userId": "6a40e88c4ec1773e50846774",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-28T09:27:36.873Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE37216046",
+      "userId": "6a41299f4ec1773e5084aa9a",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-28T14:03:21.798Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE78114982",
+      "userId": "6a412a434ec1773e5084ab92",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-28T14:05:59.928Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE91604640",
+      "userId": "6a4217c9e1b12b6ebaa35009",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-29T08:54:01.534Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE62486408",
+      "userId": "6a4233b4e1b12b6ebaa36583",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-29T08:58:57.219Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE91792496",
+      "userId": "6a423716e1b12b6ebaa36b5d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-29T09:13:05.409Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE03239184",
+      "userId": "6a4238f7e1b12b6ebaa36cdd",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-29T09:21:50.673Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE31828388",
+      "userId": "6a424aeae1b12b6ebaa37b00",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-29T10:37:37.236Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE21630374",
+      "userId": "6a424c27e1b12b6ebaa37bf0",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-29T10:42:56.297Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE04905943",
+      "userId": "6a427df1e1b12b6ebaa39fce",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-29T14:15:20.644Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE86344782",
+      "userId": "6a427fe3e1b12b6ebaa3a13e",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-29T14:23:54.287Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE68758662",
+      "userId": "6a4280bce1b12b6ebaa3a20d",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-29T14:27:17.416Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE09411056",
+      "userId": "6a42822be1b12b6ebaa3a498",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-29T14:33:22.597Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE16459121",
+      "userId": "6a43aff0f7157022f3b88c81",
+      "status": "registered_unpaid",
+      "createdAt": "2026-06-30T12:00:48.667Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE15748287",
+      "userId": "6a44aee3f0037b37ffbb4eb0",
+      "status": "registered_unpaid",
+      "createdAt": "2026-07-01T06:08:40.015Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE09746646",
+      "userId": "6a44e8b1d7437e536db3a4ce",
+      "status": "registered_unpaid",
+      "createdAt": "2026-07-01T10:15:32.872Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE34769327",
+      "userId": "6a44ed00d7437e536db3a80a",
+      "status": "registered_unpaid",
+      "createdAt": "2026-07-01T10:33:48.185Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE44967456",
+      "userId": "6a44edabd7437e536db3a8ad",
+      "status": "registered_unpaid",
+      "createdAt": "2026-07-01T10:36:35.658Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE43769073",
+      "userId": "6a44ee62d7437e536db3a954",
+      "status": "registered_unpaid",
+      "createdAt": "2026-07-01T10:39:38.629Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE23727599",
+      "userId": "6a452ce0d7437e536db3d3a2",
+      "status": "registered_unpaid",
+      "createdAt": "2026-07-01T15:06:15.073Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    },
+    {
+      "referralCode": "SE92749392",
+      "userId": "6a45e570d7437e536db43ba1",
+      "status": "registered_unpaid",
+      "createdAt": "2026-07-02T04:13:46.465Z",
+      "ledgerEntries": 0,
+      "ledgerNet": 0,
+      "creditedEvents": 0,
+      "wallet": {
+        "earnings": 0,
+        "shopping": 0,
+        "pending": 0
+      },
+      "walletVsLedgerGap": 0
+    }
+  ]
+}
