@@ -14,17 +14,6 @@ export const adminContentApi = {
     // Public FAQs (for profile pages, etc.)
     getPublicFAQs: (params) => axiosInstance.get('/public/faqs', { params }),
 
-    // Experience Studio / Content Manager
-    getExperienceSections: (params) =>
-        axiosInstance.get('/admin/experience', { params }),
-    createExperienceSection: (data) =>
-        axiosInstance.post('/admin/experience', data),
-    updateExperienceSection: (id, data) =>
-        axiosInstance.put(`/admin/experience/${id}`, data),
-    deleteExperienceSection: (id) =>
-        axiosInstance.delete(`/admin/experience/${id}`),
-    reorderExperienceSections: (items) =>
-        axiosInstance.put('/admin/experience/reorder', { items }),
     uploadExperienceBanner: (formData) =>
         axiosInstance.post('/admin/experience/upload-banner', formData),
 

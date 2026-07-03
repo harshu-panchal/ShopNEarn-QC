@@ -138,9 +138,6 @@ export const customerApi = {
     });
   },
 
-  // Experience sections (home / header pages)
-  getExperienceSections: (params) => getWithDedupe("/experience", params),
-
   // Hero config (separate hero banners + categories per page; fallback to home)
   getHeroConfig: (params) =>
     getWithDedupe("/experience/hero", params, { ttl: 60 * 1000 }),
