@@ -828,3 +828,76 @@ export async function debitCustomerSpendableBuckets({
     ledgerIds,
   };
 }
+
+/**
+ * MLM Phase 1 (checkout tender) — debit a SINGLE named spendable bucket
+ * for a customer. Used by the full-wallet checkout payment options
+ * ("Shopping Wallet" / "Earning Wallet") where the customer explicitly
+ * chooses which bucket funds the ENTIRE order.
+ *
+ * Unlike `debitCustomerSpendableBuckets`, this NEVER cascades across
+ * buckets — if the chosen bucket cannot cover the amount it throws, so a
+ * member paying with the earning wallet can never have their shopping
+ * credit silently drained (and vice-versa). This bucket isolation is the
+ * whole reason the two options are distinct.
+ *
+ * `bucket` must be one of "shopping" | "earnings" | "available".
+ *
+ * Returns { totalDebited, split: {shopping, earnings, available}, ledgerIds }
+ * shaped identically to `debitCustomerSpendableBuckets` so callers that
+ * persist `paymentBreakdown.walletSplit` for refund routing stay uniform.
+ */
+export async function debitCustomerWalletBucket({
+  customerId,
+  bucket,
+  totalAmount,
+  session,
+  ledgerReference,
+  ledgerDescription,
+  idempotencyKey,
+  metadata = null,
+  correlationId = null,
+}) {
+  const requested = assertPositiveAmount(totalAmount);
+  const allowed = ["shopping", "earnings", "available"];
+  if (!allowed.includes(bucket)) {
+    throw new Error(`Invalid wallet bucket: ${bucket}`);
+  }
+
+  const buckets = await getCustomerSpendableBuckets(customerId, { session });
+  const availableInBucket =
+    bucket === "shopping"
+      ? buckets.shoppingBalance
+      : bucket === "earnings"
+        ? buckets.earningsBalance
+        : buckets.availableBalance;
+  if (availableInBucket < requested) {
+    const label = bucket === "earnings" ? "earning" : bucket;
+    throw new Error(`Insufficient ${label} wallet balance`);
+  }
+
+  const result = await debitWallet({
+    ownerType: OWNER_TYPE.CUSTOMER,
+    ownerId: customerId,
+    amount: requested,
+    bucket,
+    session,
+    ledgerType: "WALLET_PAYMENT",
+    ledgerReference: ledgerReference || "",
+    ledgerDescription: ledgerDescription || `${bucket} bucket redeemed at checkout`,
+    idempotencyKey: idempotencyKey || null,
+    metadata: { ...(metadata || {}), bucketDrained: bucket },
+    correlationId,
+    // debitWallet only mirrors User.walletBalance for the "available"
+    // bucket; shopping/earnings never live on the User document.
+  });
+
+  const split = { shopping: 0, earnings: 0, available: 0 };
+  split[bucket] = requested;
+
+  return {
+    totalDebited: requested,
+    split,
+    ledgerIds: result.ledgerEntry?._id ? [result.ledgerEntry._id] : [],
+  };
+}

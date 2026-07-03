@@ -861,33 +861,59 @@ export async function reverseOrderFinanceOnCancellation(
       order.paymentStatus = ORDER_PAYMENT_STATUS.REFUNDED;
     }
 
-    // NEW: Refund Wallet Amount Used
+    // NEW: Refund Wallet Amount Used.
+    //
+    // MLM Phase 1: when the order recorded a per-bucket `walletSplit`
+    // (partial redemption OR a full Shopping/Earning Wallet tender), refund
+    // each bucket back to its SOURCE so shopping credit stays shopping
+    // credit and withdrawable earnings stay withdrawable. Fall back to the
+    // legacy single `available` refund when no split is present.
     const walletUsed = roundCurrency(order.pricing?.walletAmount || order.paymentBreakdown?.walletAmount || 0);
     if (walletUsed > 0) {
-      await creditWallet({
-        ownerType: OWNER_TYPE.CUSTOMER,
-        ownerId: order.customer,
-        amount: walletUsed,
-        bucket: "available",
-        session,
-      });
+      const split = order.paymentBreakdown?.walletSplit || null;
+      const splitSum = split
+        ? roundCurrency(
+            (split.shopping || 0) + (split.earnings || 0) + (split.available || 0),
+          )
+        : 0;
+      const refundByBucket =
+        split && splitSum > 0
+          ? {
+              shopping: roundCurrency(split.shopping || 0),
+              earnings: roundCurrency(split.earnings || 0),
+              available: roundCurrency(split.available || 0),
+            }
+          : { shopping: 0, earnings: 0, available: walletUsed };
 
       const customerWallet = await getOrCreateWallet(OWNER_TYPE.CUSTOMER, order.customer, { session });
-      await createLedgerEntry(
-        {
-          orderId: order._id,
-          walletId: customerWallet._id,
-          actorType: OWNER_TYPE.CUSTOMER,
-          actorId: order.customer,
-          type: LEDGER_TRANSACTION_TYPE.WALLET_REFUND,
-          direction: LEDGER_DIRECTION.CREDIT,
-          amount: walletUsed,
-          paymentMode: "WALLET",
-          description: `Refund for wallet payment: ${reason}`,
-          reference: order.orderId,
-        },
-        { session },
-      );
+      for (const bucket of ["shopping", "earnings", "available"]) {
+        const amount = roundCurrency(refundByBucket[bucket] || 0);
+        if (amount <= 0) continue;
+        await creditWallet({
+          ownerType: OWNER_TYPE.CUSTOMER,
+          ownerId: order.customer,
+          amount,
+          bucket,
+          session,
+          // Only the `available` bucket mirrors to User.walletBalance;
+          // creditWallet already guards this by bucket.
+        });
+        await createLedgerEntry(
+          {
+            orderId: order._id,
+            walletId: customerWallet._id,
+            actorType: OWNER_TYPE.CUSTOMER,
+            actorId: order.customer,
+            type: LEDGER_TRANSACTION_TYPE.WALLET_REFUND,
+            direction: LEDGER_DIRECTION.CREDIT,
+            amount,
+            paymentMode: "WALLET",
+            description: `Refund for wallet payment (${bucket}): ${reason}`,
+            reference: order.orderId,
+          },
+          { session },
+        );
+      }
     }
 
     order.settlementStatus = {

@@ -7,6 +7,7 @@ import Transaction from "../models/transaction.js";
 import Coupon from "../models/coupon.js";
 import { WORKFLOW_STATUS, DEFAULT_SELLER_TIMEOUT_MS } from "../constants/orderWorkflow.js";
 import {
+  LEDGER_DIRECTION,
   LEDGER_TRANSACTION_TYPE,
   ORDER_PAYMENT_STATUS,
   OWNER_TYPE,
@@ -19,10 +20,12 @@ import {
   creditWallet,
   debitWallet,
   debitCustomerSpendableBuckets,
+  debitCustomerWalletBucket,
   getCustomerBalance,
   getCustomerSpendableBuckets,
   getOrCreateWallet,
 } from "./finance/walletService.js";
+import { createLedgerEntry } from "./finance/ledgerService.js";
 import { roundCurrency } from "../utils/money.js";
 import LedgerEntry from "../models/ledgerEntry.js";
 import {
@@ -59,6 +62,12 @@ const IDEMPOTENCY_RECORD_TTL_MS = 24 * 60 * 60 * 1000;
 function normalizePaymentMode(raw) {
   const mode = String(raw || "COD").trim().toUpperCase();
   return mode === "ONLINE" ? "ONLINE" : "COD";
+}
+
+// Full-wallet checkout tender. Returns "shopping" | "earnings" | null.
+function normalizeWalletSource(raw) {
+  const source = String(raw || "").trim().toLowerCase();
+  return source === "shopping" || source === "earnings" ? source : null;
 }
 
 function normalizeAddress(address = {}) {
@@ -365,13 +374,29 @@ export async function placeOrderAtomic({
       maxCommitTimeMS: parseInt(process.env.CHECKOUT_TRANSACTION_TIMEOUT_MS || "20000", 10),
     });
 
-    const paymentMode = normalizePaymentMode(normalizedPayload.paymentMode);
+    const rawPaymentMode = normalizePaymentMode(normalizedPayload.paymentMode);
+    // Full-wallet tender: "shopping" | "earnings" | null. When set, the
+    // whole order is paid from that customer wallet bucket and booked as a
+    // prepaid ONLINE order (no gateway, no COD).
+    const walletSource = normalizeWalletSource(normalizedPayload.walletSource);
+    const isWalletPrepaid = !!walletSource;
+    // The order SETTLES like a prepaid ONLINE order (no cash collection at
+    // delivery) but its STOCK + seller-review workflow behave like a COD
+    // order (stock committed immediately, seller notified right away —
+    // there is no gateway round-trip to wait for).
+    const paymentMode = isWalletPrepaid ? "ONLINE" : rawPaymentMode;
+    const workflowPaymentMode = isWalletPrepaid ? "COD" : rawPaymentMode;
     const normalizedAddress = normalizeAddress(normalizedPayload.address);
     const idempotencyKeyExpiry = idempotencyKey
       ? new Date(Date.now() + IDEMPOTENCY_RECORD_TTL_MS)
       : null;
     const source = placementSource(normalizedPayload);
-    const walletAmount = Math.max(0, Number(normalizedPayload.walletAmount || 0));
+    // Generic partial wallet redemption (reduces payable on online/COD) is
+    // mutually exclusive with the full-wallet tender path — ignore any
+    // walletAmount the client sent alongside a walletSource.
+    const walletAmount = isWalletPrepaid
+      ? 0
+      : Math.max(0, Number(normalizedPayload.walletAmount || 0));
     const tipAmount = Math.max(0, Number(normalizedPayload.tipAmount || 0));
 
     // 1. Fetch user and validate wallet
@@ -429,6 +454,30 @@ export async function placeOrderAtomic({
       session,
     });
 
+    // Full-wallet tender precheck: the chosen bucket alone must cover the
+    // ENTIRE order (this is a full-payment-only option). Fail fast before
+    // any stock is reserved or orders are created.
+    const walletTenderTotal = isWalletPrepaid
+      ? roundCurrency(pricingSnapshot.aggregateBreakdown?.grandTotal || 0)
+      : 0;
+    if (isWalletPrepaid) {
+      if (walletTenderTotal <= 0) {
+        throw new Error("Cannot pay a zero-value order with wallet");
+      }
+      const buckets = await getCustomerSpendableBuckets(customerId, { session });
+      const bucketBalance =
+        walletSource === "shopping"
+          ? buckets.shoppingBalance
+          : buckets.earningsBalance;
+      if (bucketBalance < walletTenderTotal) {
+        const label = walletSource === "earnings" ? "earning" : "shopping";
+        const err = new Error(`Insufficient ${label} wallet balance`);
+        err.statusCode = 422;
+        err.code = "INSUFFICIENT_WALLET_BUCKET";
+        throw err;
+      }
+    }
+
     const { franchisePartner, fields: franchiseFields } = await resolveFranchiseOrderRouting({
       hydratedItems: pricingSnapshot.hydratedItems,
       address: normalizedAddress,
@@ -437,13 +486,19 @@ export async function placeOrderAtomic({
     const isFranchiseRoutedOrder = !!franchiseFields.franchisePartnerId;
 
     const checkoutGroupId = await generateUniqueCheckoutGroupId({ session });
-    const checkoutReservation = computeStockReservationWindow(paymentMode);
+    // Stock commits immediately for wallet-prepaid orders (workflow mode
+    // COD), even though they settle as ONLINE.
+    const checkoutReservation = computeStockReservationWindow(workflowPaymentMode);
     const checkoutGroup = new CheckoutGroup({
       checkoutGroupId,
       customer: customerId,
       paymentMode,
-      paymentStatus: buildCheckoutGroupPaymentStatus(paymentMode),
-      status: buildCheckoutGroupStatus(paymentMode),
+      paymentStatus: isWalletPrepaid
+        ? ORDER_PAYMENT_STATUS.PAID
+        : buildCheckoutGroupPaymentStatus(paymentMode),
+      status: isWalletPrepaid
+        ? "CREATED"
+        : buildCheckoutGroupStatus(paymentMode),
       stockReservation: checkoutReservation,
       pricingSummary: pricingSnapshot.aggregateBreakdown,
       walletAmount,
@@ -467,7 +522,8 @@ export async function placeOrderAtomic({
     const orders = [];
     const pendingLowStockAlerts = [];
     const sellerTimeoutMs = DEFAULT_SELLER_TIMEOUT_MS();
-    const shouldStartSellerWorkflow = paymentMode === "COD" && !isFranchiseRoutedOrder;
+    const shouldStartSellerWorkflow =
+      workflowPaymentMode === "COD" && !isFranchiseRoutedOrder;
 
     // MLM: detect Plan B exclusive home-shopping orders by matching
     // cart items against the admin-configured Product ID. The flag
@@ -493,7 +549,7 @@ export async function placeOrderAtomic({
     for (let index = 0; index < pricingSnapshot.sellerBreakdownEntries.length; index += 1) {
       const entry = pricingSnapshot.sellerBreakdownEntries[index];
       const orderId = await generateUniquePublicOrderId({ session });
-      const orderReservation = computeStockReservationWindow(paymentMode);
+      const orderReservation = computeStockReservationWindow(workflowPaymentMode);
       const sellerPendingUntil = shouldStartSellerWorkflow
         ? new Date(Date.now() + sellerTimeoutMs)
         : null;
@@ -504,7 +560,7 @@ export async function placeOrderAtomic({
         sellerId: entry.sellerId,
         orderId,
         session,
-        paymentMode,
+        paymentMode: workflowPaymentMode,
       });
       if (Array.isArray(sellerLowStockAlerts) && sellerLowStockAlerts.length > 0) {
         pendingLowStockAlerts.push(...sellerLowStockAlerts);
@@ -545,12 +601,18 @@ export async function placeOrderAtomic({
         // home-shopping bonus chains.
         isHomeShoppingOrder: orderKind.isHomeShoppingOrder,
         paymentMode,
+        // Wallet-prepaid orders are captured synchronously in the wallet
+        // block below; they start CREATED and are flipped to PAID there.
         paymentStatus:
           paymentMode === "ONLINE"
             ? ORDER_PAYMENT_STATUS.CREATED
             : ORDER_PAYMENT_STATUS.PENDING_CASH_COLLECTION,
         payment: {
-          method: paymentMode === "ONLINE" ? "online" : "cash",
+          method: isWalletPrepaid
+            ? "wallet"
+            : paymentMode === "ONLINE"
+              ? "online"
+              : "cash",
           status: "pending",
         },
         pricing: {
@@ -609,6 +671,109 @@ export async function placeOrderAtomic({
       grandTotal: Number(order.paymentBreakdown?.grandTotal || 0),
     }));
     await checkoutGroup.save({ session });
+
+    // ─── Full-wallet tender capture (Shopping Wallet / Earning Wallet) ───
+    //
+    // The customer pays the ENTIRE order from a single wallet bucket. We
+    // model this as a prepaid ONLINE order: the customer's chosen bucket is
+    // debited and the ADMIN wallet is credited the same amount (a wallet
+    // → admin transfer, exactly what an online gateway capture does — see
+    // handleOnlineOrderFinance). The order is then marked PAID + captured
+    // so delivery collects no cash and settlement pays the seller/rider
+    // from the admin float just like any other paid order. Everything runs
+    // inside the placement transaction so the debit and the orders are
+    // atomic (no "money taken but order not created" window).
+    if (isWalletPrepaid) {
+      const drain = await debitCustomerWalletBucket({
+        customerId,
+        bucket: walletSource,
+        totalAmount: walletTenderTotal,
+        session,
+        ledgerReference: `WLT-CHOUT-${checkoutGroupId}`,
+        ledgerDescription: `${walletSource === "earnings" ? "Earning" : "Shopping"} wallet payment at checkout`,
+        idempotencyKey: `WLT-CHOUT-${checkoutGroupId}`,
+        metadata: { checkoutGroupId, walletSource },
+      });
+
+      for (const order of orders) {
+        const gt = roundCurrency(
+          order.paymentBreakdown?.grandTotal || order.pricing?.total || 0,
+        );
+        if (gt > 0) {
+          const credit = await creditWallet({
+            ownerType: OWNER_TYPE.ADMIN,
+            ownerId: null,
+            amount: gt,
+            bucket: "available",
+            session,
+          });
+          await createLedgerEntry(
+            {
+              orderId: order._id,
+              walletId: credit.wallet._id,
+              actorType: OWNER_TYPE.ADMIN,
+              actorId: null,
+              type: LEDGER_TRANSACTION_TYPE.ORDER_ONLINE_PAYMENT_CAPTURED,
+              direction: LEDGER_DIRECTION.CREDIT,
+              amount: gt,
+              paymentMode: "ONLINE",
+              metadata: { walletSource, checkoutGroupId },
+              description: `${walletSource === "earnings" ? "Earning" : "Shopping"} wallet payment captured from customer`,
+              reference: order.orderId,
+              balanceBefore: credit.before,
+              balanceAfter: credit.after,
+            },
+            { session },
+          );
+        }
+
+        order.paymentStatus = ORDER_PAYMENT_STATUS.PAID;
+        order.payment = {
+          ...(order.payment || {}),
+          method: "wallet",
+          status: "completed",
+        };
+        order.financeFlags = {
+          ...(order.financeFlags || {}),
+          onlinePaymentCaptured: true,
+        };
+        order.stockReservation = {
+          ...(order.stockReservation || {}),
+          status: "COMMITTED",
+        };
+        // Record the tender on the canonical breakdown so every refund /
+        // cancellation path returns the money to the SAME source bucket
+        // (reverseOrderFinanceOnCancellation + orderReturnService read
+        // paymentBreakdown.walletSplit / walletAmount).
+        order.paymentBreakdown = order.paymentBreakdown || {};
+        order.paymentBreakdown.walletAmount = gt;
+        order.paymentBreakdown.walletSplit = {
+          shopping: walletSource === "shopping" ? gt : 0,
+          earnings: walletSource === "earnings" ? gt : 0,
+          available: 0,
+        };
+        order.pricing = order.pricing || {};
+        order.pricing.walletAmount = gt;
+        await order.save({ session });
+      }
+
+      // Legacy Transaction row for admin/seller dashboards (mirrors the
+      // partial-redemption path below).
+      await Transaction.create(
+        [
+          {
+            user: customerId,
+            userModel: "User",
+            type: "Wallet Payment",
+            amount: -walletTenderTotal,
+            status: "Settled",
+            reference: `WLT-CHOUT-${checkoutGroupId}`,
+            meta: { checkoutGroupId, walletSource, walletSplit: drain.split },
+          },
+        ],
+        { session },
+      );
+    }
 
     // Deduct wallet balance if used.
     //

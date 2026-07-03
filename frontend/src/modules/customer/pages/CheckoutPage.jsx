@@ -13,7 +13,7 @@ import {
   MapPin,
   Clock,
   CreditCard,
-  Banknote,
+  Wallet,
   ChevronRight,
   ChevronLeft,
   Share2,
@@ -130,7 +130,7 @@ const CheckoutPage = () => {
 
   // State management
   const [selectedTimeSlot, setSelectedTimeSlot] = useState("now");
-  const [selectedPayment, setSelectedPayment] = useState("cash");
+  const [selectedPayment, setSelectedPayment] = useState("online");
   const [selectedTip, setSelectedTip] = useState(0);
   const [showAllCartItems, setShowAllCartItems] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
@@ -141,6 +141,7 @@ const CheckoutPage = () => {
   const [useWallet, setUseWallet] = useState(false);
   const [walletAmountToUse, setWalletAmountToUse] = useState(0);
   const [shoppingWalletBalance, setShoppingWalletBalance] = useState(0);
+  const [earningWalletBalance, setEarningWalletBalance] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
   const [orderId, setOrderId] = useState(null);
   const [pricingPreview, setPricingPreview] = useState(null);
@@ -193,9 +194,19 @@ const CheckoutPage = () => {
   const paymentMethods = useMemo(() => {
     const orderTotal = Number(pricingPreview?.grandTotal || 0);
     const shoppingBalance = Number(shoppingWalletBalance || 0);
+    const earningBalance = Number(earningWalletBalance || 0);
     const shoppingWalletDisabled =
       orderTotal > 0 && shoppingBalance < orderTotal;
+    const earningWalletDisabled =
+      orderTotal > 0 && earningBalance < orderTotal;
 
+    const insufficientReason = (disabled) =>
+      disabled && orderTotal > 0
+        ? `Insufficient balance (need ₹${formatWalletBalance(orderTotal)})`
+        : null;
+
+    // Payment options: Pay Online, Shopping Wallet, Earning Wallet.
+    // Cash on Delivery is intentionally not offered on this checkout.
     return [
       ...(settings?.onlineEnabled === false
         ? []
@@ -207,16 +218,6 @@ const CheckoutPage = () => {
               sublabel: "UPI / Cards / NetBanking",
             },
           ]),
-      ...(settings?.codEnabled === false
-        ? []
-        : [
-            {
-              id: "cash",
-              label: "Cash on Delivery",
-              icon: Banknote,
-              sublabel: "Pay after delivery",
-            },
-          ]),
       {
         id: "shopping_wallet",
         label: "Shopping Wallet",
@@ -226,13 +227,21 @@ const CheckoutPage = () => {
             ? `Available balance: ₹${formatWalletBalance(shoppingBalance)}`
             : "No balance available",
         disabled: shoppingWalletDisabled,
-        disabledReason:
-          shoppingWalletDisabled && orderTotal > 0
-            ? `Insufficient balance (need ₹${formatWalletBalance(orderTotal)})`
-            : null,
+        disabledReason: insufficientReason(shoppingWalletDisabled),
+      },
+      {
+        id: "earning_wallet",
+        label: "Earning Wallet",
+        icon: Wallet,
+        sublabel:
+          earningBalance > 0
+            ? `Available balance: ₹${formatWalletBalance(earningBalance)}`
+            : "No balance available",
+        disabled: earningWalletDisabled,
+        disabledReason: insufficientReason(earningWalletDisabled),
       },
     ];
-  }, [settings?.onlineEnabled, settings?.codEnabled, shoppingWalletBalance, pricingPreview?.grandTotal]);
+  }, [settings?.onlineEnabled, shoppingWalletBalance, earningWalletBalance, pricingPreview?.grandTotal]);
 
   const tipAmounts = [
     { value: 0, label: "No Tip" },
@@ -267,6 +276,7 @@ const CheckoutPage = () => {
   useEffect(() => {
     if (!isAuthenticated) {
       setShoppingWalletBalance(0);
+      setEarningWalletBalance(0);
       return;
     }
     mlmApi
@@ -274,14 +284,38 @@ const CheckoutPage = () => {
       .then((res) => {
         const wallet = res?.data?.result?.wallet ?? res?.data?.data?.wallet;
         setShoppingWalletBalance(Number(wallet?.shoppingBalance || 0));
+        setEarningWalletBalance(Number(wallet?.earningsBalance || 0));
       })
-      .catch(() => setShoppingWalletBalance(0));
+      .catch(() => {
+        setShoppingWalletBalance(0);
+        setEarningWalletBalance(0);
+      });
   }, [isAuthenticated]);
+
+  // Map a payment method id to the backend wallet bucket tender.
+  const getWalletSource = (methodId) =>
+    methodId === "shopping_wallet"
+      ? "shopping"
+      : methodId === "earning_wallet"
+        ? "earnings"
+        : null;
+
+  const isWalletMethod =
+    selectedPayment === "shopping_wallet" || selectedPayment === "earning_wallet";
 
   useEffect(() => {
     const totalToPay = Number(pricingPreview?.grandTotal || 0);
-    if (selectedPayment === "shopping_wallet" && totalToPay > 0) {
-      const available = Number(shoppingWalletBalance || 0);
+    // Full-wallet tender: the chosen bucket must cover the whole order, so
+    // the amount used equals the order total (shows ₹0 out-of-pocket).
+    if (
+      (selectedPayment === "shopping_wallet" ||
+        selectedPayment === "earning_wallet") &&
+      totalToPay > 0
+    ) {
+      const available =
+        selectedPayment === "shopping_wallet"
+          ? Number(shoppingWalletBalance || 0)
+          : Number(earningWalletBalance || 0);
       setWalletAmountToUse(available >= totalToPay ? totalToPay : 0);
       return;
     }
@@ -296,15 +330,16 @@ const CheckoutPage = () => {
     useWallet,
     user?.walletBalance,
     shoppingWalletBalance,
+    earningWalletBalance,
     pricingPreview?.grandTotal,
   ]);
 
-  const resolvePaymentMode = () =>
-    selectedPayment === "online" ? "ONLINE" : "COD";
+  // Online and both wallet tenders settle as prepaid ONLINE orders; no COD.
+  const resolvePaymentMode = () => "ONLINE";
 
   const handleSelectPayment = (methodId) => {
     setSelectedPayment(methodId);
-    if (methodId === "shopping_wallet") {
+    if (methodId === "shopping_wallet" || methodId === "earning_wallet") {
       setUseWallet(false);
     }
   };
@@ -723,7 +758,10 @@ const CheckoutPage = () => {
       taxTotal: 0,
       tipAmount: selectedTip,
       paymentMode: resolvePaymentMode(),
-      walletAmount: walletAmountToUse,
+      // Wallet tenders are a payment method, not a redemption discount, so
+      // they don't reduce the previewed breakdown — only the generic
+      // partial "Use Wallet" toggle sends a redemption amount.
+      walletAmount: isWalletMethod ? 0 : walletAmountToUse,
       timeSlot: selectedTimeSlot,
     });
 
@@ -782,10 +820,18 @@ const CheckoutPage = () => {
   }, [cartProductIdKey]);
 
   const handlePlaceOrder = async () => {
-    if (selectedPayment === "shopping_wallet") {
+    const walletSource = getWalletSource(selectedPayment);
+    if (walletSource) {
       const orderTotal = Number(pricingPreview?.grandTotal || 0);
-      if (shoppingWalletBalance < orderTotal) {
-        showToast("Insufficient shopping wallet balance for this order.", "error");
+      const bucketBalance =
+        walletSource === "shopping"
+          ? shoppingWalletBalance
+          : earningWalletBalance;
+      if (bucketBalance < orderTotal) {
+        showToast(
+          `Insufficient ${walletSource === "earnings" ? "earning" : "shopping"} wallet balance for this order.`,
+          "error",
+        );
         return;
       }
     }
@@ -800,7 +846,10 @@ const CheckoutPage = () => {
         taxTotal: taxAmount,
         tipAmount: selectedTip,
         timeSlot: selectedTimeSlot,
-        walletAmount: walletAmountToUse,
+        // Full-wallet tender drives the prepaid bucket debit server-side;
+        // walletAmount stays 0 so the generic redemption path is skipped.
+        walletSource: walletSource || undefined,
+        walletAmount: walletSource ? 0 : walletAmountToUse,
         items: cart.map((item) => ({
           product: item.id || item._id,
           name: item.name,
@@ -859,7 +908,9 @@ const CheckoutPage = () => {
           }
         }
 
-        // COD flow
+        // Wallet-prepaid flow: the order is already paid from the chosen
+        // wallet bucket, so there is no gateway redirect — go straight to
+        // the success overlay.
         clearCart();
         showToast("Order placed — waiting for seller to accept.", "success");
         setOrderId(mainOrderId);
@@ -1119,7 +1170,7 @@ const CheckoutPage = () => {
               onToggleWallet={() => setUseWallet((v) => !v)}
               walletBalance={user?.walletBalance || 0}
               walletAmountToUse={walletAmountToUse}
-              showWalletToggle={selectedPayment !== "shopping_wallet"}
+              showWalletToggle={!isWalletMethod}
             />
 
             {/* Desktop Slide to Pay */}

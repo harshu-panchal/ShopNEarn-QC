@@ -39,6 +39,11 @@ export const checkoutPreviewSchema = Joi.object({
   // client-side math. Backward-compatible — clients that don't send it
   // get the pre-wallet `grandTotal` exactly as before.
   walletAmount: Joi.number().min(0).default(0),
+  // Full-wallet checkout tender. When set, the ENTIRE order is paid from
+  // the named customer wallet bucket ("shopping" = shoppingBalance,
+  // "earnings" = earningsBalance) and the order is booked as a prepaid
+  // ONLINE order (no gateway, no COD). Omitted/empty for online/COD.
+  walletSource: Joi.string().valid("shopping", "earnings").allow("", null).optional(),
   paymentMode: Joi.string().valid("ONLINE", "COD").default("COD"),
   timeSlot: Joi.string().allow("", null),
   couponId: Joi.string().allow("", null).optional(),

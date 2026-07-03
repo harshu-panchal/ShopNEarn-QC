@@ -89,6 +89,9 @@ export const createOrderWithFinancialSnapshot = async (req, res) => {
       timeSlot: validated.timeSlot || "now",
       tipAmount: validated.tipAmount || 0,
       walletAmount: validated.walletAmount || 0,
+      // Full-wallet tender ("shopping" | "earnings"). Drives the prepaid
+      // wallet-payment path in placeOrderAtomic. Null for online/COD.
+      walletSource: validated.walletSource || null,
       couponId: validated.couponId || null,
       // Audit Phase 5 (C-2 + H-7): forward couponCode so the placement
       // service can re-validate end-to-end. We deliberately DO NOT
