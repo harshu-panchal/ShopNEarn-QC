@@ -11,11 +11,15 @@ import { buildKey, invalidate } from "../services/cacheService.js";
 import { getProductApprovalConfig } from "../services/productModerationService.js";
 import { slugify } from "../utils/slugify.js";
 
-// Helper to sanitize category names for Excel Defined Names
+// Helper to sanitize category names for Excel Defined Names.
+// IMPORTANT: This must produce EXACTLY the same string as the SUBSTITUTE()
+// chain used in the cascading dropdown formulae below. Do not collapse
+// consecutive underscores here — Excel's SUBSTITUTE does not, so collapsing
+// would make INDIRECT() reference a non-existent name (e.g. "Fruits & Vegetables"
+// -> defined "SC_Fruits_Vegetables" but formula expects "SC_Fruits___Vegetables"),
+// leaving the sub-category dropdown empty.
 function getExcelRangeName(prefix, name) {
-  const cleanName = name
-    .replace(/[ &\-\/\(\),]/g, "_") // replace spaces & special characters with underscores
-    .replace(/_+/g, "_"); // collapse multiple underscores
+  const cleanName = name.replace(/[ &\-\/\(\),]/g, "_"); // replace spaces & special characters with underscores
   return `${prefix}_${cleanName}`;
 }
 
