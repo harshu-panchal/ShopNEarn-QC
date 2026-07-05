@@ -42,6 +42,12 @@ export const NOTIFICATION_EVENTS = Object.freeze({
   MLM_JOINING_PROOF_SUBMITTED: "MLM_JOINING_PROOF_SUBMITTED",
   MLM_JOINING_PROOF_APPROVED: "MLM_JOINING_PROOF_APPROVED",
   MLM_JOINING_PROOF_REJECTED: "MLM_JOINING_PROOF_REJECTED",
+  /** Franchise partner accepted — Harsh's Hub must confirm the order. */
+  FRANCHISE_HUB_ORDER_PENDING: "FRANCHISE_HUB_ORDER_PENDING",
+  /** Harsh's Hub accepted — franchise partner may create shipment. */
+  FRANCHISE_HUB_ACCEPTED: "FRANCHISE_HUB_ACCEPTED",
+  /** Hub customer order routed to franchise partner — partner must accept first. */
+  FRANCHISE_ORDER_ROUTED: "FRANCHISE_ORDER_ROUTED",
 });
 
 export const NOTIFICATION_ROLES = Object.freeze({
@@ -110,6 +116,7 @@ export function roleFromRecipientModel(recipientModel) {
 export function roleFromEvent(eventType) {
   switch (eventType) {
     case NOTIFICATION_EVENTS.NEW_ORDER:
+    case NOTIFICATION_EVENTS.FRANCHISE_HUB_ORDER_PENDING:
     case NOTIFICATION_EVENTS.RETURN_REQUESTED:
     case NOTIFICATION_EVENTS.LOW_STOCK_ALERT:
       return NOTIFICATION_ROLES.SELLER;

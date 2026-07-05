@@ -1,4 +1,27 @@
 import React from "react";
+import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
+import { getOrderItemImage } from "@/shared/utils/orderStatus";
+
+export const FALLBACK_PRODUCT_IMAGE =
+  "https://images.unsplash.com/photo-1550989460-0adf9ea622e2?auto=format&fit=crop&q=80&w=400&h=400";
+
+/** Resolve thumbnail URL from catalog product or order line item. */
+export function resolveProductImage(source) {
+  if (!source) return null;
+  const fromLine = getOrderItemImage(source);
+  if (fromLine) return fromLine;
+  const candidates = [
+    source.mainImage,
+    source.image,
+    source.images?.[0],
+    source.galleryImages?.[0],
+  ];
+  for (const candidate of candidates) {
+    const url = String(candidate || "").trim();
+    if (url) return url;
+  }
+  return null;
+}
 
 export const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -97,15 +120,26 @@ export const EmptyState = ({ message, action }) => (
   </div>
 );
 
-export const ProductThumb = ({ product, size = "md" }) => {
-  const img = product?.images?.[0] || product?.image;
+export const ProductThumb = ({ product, size = "md", alt = "" }) => {
   const cls = size === "sm" ? "w-12 h-12" : "w-16 h-16";
-  if (!img) {
-    return (
-      <div className={`${cls} rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 text-xs`}>
-        N/A
-      </div>
-    );
-  }
-  return <img src={img} alt="" className={`${cls} rounded-xl object-cover border border-slate-200`} />;
+  const resolved = resolveProductImage(product) || FALLBACK_PRODUCT_IMAGE;
+  const src = applyCloudinaryTransform(resolved, "f_auto,q_auto,w_200,h_200,c_fill");
+
+  return (
+    <img
+      src={src}
+      alt={alt || product?.name || "Product"}
+      loading="lazy"
+      className={`${cls} rounded-xl object-cover border border-slate-200 bg-slate-50 shrink-0`}
+      onError={(event) => {
+        if (event.currentTarget.src !== FALLBACK_PRODUCT_IMAGE) {
+          event.currentTarget.src = FALLBACK_PRODUCT_IMAGE;
+        }
+      }}
+    />
+  );
 };
+
+export const OrderLineThumb = ({ line, size = "sm" }) => (
+  <ProductThumb product={line} size={size} alt={line?.name || "Order item"} />
+);

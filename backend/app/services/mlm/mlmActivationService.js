@@ -26,6 +26,8 @@ import {
 } from "./mlmBonusEngineService.js";
 import {
   releaseHeldSignupBonusesForSponsorActivation,
+  releaseHeldSelfSignupBonusOnReferralActivation,
+  restoreClawedSignupBonusesForActivatedSponsors,
   applyDirectReferralActivationBonusInSession,
 } from "./mlmSignupBonusService.js";
 import { getMlmConfig } from "./mlmConfigService.js";
@@ -239,6 +241,18 @@ export async function activateMembershipFromJoiningPayment(
         correlationId,
       });
 
+      await releaseHeldSelfSignupBonusOnReferralActivation({
+        activatedUserId: customerId,
+        session,
+        correlationId,
+      });
+
+      await restoreClawedSignupBonusesForActivatedSponsors({
+        sponsorUserId: customerId,
+        session,
+        correlationId,
+      });
+
       pairBonusEvents = await propagateBinaryTeamPairIncome({
         activatedUserId: customerId,
         session,
@@ -418,6 +432,18 @@ export async function adminActivateMembership({
     });
 
     await releaseHeldSignupBonusesForSponsorActivation({
+      sponsorUserId: customerId,
+      session,
+      correlationId,
+    });
+
+    await releaseHeldSelfSignupBonusOnReferralActivation({
+      activatedUserId: customerId,
+      session,
+      correlationId,
+    });
+
+    await restoreClawedSignupBonusesForActivatedSponsors({
       sponsorUserId: customerId,
       session,
       correlationId,

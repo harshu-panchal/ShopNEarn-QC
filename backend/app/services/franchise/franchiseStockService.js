@@ -14,7 +14,10 @@ export async function getFranchiseStockSummary(franchisePartnerId) {
   const rows = await FranchiseStockLedger.find({ franchisePartnerId }).lean();
   const productIds = rows.map((r) => r.productId);
   const products = productIds.length
-    ? await Product.find({ _id: { $in: productIds } }, { name: 1, price: 1, images: 1 }).lean()
+    ? await Product.find(
+        { _id: { $in: productIds } },
+        { name: 1, price: 1, salePrice: 1, mainImage: 1, galleryImages: 1 },
+      ).lean()
     : [];
   const pmap = new Map(products.map((p) => [String(p._id), p]));
   return rows.map((row) => ({

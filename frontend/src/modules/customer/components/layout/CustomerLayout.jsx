@@ -12,6 +12,7 @@ import { useAuth } from '@core/context/AuthContext';
 import { onReturnPickupOtp, onReturnDropOtp } from '@core/services/orderSocket';
 import { toast } from 'sonner';
 import { ShieldCheck, Package } from 'lucide-react';
+import FranchiseOrderAlertOverlay from '../../pages/franchise/FranchiseOrderAlertOverlay';
 
 const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = false, showCart: showCartProp, showBottomNav: showBottomNavProp }) => {
     const location = useLocation();
@@ -172,6 +173,8 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
             <div className="hidden md:block">
                 {showBottomNav && <BottomNav />}
             </div>
+
+            <FranchiseOrderAlertOverlay />
         </div>
     );
 };

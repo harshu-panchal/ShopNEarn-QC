@@ -16,6 +16,7 @@ import { getMlmConfig } from "./mlm/mlmConfigService.js";
 import { cartIsHubOnly } from "./franchise/franchiseCatalogService.js";
 import { getHubSellerId } from "./franchise/franchiseConfigService.js";
 import { resolveFranchisePartner } from "./franchise/franchiseOrderRoutingService.js";
+import { normalizeAddressForFranchiseRouting } from "./franchise/franchiseAddressUtils.js";
 
 /**
  * MLM-specific carve-out: the home-shopping SKU is a digital product
@@ -86,7 +87,6 @@ async function computeDistanceKmForSeller({
   franchiseContext = null,
 }) {
   const normalizedLocation = normalizeLocation(addressLocation || address?.location);
-  if (!normalizedLocation) return 0;
 
   const query = Seller.findById(sellerId)
     .select("location serviceRadius shopName isPlatformHub isFranchiseCatalogSource")
@@ -116,10 +116,11 @@ async function computeDistanceKmForSeller({
   // Home Shoppy hub catalog orders are fulfilled by the local franchise
   // partner, not last-mile from the platform hub warehouse.
   if (isHubSeller) {
+    const routingAddress = normalizeAddressForFranchiseRouting(address);
     let partner = franchiseContext?.franchisePartner;
-    if (!partner && address) {
+    if (!partner && routingAddress) {
       partner = await resolveFranchisePartner({
-        address,
+        address: routingAddress,
         customerId: franchiseContext?.customerId,
       });
     }
@@ -130,6 +131,9 @@ async function computeDistanceKmForSeller({
       err.statusCode = 422;
       err.code = "FRANCHISE_TERRITORY_UNAVAILABLE";
       throw err;
+    }
+    if (!normalizedLocation) {
+      return 0;
     }
     const partnerCoords = partner?.location?.coordinates;
     if (!Array.isArray(partnerCoords) || partnerCoords.length < 2) {
@@ -144,6 +148,8 @@ async function computeDistanceKmForSeller({
     );
     return Number((distanceInMeters / 1000).toFixed(3));
   }
+
+  if (!normalizedLocation) return 0;
 
   const coords = seller?.location?.coordinates;
   if (!Array.isArray(coords) || coords.length < 2) return 0;
@@ -477,6 +483,7 @@ export async function buildCheckoutPricingSnapshot({
   customerId = null,
   session = null,
 }) {
+  const routingAddress = normalizeAddressForFranchiseRouting(address);
   const hydratedItems = await hydrateOrderItems(orderItems, {
     session,
     enforceServerPricing: true,
@@ -510,7 +517,10 @@ export async function buildCheckoutPricingSnapshot({
   };
   if (isFranchiseHubCart) {
     const hubSellerId = await getHubSellerId();
-    const franchisePartner = await resolveFranchisePartner({ address, customerId });
+    const franchisePartner = await resolveFranchisePartner({
+      address: routingAddress,
+      customerId,
+    });
     franchiseContext = {
       isFranchiseHubCart: true,
       hubSellerId: hubSellerId ? String(hubSellerId) : null,
@@ -563,7 +573,7 @@ export async function buildCheckoutPricingSnapshot({
     const sellerItems = itemsBySeller.get(sellerId) || [];
     const distanceKm = await computeDistanceKmForSeller({
       sellerId,
-      address,
+      address: routingAddress,
       session,
       franchiseContext,
     });

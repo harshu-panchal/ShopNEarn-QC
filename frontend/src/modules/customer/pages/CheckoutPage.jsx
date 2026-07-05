@@ -18,7 +18,6 @@ import {
   ChevronLeft,
   Share2,
   Gift,
-  ShoppingBag,
   ChevronDown,
   ChevronUp,
   Heart,
@@ -140,7 +139,6 @@ const CheckoutPage = () => {
   const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
   const [useWallet, setUseWallet] = useState(false);
   const [walletAmountToUse, setWalletAmountToUse] = useState(0);
-  const [shoppingWalletBalance, setShoppingWalletBalance] = useState(0);
   const [earningWalletBalance, setEarningWalletBalance] = useState(0);
   const [showSuccess, setShowSuccess] = useState(false);
   const [orderId, setOrderId] = useState(null);
@@ -193,10 +191,7 @@ const CheckoutPage = () => {
 
   const paymentMethods = useMemo(() => {
     const orderTotal = Number(pricingPreview?.grandTotal || 0);
-    const shoppingBalance = Number(shoppingWalletBalance || 0);
     const earningBalance = Number(earningWalletBalance || 0);
-    const shoppingWalletDisabled =
-      orderTotal > 0 && shoppingBalance < orderTotal;
     const earningWalletDisabled =
       orderTotal > 0 && earningBalance < orderTotal;
 
@@ -205,8 +200,8 @@ const CheckoutPage = () => {
         ? `Insufficient balance (need ₹${formatWalletBalance(orderTotal)})`
         : null;
 
-    // Payment options: Pay Online, Shopping Wallet, Earning Wallet.
-    // Cash on Delivery is intentionally not offered on this checkout.
+    // Payment options: Pay Online, Earning Wallet.
+    // Cash on Delivery and Shopping Wallet are not offered on this checkout.
     return [
       ...(settings?.onlineEnabled === false
         ? []
@@ -219,17 +214,6 @@ const CheckoutPage = () => {
             },
           ]),
       {
-        id: "shopping_wallet",
-        label: "Shopping Wallet",
-        icon: ShoppingBag,
-        sublabel:
-          shoppingBalance > 0
-            ? `Available balance: ₹${formatWalletBalance(shoppingBalance)}`
-            : "No balance available",
-        disabled: shoppingWalletDisabled,
-        disabledReason: insufficientReason(shoppingWalletDisabled),
-      },
-      {
         id: "earning_wallet",
         label: "Earning Wallet",
         icon: Wallet,
@@ -241,7 +225,7 @@ const CheckoutPage = () => {
         disabledReason: insufficientReason(earningWalletDisabled),
       },
     ];
-  }, [settings?.onlineEnabled, shoppingWalletBalance, earningWalletBalance, pricingPreview?.grandTotal]);
+  }, [settings?.onlineEnabled, earningWalletBalance, pricingPreview?.grandTotal]);
 
   const tipAmounts = [
     { value: 0, label: "No Tip" },
@@ -275,7 +259,6 @@ const CheckoutPage = () => {
 
   useEffect(() => {
     if (!isAuthenticated) {
-      setShoppingWalletBalance(0);
       setEarningWalletBalance(0);
       return;
     }
@@ -283,39 +266,25 @@ const CheckoutPage = () => {
       .getMembership()
       .then((res) => {
         const wallet = res?.data?.result?.wallet ?? res?.data?.data?.wallet;
-        setShoppingWalletBalance(Number(wallet?.shoppingBalance || 0));
         setEarningWalletBalance(Number(wallet?.earningsBalance || 0));
       })
       .catch(() => {
-        setShoppingWalletBalance(0);
         setEarningWalletBalance(0);
       });
   }, [isAuthenticated]);
 
   // Map a payment method id to the backend wallet bucket tender.
   const getWalletSource = (methodId) =>
-    methodId === "shopping_wallet"
-      ? "shopping"
-      : methodId === "earning_wallet"
-        ? "earnings"
-        : null;
+    methodId === "earning_wallet" ? "earnings" : null;
 
-  const isWalletMethod =
-    selectedPayment === "shopping_wallet" || selectedPayment === "earning_wallet";
+  const isWalletMethod = selectedPayment === "earning_wallet";
 
   useEffect(() => {
     const totalToPay = Number(pricingPreview?.grandTotal || 0);
     // Full-wallet tender: the chosen bucket must cover the whole order, so
     // the amount used equals the order total (shows ₹0 out-of-pocket).
-    if (
-      (selectedPayment === "shopping_wallet" ||
-        selectedPayment === "earning_wallet") &&
-      totalToPay > 0
-    ) {
-      const available =
-        selectedPayment === "shopping_wallet"
-          ? Number(shoppingWalletBalance || 0)
-          : Number(earningWalletBalance || 0);
+    if (selectedPayment === "earning_wallet" && totalToPay > 0) {
+      const available = Number(earningWalletBalance || 0);
       setWalletAmountToUse(available >= totalToPay ? totalToPay : 0);
       return;
     }
@@ -329,17 +298,16 @@ const CheckoutPage = () => {
     selectedPayment,
     useWallet,
     user?.walletBalance,
-    shoppingWalletBalance,
     earningWalletBalance,
     pricingPreview?.grandTotal,
   ]);
 
-  // Online and both wallet tenders settle as prepaid ONLINE orders; no COD.
+  // Online and earning-wallet tenders settle as prepaid ONLINE orders; no COD.
   const resolvePaymentMode = () => "ONLINE";
 
   const handleSelectPayment = (methodId) => {
     setSelectedPayment(methodId);
-    if (methodId === "shopping_wallet" || methodId === "earning_wallet") {
+    if (methodId === "earning_wallet") {
       setUseWallet(false);
     }
   };
@@ -347,18 +315,23 @@ const CheckoutPage = () => {
   const finalAmountToPay = Math.max(0, (pricingPreview?.grandTotal || 0) - walletAmountToUse);
 
   const buildAddressForOrder = () => {
+    const locationFromContext =
+      Number.isFinite(currentLocation?.latitude) &&
+      Number.isFinite(currentLocation?.longitude)
+        ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
+        : undefined;
+
     if (savedRecipient) {
+      const pincode = String(savedRecipient.pincode || "").trim();
       return {
         type: "Other",
         name: savedRecipient.name,
         address: savedRecipient.completeAddress,
         landmark: savedRecipient.landmark || "",
-        city: savedRecipient.pincode ? `${savedRecipient.pincode}` : "",
+        city: pincode || "",
+        pincode: pincode || undefined,
         phone: savedRecipient.phone,
-        location:
-          currentLocation?.latitude && currentLocation?.longitude
-            ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
-            : undefined,
+        location: locationFromContext,
       };
     }
 
@@ -370,9 +343,15 @@ const CheckoutPage = () => {
       Number.isFinite(addrLoc.lat) &&
       Number.isFinite(addrLoc.lng);
 
+    const cityText = String(currentAddress?.city || "").trim();
+    const pincodeMatch = cityText.match(/\b(\d{6})\b/);
+
     return {
       ...currentAddress,
-      location: hasAddrLoc ? { lat: addrLoc.lat, lng: addrLoc.lng } : undefined,
+      pincode: currentAddress?.pincode || (pincodeMatch ? pincodeMatch[1] : undefined),
+      location: hasAddrLoc
+        ? { lat: addrLoc.lat, lng: addrLoc.lng }
+        : locationFromContext,
     };
   };
 
@@ -774,6 +753,18 @@ const CheckoutPage = () => {
         }
       } catch (error) {
         console.error("Checkout preview failed", error);
+        const code = error.response?.data?.code;
+        const message = error.response?.data?.message;
+        if (
+          code === "FRANCHISE_SELF_ROUTING_BLOCKED" ||
+          code === "FRANCHISE_TERRITORY_UNAVAILABLE"
+        ) {
+          showToast(
+            message || "Home Shoppy is unavailable at this delivery address.",
+            "error",
+          );
+        }
+        setPricingPreview(null);
       } finally {
         setIsPreviewLoading(false);
       }
@@ -823,13 +814,9 @@ const CheckoutPage = () => {
     const walletSource = getWalletSource(selectedPayment);
     if (walletSource) {
       const orderTotal = Number(pricingPreview?.grandTotal || 0);
-      const bucketBalance =
-        walletSource === "shopping"
-          ? shoppingWalletBalance
-          : earningWalletBalance;
-      if (bucketBalance < orderTotal) {
+      if (earningWalletBalance < orderTotal) {
         showToast(
-          `Insufficient ${walletSource === "earnings" ? "earning" : "shopping"} wallet balance for this order.`,
+          "Insufficient earning wallet balance for this order.",
           "error",
         );
         return;
@@ -980,7 +967,7 @@ const CheckoutPage = () => {
   if (cart.length === 0 && !showSuccess) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
-        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-brand-50/50 via-transparent to-transparent pointer-events-none" />
+        <div className="absolute top-0 left-0 w-full h-full bg-radial from-brand-50/50 via-transparent to-transparent pointer-events-none" />
         <div className="absolute -top-20 -right-20 w-80 h-80 bg-brand-100/30 rounded-full blur-3xl pointer-events-none animate-pulse" />
         <div className="absolute top-40 -left-20 w-60 h-60 bg-yellow-100/40 rounded-full blur-3xl pointer-events-none animate-pulse" />
         <div className="relative z-10 flex flex-col items-center text-center max-w-sm mx-auto">
@@ -1008,7 +995,7 @@ const CheckoutPage = () => {
           </p>
           <Link
             to="/"
-            className="group relative inline-flex items-center justify-center px-8 py-4 bg-gradient-to-r from-primary to-[var(--brand-400)] text-white font-bold rounded-2xl overflow-hidden shadow-xl shadow-brand-600/20 transition-all hover:scale-[1.02] active:scale-95 w-full sm:w-auto">
+            className="group relative inline-flex items-center justify-center px-8 py-4 bg-linear-to-r from-primary to-(--brand-400) text-white font-bold rounded-2xl overflow-hidden shadow-xl shadow-brand-600/20 transition-all hover:scale-[1.02] active:scale-95 w-full sm:w-auto">
             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
             <span className="relative flex items-center gap-2 text-lg">
               Start Shopping <ChevronRight size={20} />
@@ -1040,7 +1027,7 @@ const CheckoutPage = () => {
       <CheckoutOrderSuccess orderId={orderId} show={showSuccess} />
 
       {/* Premium Header */}
-      <div className="bg-gradient-to-br from-[var(--brand-700)] via-[var(--brand-600)] to-[var(--brand-400)] pt-6 pb-12 md:pb-24 relative z-10 shadow-lg md:rounded-b-[4rem] rounded-b-[2rem] overflow-hidden">
+      <div className="bg-linear-to-br from-(--brand-700) via-(--brand-600) to-(--brand-400) pt-6 pb-12 md:pb-24 relative z-10 shadow-lg md:rounded-b-[4rem] rounded-b-[2rem] overflow-hidden">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/5 rounded-full blur-[100px] -mr-32 -mt-64 pointer-events-none" />
         <div className="absolute bottom-0 left-1/4 w-64 h-64 bg-brand-400/10 rounded-full blur-[80px] pointer-events-none" />
         <div className="max-w-7xl mx-auto px-4 md:px-8 relative z-10">
@@ -1077,7 +1064,7 @@ const CheckoutPage = () => {
             {/* Delivery Time Banner */}
             <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 mt-3">
               <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-brand-50 flex items-center justify-center flex-shrink-0">
+                <div className="h-12 w-12 rounded-full bg-brand-50 flex items-center justify-center shrink-0">
                   <Clock size={24} className="text-primary" />
                 </div>
                 <div>
@@ -1181,7 +1168,7 @@ const CheckoutPage = () => {
                 isLoading={isPlacingOrder || isPreviewLoading || !pricingPreview}
                 text={finalAmountToPay === 0 ? "Place Free Order" : "Order Now"}
               />
-              <p className="text-center text-[10px] text-slate-400 font-bold mt-4 uppercase tracking-[0.1em]">
+              <p className="text-center text-[10px] text-slate-400 font-bold mt-4 uppercase tracking-widest">
                 🔒 SSL encrypted secure checkout
               </p>
             </div>

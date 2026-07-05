@@ -80,6 +80,7 @@ const OrderDetail = () => {
         order?.franchisePartnerId &&
         !order?.isFranchiseStockOrder &&
         String(order?.workflowStatus || '').toUpperCase() === 'FRANCHISE_ACCEPTED' &&
+        order?.shipmentStatus === 'created' &&
         !order?.deliveryBoy;
 
     useEffect(() => {

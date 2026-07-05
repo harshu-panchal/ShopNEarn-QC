@@ -13,10 +13,13 @@ import {
   TrendingUp,
   Boxes,
   CheckCircle2,
+  ScrollText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { franchiseApi } from "../../services/franchiseApi";
 import FranchiseMlmHeader from "./FranchiseMlmHeader";
+import FranchisePushEnableBanner from "./FranchisePushEnableBanner";
+import { primeFranchiseOrderAlertSound } from "./franchiseOrderAlertSound";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -347,6 +350,12 @@ const PartnerDashboard = ({ data, navigate, onRefresh, refreshing }) => {
           description="Accept and fulfill hub orders routed to your franchise location"
           onClick={() => navigate("/mlm/franchise/orders")}
         />
+        <ActionCard
+          icon={ScrollText}
+          title="Transaction history"
+          description="View wallet top-ups, stock purchases, customer orders, and all franchise activity"
+          onClick={() => navigate("/mlm/franchise/transactions")}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -523,6 +532,7 @@ const FranchiseDashboardPage = () => {
 
   useEffect(() => {
     load();
+    primeFranchiseOrderAlertSound();
   }, []);
 
   if (loading) {
@@ -546,6 +556,7 @@ const FranchiseDashboardPage = () => {
   return (
     <>
       <FranchiseMlmHeader title="Home Shoppy" />
+      <FranchisePushEnableBanner />
       <PartnerDashboard
         data={data}
         navigate={navigate}

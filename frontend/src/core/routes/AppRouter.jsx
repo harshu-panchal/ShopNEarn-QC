@@ -64,6 +64,7 @@ const FranchiseWalletPage = lazy(() => import('../../modules/customer/pages/fran
 const FranchiseCatalogPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseCatalogPage'));
 const FranchiseStockPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseStockPage'));
 const FranchiseOrdersPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseOrdersPage'));
+const FranchiseTransactionHistoryPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseTransactionHistoryPage'));
 // Customer-MLM-rebuild Phase 8 — new dashboard + Genealogy + Payouts sections.
 const MainDashboardPage = lazy(() => import('../../modules/customer/pages/mlm/MainDashboardPage'));
 // Desktop-only sidebar chrome that wraps every `/mlm/*` URL on
@@ -312,6 +313,7 @@ const AppRouter = () => {
                                         { path: 'catalog', element: <FranchiseCatalogPage /> },
                                         { path: 'stock', element: <FranchiseStockPage /> },
                                         { path: 'orders', element: <FranchiseOrdersPage /> },
+                                        { path: 'transactions', element: <FranchiseTransactionHistoryPage /> },
                                     ],
                                 },
                             ],

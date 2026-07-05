@@ -44,7 +44,7 @@ import {
   onReturnPickupOtp,
   onReturnDropOtp,
 } from "@/core/services/orderSocket";
-import { getLegacyStatusFromOrder } from "@/shared/utils/orderStatus";
+import { getLegacyStatusFromOrder, getFranchisePartnerDisplayName, getOrderItemImage } from "@/shared/utils/orderStatus";
 import { createSocketTokenReader } from "@core/utils/authStorage";
 import { STORAGE_KEYS } from "@core/utils/storage";
 
@@ -451,6 +451,15 @@ const OrderDetailPage = () => {
   };
 
   const status = order ? getLegacyStatusFromOrder(order) : null;
+  const franchisePartnerName = order ? getFranchisePartnerDisplayName(order) : null;
+  const franchisePartnerCity =
+    order?.franchisePartnerId &&
+    typeof order.franchisePartnerId === "object" &&
+    (order.franchisePartnerId.city || order.franchisePartnerId.locality)
+      ? [order.franchisePartnerId.locality, order.franchisePartnerId.city]
+          .filter(Boolean)
+          .join(", ")
+      : null;
   const isAwaitingOnlinePayment =
     Boolean(order) &&
     order.paymentMode === "ONLINE" &&
@@ -820,6 +829,7 @@ const OrderDetailPage = () => {
               status={order.workflowStatus || order.status}
               eta={estimatedArrival.arrivingInText}
               riderName={order.deliveryBoy?.name || "Delivery Partner"}
+              franchisePartnerName={franchisePartnerName}
               riderLocation={liveLocation}
               sellerLocation={sellerLocation}
               destinationLocation={
@@ -831,6 +841,32 @@ const OrderDetailPage = () => {
               routePolyline={activeRoutePolyline}
               onOpenInMaps={handleOpenInMaps}
             />
+          </motion.div>
+        )}
+
+        {franchisePartnerName && !isAwaitingOnlinePayment && status !== "cancelled" && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-2">
+              Home Shoppy Partner
+            </p>
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 font-black text-lg shrink-0">
+                {franchisePartnerName.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-bold text-slate-900 truncate">{franchisePartnerName}</h3>
+                {franchisePartnerCity && (
+                  <p className="text-xs text-slate-500 mt-0.5">{franchisePartnerCity}</p>
+                )}
+                <p className="text-xs text-slate-500 mt-1">
+                  Fulfilling your order from local franchise stock
+                </p>
+              </div>
+            </div>
           </motion.div>
         )}
 
@@ -967,17 +1003,25 @@ const OrderDetailPage = () => {
             Order Items
           </h3>
           <div className="space-y-3">
-            {order.items.map((item, idx) => (
+            {order.items.map((item, idx) => {
+              const itemImage = getOrderItemImage(item);
+              return (
               <div
                 key={idx}
                 className="flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-50 transition-colors">
                 <div className="h-14 w-14 bg-slate-50 rounded-xl overflow-hidden flex-shrink-0 border border-slate-100">
+                  {itemImage ? (
                   <img
-                    src={applyCloudinaryTransform(item.image)}
+                    src={applyCloudinaryTransform(itemImage)}
                     alt={item.name}
                     loading="lazy"
                     className="h-full w-full object-cover"
                   />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center text-slate-300">
+                      <Package size={20} />
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="font-semibold text-slate-800 text-sm mb-0.5 truncate">
@@ -993,7 +1037,8 @@ const OrderDetailPage = () => {
                   </p>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         </motion.div>
 

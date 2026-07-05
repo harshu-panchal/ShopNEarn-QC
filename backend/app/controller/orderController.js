@@ -22,7 +22,9 @@ import {
   removeReturnPickupTimeoutJob,
 } from "../services/orderWorkflowService.js";
 import { applyDeliveredSettlement } from "../services/orderSettlement.js";
-import { markFranchiseOrderDeliveredFromWorkflow } from "../services/franchise/franchiseOrderService.js";
+import {
+  markFranchiseOrderDeliveredFromWorkflow,
+} from "../services/franchise/franchiseOrderService.js";
 import {
   freezeFinancialSnapshot,
   reverseOrderFinanceOnCancellation,
@@ -425,6 +427,13 @@ export const updateOrderStatus = async (req, res) => {
     const canonicalOrderId = order.orderId;
 
     if (order.workflowVersion >= 2 && role === "seller") {
+      if (order.franchisePartnerId) {
+        return handleResponse(
+          res,
+          422,
+          "This order is fulfilled by the local Home Shoppy franchise partner. Hub confirmation is not required.",
+        );
+      }
       if (status === "confirmed") {
         try {
           const updated = await sellerAcceptAtomic(userId, canonicalOrderId);

@@ -53,6 +53,7 @@ const LiveTrackingMap = memo(({
   status = "out for delivery",
   eta = "8 mins",
   riderName = "Ramesh Kumar",
+  franchisePartnerName = null,
   riderLocation,
   sellerLocation,
   destinationLocation,
@@ -271,11 +272,23 @@ const LiveTrackingMap = memo(({
           <Package size={30} className="text-white" />
         </motion.div>
         <h3 className="text-lg font-black text-gray-800 text-center">
-          Partner is preparing your order
+          {franchisePartnerName
+            ? `${franchisePartnerName} is preparing your order`
+            : "Partner is preparing your order"}
         </h3>
         <p className="text-sm text-gray-500 text-center max-w-sm font-medium">
-          Your Home Shoppy partner accepted the order. A delivery agent will be
-          assigned shortly.
+          {franchisePartnerName ? (
+            <>
+              Your order was accepted by{" "}
+              <span className="font-bold text-gray-700">{franchisePartnerName}</span>.
+              A delivery agent will be assigned shortly.
+            </>
+          ) : (
+            <>
+              Your Home Shoppy partner accepted the order. A delivery agent will be
+              assigned shortly.
+            </>
+          )}
         </p>
       </div>
     );
@@ -291,11 +304,24 @@ const LiveTrackingMap = memo(({
           <Clock size={30} className="text-white" />
         </motion.div>
         <h3 className="text-lg font-black text-gray-800 text-center">
-          Waiting for Home Shoppy partner
+          {franchisePartnerName
+            ? `Waiting for ${franchisePartnerName}`
+            : "Waiting for Home Shoppy partner"}
         </h3>
         <p className="text-sm text-gray-500 text-center max-w-sm font-medium">
-          Your order was sent to the nearest franchise partner. They will accept
-          and fulfill it from their local stock.
+          {franchisePartnerName ? (
+            <>
+              Your order was sent to{" "}
+              <span className="font-bold text-gray-700">{franchisePartnerName}</span>, your
+              nearest Home Shoppy partner. They will accept and fulfill it from their
+              local stock.
+            </>
+          ) : (
+            <>
+              Your order was sent to the nearest franchise partner. They will accept
+              and fulfill it from their local stock.
+            </>
+          )}
         </p>
       </div>
     );
@@ -545,6 +571,7 @@ const LiveTrackingMap = memo(({
     prevProps.status === nextProps.status &&
     prevProps.eta === nextProps.eta &&
     prevProps.riderName === nextProps.riderName &&
+    prevProps.franchisePartnerName === nextProps.franchisePartnerName &&
     prevProps.riderLocation?.lat === nextProps.riderLocation?.lat &&
     prevProps.riderLocation?.lng === nextProps.riderLocation?.lng &&
     prevProps.sellerLocation?.lat === nextProps.sellerLocation?.lat &&

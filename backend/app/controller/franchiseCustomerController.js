@@ -22,7 +22,9 @@ import {
   acceptFranchiseOrder,
   rejectFranchiseOrder,
   fulfillFranchiseOrder,
+  createFranchiseOrderShipment,
 } from "../services/franchise/franchiseOrderService.js";
+import { listFranchiseTransactionHistory } from "../services/franchise/franchiseTransactionService.js";
 
 export const getFranchiseMe = async (req, res) => {
   try {
@@ -176,9 +178,28 @@ export const listMyTopUps = async (req, res) => {
   try {
     const partner = await getFranchisePartnerByUserId(req.user.id);
     if (!partner) return handleResponse(res, 404, "Not a franchise partner");
-    const items = await listFranchiseTopUps({ status: "ALL", limit: 50 });
-    const mine = items.items.filter((t) => String(t.franchisePartnerId) === String(partner._id));
-    return handleResponse(res, 200, "Top-up history", { items: mine });
+    const result = await listFranchiseTopUps({
+      franchisePartnerId: partner._id,
+      status: "ALL",
+      limit: 50,
+    });
+    return handleResponse(res, 200, "Top-up history", { items: result.items });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+export const getTransactionHistory = async (req, res) => {
+  try {
+    const partner = await getFranchisePartnerByUserId(req.user.id);
+    if (!partner) return handleResponse(res, 404, "Not a franchise partner");
+    const result = await listFranchiseTransactionHistory(partner._id, {
+      page: req.query.page,
+      limit: req.query.limit,
+      direction: req.query.direction,
+      category: req.query.category,
+    });
+    return handleResponse(res, 200, "Transaction history", result);
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
   }
@@ -268,6 +289,25 @@ export const fulfillOrder = async (req, res) => {
       orderId: req.params.orderId,
     });
     return handleResponse(res, 200, "Order fulfilled", { orderId: order.orderId, franchiseStatus: order.franchiseStatus });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+export const createShipment = async (req, res) => {
+  try {
+    const partner = await getFranchisePartnerByUserId(req.user.id);
+    if (!partner) return handleResponse(res, 404, "Not a franchise partner");
+    const order = await createFranchiseOrderShipment({
+      franchisePartnerId: partner._id,
+      orderId: req.params.orderId,
+      shipmentReference: req.body?.shipmentReference,
+    });
+    return handleResponse(res, 200, "Shipment created", {
+      orderId: order.orderId,
+      shipmentStatus: order.shipmentStatus,
+      shipmentReference: order.shipmentReference,
+    });
   } catch (error) {
     return handleResponse(res, error.statusCode || 400, error.message);
   }

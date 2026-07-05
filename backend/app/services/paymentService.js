@@ -25,10 +25,12 @@ import {
 } from "./franchise/franchiseRegistrationPaymentService.js";
 import FranchiseRegistrationPayment from "../models/franchiseRegistrationPayment.js";
 import { DEFAULT_SELLER_TIMEOUT_MS, WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
+import { FRANCHISE_ORDER_STATUS } from "../constants/franchise.js";
 import { afterPlaceOrderV2 } from "./orderWorkflowService.js";
 import { releaseReservedStockForOrder } from "./stockService.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
+import { notifyFranchisePartnerNewOrder } from "./franchise/franchiseOrderService.js";
 import logger from "./logger.js";
 import { getActivePaymentProvider } from "./payment/providerRegistry.js";
 
@@ -299,6 +301,7 @@ async function moveOrderToSellerPendingAfterPayment(orderId) {
       $set: isFranchiseOrder
         ? {
             workflowStatus: WORKFLOW_STATUS.FRANCHISE_PENDING,
+            franchiseStatus: FRANCHISE_ORDER_STATUS.PENDING,
             sellerPendingExpiresAt: null,
             expiresAt: null,
           }
@@ -404,10 +407,14 @@ async function handleOrderSideEffectsFromPaymentStatus(payment, nextStatus, reas
         sellerId: order.seller,
       });
 
-      emitNotificationEvent(NOTIFICATION_EVENTS.NEW_ORDER, {
-        orderId: order.orderId,
-        sellerId: order.seller,
-      });
+      if (order.franchisePartnerId) {
+        await notifyFranchisePartnerNewOrder(null, order);
+      } else {
+        emitNotificationEvent(NOTIFICATION_EVENTS.NEW_ORDER, {
+          orderId: order.orderId,
+          sellerId: order.seller,
+        });
+      }
     }
     await updateCheckoutGroupPaymentStatus(payment.checkoutGroupId, nextStatus);
     return;

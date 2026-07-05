@@ -443,6 +443,23 @@ const orderSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    /** Set when franchise partner accepts; Harsh's Hub must accept next. */
+    hubAcceptanceStatus: {
+      type: String,
+      enum: ["pending", "accepted", "rejected"],
+      default: null,
+      index: true,
+    },
+    hubAcceptedAt: { type: Date, default: null },
+    /** Franchise partner creates shipment after hub acceptance. */
+    shipmentStatus: {
+      type: String,
+      enum: ["pending", "created"],
+      default: null,
+      index: true,
+    },
+    shipmentCreatedAt: { type: Date, default: null },
+    shipmentReference: { type: String, default: null, trim: true },
     isFranchiseStockOrder: {
       type: Boolean,
       default: false,

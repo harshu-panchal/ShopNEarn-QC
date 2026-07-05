@@ -9,12 +9,14 @@ import {
   requestWalletTopUp,
   submitTopUpProof,
   listMyTopUps,
+  getTransactionHistory,
   purchaseStock,
   getStock,
   listOrders,
   acceptOrder,
   rejectOrder,
   fulfillOrder,
+  createShipment,
 } from "../controller/franchiseCustomerController.js";
 
 const router = express.Router();
@@ -27,11 +29,13 @@ router.get("/catalog", verifyToken, getCatalog);
 router.post("/wallet/topup", verifyToken, requestWalletTopUp);
 router.post("/wallet/submit-proof", verifyToken, submitTopUpProof);
 router.get("/wallet/topups", verifyToken, listMyTopUps);
+router.get("/wallet/transactions", verifyToken, getTransactionHistory);
 router.post("/stock/purchase", verifyToken, purchaseStock);
 router.get("/stock", verifyToken, getStock);
 router.get("/orders", verifyToken, listOrders);
 router.patch("/orders/:orderId/accept", verifyToken, acceptOrder);
 router.patch("/orders/:orderId/reject", verifyToken, rejectOrder);
 router.patch("/orders/:orderId/fulfill", verifyToken, fulfillOrder);
+router.post("/orders/:orderId/shipment", verifyToken, createShipment);
 
 export default router;

@@ -12,6 +12,8 @@ export const franchiseApi = {
   requestTopUp: (data) => axiosInstance.post("/customer/franchise/wallet/topup", data),
   submitTopUpProof: (data) => axiosInstance.post("/customer/franchise/wallet/submit-proof", data),
   listTopUps: () => axiosInstance.get("/customer/franchise/wallet/topups"),
+  listTransactions: (params) =>
+    axiosInstance.get("/customer/franchise/wallet/transactions", { params }),
   purchaseStock: (data) => axiosInstance.post("/customer/franchise/stock/purchase", data),
   getStock: () => axiosInstance.get("/customer/franchise/stock"),
   listOrders: (params) => axiosInstance.get("/customer/franchise/orders", { params }),
@@ -19,6 +21,8 @@ export const franchiseApi = {
   rejectOrder: (orderId, data) =>
     axiosInstance.patch(`/customer/franchise/orders/${orderId}/reject`, data || {}),
   fulfillOrder: (orderId) => axiosInstance.patch(`/customer/franchise/orders/${orderId}/fulfill`),
+  createShipment: (orderId, data) =>
+    axiosInstance.post(`/customer/franchise/orders/${orderId}/shipment`, data || {}),
 };
 
 export const adminFranchiseApi = {

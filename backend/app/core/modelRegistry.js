@@ -56,7 +56,6 @@ import "../models/transaction.js";
 import "../models/wallet.js";
 
 // CMS / configuration models
-import "../models/experienceSection.js";
 import "../models/faq.js";
 import "../models/heroConfig.js";
 import "../models/offer.js";
@@ -96,7 +95,6 @@ export const REQUIRED_MODELS = Object.freeze([
   "Coupon",
   "Offer",
   "OfferSection",
-  "ExperienceSection",
   "HeroConfig",
 
   // Orders & checkout

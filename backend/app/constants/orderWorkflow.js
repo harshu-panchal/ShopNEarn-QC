@@ -45,8 +45,9 @@ export function legacyStatusFromWorkflow(workflowStatus) {
       return "pending";
     case WORKFLOW_STATUS.SELLER_PENDING:
     case WORKFLOW_STATUS.FRANCHISE_PENDING:
-    case WORKFLOW_STATUS.FRANCHISE_ACCEPTED:
       return "pending";
+    case WORKFLOW_STATUS.FRANCHISE_ACCEPTED:
+      return "confirmed";
     case WORKFLOW_STATUS.SELLER_ACCEPTED:
       return "confirmed";
     case WORKFLOW_STATUS.DELIVERY_SEARCH:

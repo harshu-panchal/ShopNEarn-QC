@@ -13,7 +13,7 @@ import { motion } from "framer-motion";
  *   onToggleWallet  – () => void
  *   walletBalance   – number (0 means wallet section is hidden)
  *   walletAmountToUse – number
- *   showWalletToggle – boolean (hide partial wallet toggle when paying via shopping wallet)
+ *   showWalletToggle – boolean (hide partial wallet toggle when paying via earning wallet)
  */
 const CheckoutPaymentSelector = React.memo(function CheckoutPaymentSelector({
   paymentMethods,

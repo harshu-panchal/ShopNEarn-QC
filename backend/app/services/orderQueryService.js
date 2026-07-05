@@ -2,7 +2,7 @@ import Order from "../models/order.js";
 import Delivery from "../models/delivery.js";
 import Seller from "../models/seller.js";
 import CheckoutGroup from "../models/checkoutGroup.js";
-import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
+import { WORKFLOW_STATUS, legacyStatusFromWorkflow } from "../constants/orderWorkflow.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import {
   orderMatchQueryFlexible,
@@ -15,6 +15,33 @@ function svcErr(message, statusCode) {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
+}
+
+/** Keep legacy `status` aligned with v2 franchise workflow for list/detail APIs. */
+function hydrateFranchiseLegacyStatus(order) {
+  if (!order || (Number(order.workflowVersion) || 0) < 2) return order;
+
+  let nextStatus = null;
+  if (order.franchisePartnerId && order.isFranchiseStockOrder !== true) {
+    if (order.franchiseStatus === "fulfilled") nextStatus = "delivered";
+    else if (order.franchiseStatus === "rejected") nextStatus = "cancelled";
+    else if (order.franchiseStatus === "accepted" && order.shipmentStatus === "created") {
+      nextStatus = "packed";
+    } else if (order.workflowStatus) {
+      nextStatus = legacyStatusFromWorkflow(order.workflowStatus);
+    }
+  } else if (order.workflowStatus) {
+    nextStatus = legacyStatusFromWorkflow(order.workflowStatus);
+  }
+
+  if (nextStatus && nextStatus !== order.status) {
+    return { ...order, status: nextStatus, orderStatus: nextStatus };
+  }
+  return order;
+}
+
+function hydrateOrderListLegacyStatus(orders = []) {
+  return orders.map((order) => hydrateFranchiseLegacyStatus(order));
 }
 
 function refToIdString(ref) {
@@ -179,7 +206,7 @@ export async function fetchSellerOrdersPage({
 
   return {
     query,
-    orders,
+    orders: hydrateOrderListLegacyStatus(orders),
     total,
     summary,
   };
@@ -424,7 +451,7 @@ export async function getCustomerOrders(customerId, pagination) {
       const [orders, total] = await Promise.all([
         Order.find(baseQuery)
           .select(
-            "orderId checkoutGroupId customer seller items address payment pricing status workflowStatus workflowVersion returnStatus timeSlot createdAt",
+            "orderId checkoutGroupId customer seller items address payment pricing paymentBreakdown status workflowStatus workflowVersion franchisePartnerId franchiseStatus shipmentStatus isFranchiseStockOrder returnStatus timeSlot createdAt",
           )
           .sort({ createdAt: -1, _id: -1 })
           .skip(skip)
@@ -465,6 +492,7 @@ export async function getOrderWithAccess(orderId, userId, role) {
     .populate("deliveryBoy", "name phone")
     .populate("returnDeliveryBoy", "name phone")
     .populate("seller", "shopName name address phone location")
+    .populate("franchisePartnerId", "displayName referralCode city locality phone")
     .lean();
 
   // MLM home-shopping orders are hidden accounting records, not

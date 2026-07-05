@@ -31,7 +31,7 @@ import { BlurFade } from '@/components/ui/blur-fade';
 import ShimmerButton from '@/components/ui/shimmer-button';
 import { sellerApi } from '../services/sellerApi';
 import { useToast } from '@shared/components/ui/Toast';
-import { getLegacyStatusFromOrder } from '@/shared/utils/orderStatus';
+import { getLegacyStatusFromOrder, getOrderStatusLabel } from '@/shared/utils/orderStatus';
 import { Loader2 } from 'lucide-react';
 import Pagination from '@shared/components/ui/Pagination';
 import { DatePicker } from "@/components/ui/date-picker";
@@ -116,6 +116,13 @@ const Orders = () => {
                 status: getLegacyStatusFromOrder(order),
                 workflowStatus: order.workflowStatus,
                 workflowVersion: order.workflowVersion,
+                franchisePartnerId: order.franchisePartnerId,
+                shipmentStatus: order.shipmentStatus,
+                isFranchiseStockOrder: order.isFranchiseStockOrder,
+                statusLabel: getOrderStatusLabel(order),
+                franchiseStatus: order.franchiseStatus,
+                hubAcceptanceStatus: order.hubAcceptanceStatus,
+                shipmentStatus: order.shipmentStatus,
                 date: order.createdAt
                     ? new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
                     : '',
@@ -176,6 +183,12 @@ const Orders = () => {
             return matchesSearch && matchesTab;
         });
     }, [safeOrders, searchTerm, activeTab]);
+
+    const isHubFranchiseOrder = (order) => Boolean(order.franchisePartnerId);
+    const isFranchisePartnerHandling = (order) =>
+        isHubFranchiseOrder(order) && order.franchiseStatus === 'accepted';
+    const isAwaitingFranchisePartner = (order) =>
+        isHubFranchiseOrder(order) && order.franchiseStatus === 'pending';
 
     const stats = useMemo(() => [
         {
@@ -277,7 +290,7 @@ const Orders = () => {
                         </h1>
                         <p className="text-slate-600 text-sm sm:text-base mt-0.5 font-medium">Process and track your customer orders with ease.</p>
                     </div>
-                    <div className="flex gap-2 flex-shrink-0">
+                    <div className="flex gap-2 shrink-0">
                         <Button
                             onClick={exportOrders}
                             variant="outline"
@@ -475,10 +488,20 @@ const Orders = () => {
                                                         <p className="text-xs font-bold text-slate-800 truncate">{order.customer.name}</p>
                                                     </div>
                                                     <p className="text-sm font-black text-slate-900 mt-2">₹{order.total.toLocaleString()}</p>
+                                                    {isAwaitingFranchisePartner(order) && (
+                                                        <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700 mt-2">
+                                                            Awaiting franchise partner
+                                                        </p>
+                                                    )}
+                                                    {isFranchisePartnerHandling(order) && (
+                                                        <p className="text-[10px] font-bold uppercase tracking-wide text-indigo-700 mt-2">
+                                                            Franchise partner fulfilling
+                                                        </p>
+                                                    )}
                                                 </div>
                                                 <div className="flex flex-col items-end gap-2 shrink-0">
                                                     <Badge variant={getStatusColor(order.status)} className="text-[10px] font-black uppercase px-2 py-0">
-                                                        {order.status}
+                                                        {order.statusLabel || order.status}
                                                     </Badge>
                                                     <select
                                                         value={order.status}
@@ -599,7 +622,12 @@ const Orders = () => {
                                                             >
                                                                 <HiOutlineEye className="h-4 w-4" />
                                                             </button>
-                                                            {order.status === 'Pending' && (
+                                                            {isHubFranchiseOrder(order) && (
+                                                                <span className="px-2 py-1 text-[10px] font-black uppercase bg-indigo-100 text-indigo-700 rounded-lg">
+                                                                    Partner order
+                                                                </span>
+                                                            )}
+                                                            {order.status === 'pending' && !isHubFranchiseOrder(order) && (
                                                                 <>
                                                                     <button
                                                                         onClick={(e) => {
@@ -674,7 +702,7 @@ const Orders = () => {
                     {/* Quick View Summary Modal */}
                     <AnimatePresence>
                         {isQuickViewModalOpen && (
-                            <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4">
+                            <div className="fixed inset-0 z-100 flex items-center justify-center p-3 sm:p-4">
                                 <motion.div
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
@@ -734,7 +762,7 @@ const Orders = () => {
                     </AnimatePresence>
                     <AnimatePresence>
                         {isDetailsModalOpen && selectedOrder && (
-                            <div className="fixed inset-0 z-[100] flex items-stretch sm:items-center justify-center p-3 sm:p-6 lg:p-12">
+                            <div className="fixed inset-0 z-100 flex items-stretch sm:items-center justify-center p-3 sm:p-6 lg:p-12">
                                 <motion.div
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}

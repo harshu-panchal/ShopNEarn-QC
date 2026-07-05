@@ -2516,7 +2516,31 @@ export const getMyTotalTeam = async (req, res) => {
       (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0),
     );
 
+    const totalMembers = teamMembers.length;
+    const activePlanA = teamMembers.filter(
+      (m) => m.status === "active" && m.planType === "A",
+    ).length;
+    const activePlanB = teamMembers.filter(
+      (m) => m.status === "active" && m.planType === "B",
+    ).length;
+    const inactiveMembers = teamMembers.filter(
+      (m) => m.status !== "active",
+    ).length;
+
     let filteredMembers = teamMembers;
+    const statusFilter = String(req.query.filter || "").trim();
+    if (statusFilter === "planA") {
+      filteredMembers = teamMembers.filter(
+        (m) => m.status === "active" && m.planType === "A",
+      );
+    } else if (statusFilter === "planB") {
+      filteredMembers = teamMembers.filter(
+        (m) => m.status === "active" && m.planType === "B",
+      );
+    } else if (statusFilter === "inactive") {
+      filteredMembers = teamMembers.filter((m) => m.status !== "active");
+    }
+
     if (searchTerm) {
       const userById = await loadCustomerRowsForMembers(filteredMembers);
       filteredMembers = filterMembersBySearch(
@@ -2536,6 +2560,9 @@ export const getMyTotalTeam = async (req, res) => {
       if (m.binaryParentId) relatedUserIds.add(String(m.binaryParentId));
     }
     const userById = await loadCustomerRowsForUserIds([...relatedUserIds]);
+    const timelineByUser = await lookupMembershipTimelineByUserIds(
+      paginated.map((m) => m.userId),
+    );
 
     const items = paginated.map((m) => {
       const u = userById.get(String(m.userId));
@@ -2543,6 +2570,7 @@ export const getMyTotalTeam = async (req, res) => {
       const placement = m.binaryParentId
         ? userById.get(String(m.binaryParentId))
         : null;
+      const timeline = timelineByUser.get(String(m.userId));
       const joinedAt = resolveMemberRegistrationAt({
         ...m,
         userId: u || m.userId,
@@ -2556,6 +2584,8 @@ export const getMyTotalTeam = async (req, res) => {
         placementPublicUserId: placement?.userId || null,
         position: m.legUnderRoot === "L" ? "Left" : "Right",
         joinedAt,
+        planAJoinedAt:
+          timeline?.planAJoinedAt || m.planAJoinedAt || m.joinedAt || null,
         status: m.status,
         planType: m.planType,
         referralCode: m.referralCode,
@@ -2571,6 +2601,10 @@ export const getMyTotalTeam = async (req, res) => {
       leftLegActiveCount: downlineStats.leftLegActiveDownlineCount,
       rightLegActiveCount: downlineStats.rightLegActiveDownlineCount,
       pairsCompleted: clampMlmCount(membership.pairsCompleted),
+      totalMembers,
+      activePlanA,
+      activePlanB,
+      inactiveMembers,
       items,
       page,
       limit,

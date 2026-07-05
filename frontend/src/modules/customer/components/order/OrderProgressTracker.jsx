@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { CheckCircle, Circle, Clock, Truck, Home } from "lucide-react";
-import { getLegacyStatusFromOrder } from "@/shared/utils/orderStatus";
+import { getLegacyStatusFromOrder, getFranchisePartnerDisplayName } from "@/shared/utils/orderStatus";
 
 const STATUS_TO_STAGE = {
   pending: "confirmed",
@@ -18,6 +18,7 @@ const OrderProgressTracker = ({
   totalDistanceText = "—",
 }) => {
   const status = getLegacyStatusFromOrder(order);
+  const franchisePartnerName = getFranchisePartnerDisplayName(order);
   const currentStage = STATUS_TO_STAGE[status] || "confirmed";
 
   const steps = [
@@ -129,7 +130,9 @@ const OrderProgressTracker = ({
                   </p>
                   {isActive && (
                     <p className="text-xs text-amber-600 font-medium mt-0.5">
-                      In progress...
+                      {franchisePartnerName
+                        ? `With ${franchisePartnerName} — in progress…`
+                        : "In progress..."}
                     </p>
                   )}
                 </div>

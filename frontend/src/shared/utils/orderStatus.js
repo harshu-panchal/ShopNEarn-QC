@@ -31,8 +31,9 @@ function legacyFromWorkflow(workflowStatus) {
     case WORKFLOW_STATUS.CREATED:
     case WORKFLOW_STATUS.SELLER_PENDING:
     case WORKFLOW_STATUS.FRANCHISE_PENDING:
-    case WORKFLOW_STATUS.FRANCHISE_ACCEPTED:
       return "pending";
+    case WORKFLOW_STATUS.FRANCHISE_ACCEPTED:
+      return "confirmed";
     case WORKFLOW_STATUS.SELLER_ACCEPTED:
     case WORKFLOW_STATUS.DELIVERY_SEARCH:
       return "confirmed";
@@ -56,6 +57,15 @@ function legacyFromWorkflow(workflowStatus) {
  */
 export function getLegacyStatusFromOrder(order) {
   if (!order) return "pending";
+
+  if (order.franchisePartnerId && order.isFranchiseStockOrder !== true) {
+    if (order.franchiseStatus === "fulfilled") return "delivered";
+    if (order.franchiseStatus === "rejected") return "cancelled";
+    if (order.franchiseStatus === "accepted" && order.shipmentStatus === "created") {
+      return "packed";
+    }
+  }
+
   const v = Number(order.workflowVersion) || 0;
   if (v >= 2 && order.workflowStatus) {
     const workflowStatus = String(order.workflowStatus).toUpperCase();
@@ -115,6 +125,17 @@ export function getOrderStatusLabel(order) {
     }
   }
 
+  if (order?.franchisePartnerId && order?.isFranchiseStockOrder !== true) {
+    const fs = order.franchiseStatus;
+    if (fs === "fulfilled") return "Delivered";
+    if (fs === "rejected") return "Cancelled";
+    if (fs === "pending") return "Awaiting partner";
+    if (fs === "accepted") {
+      if (order.shipmentStatus === "created") return "Partner shipping";
+      return "Partner accepted";
+    }
+  }
+
   const bucket = getLegacyStatusFromOrder(order);
   return DISPLAY_LABELS[bucket] || bucket.replace(/_/g, " ");
 }
@@ -140,4 +161,88 @@ export function adminRouteMatchesOrder(routeStatus, order) {
     return rs && rs !== "none";
   }
   return legacy === routeStatus;
+}
+
+/** Display name for the franchise partner assigned to a hub order. */
+export function getFranchisePartnerDisplayName(order) {
+  const partner = order?.franchisePartnerId;
+  if (!partner) return null;
+  if (typeof partner === "object") {
+    const name = String(partner.displayName || "").trim();
+    if (name) return name;
+    const code = String(partner.referralCode || "").trim();
+    if (code) return code;
+  }
+  return null;
+}
+
+/** Resolve a line-item thumbnail from snapshot or populated product. */
+export function getOrderItemImage(item) {
+  if (!item) return null;
+  const direct = String(item.image || "").trim();
+  if (direct) return direct;
+  const product = item.product;
+  if (product && typeof product === "object") {
+    const fromProduct = String(product.mainImage || product.image || "").trim();
+    if (fromProduct) return fromProduct;
+  }
+  return null;
+}
+
+/** Canonical order total for list/detail cards. */
+export function getOrderDisplayTotal(order) {
+  return Number(
+    order?.paymentBreakdown?.grandTotal ??
+      order?.pricing?.total ??
+      order?.items?.reduce(
+        (sum, line) => sum + Number(line.price || 0) * Number(line.quantity || 1),
+        0,
+      ) ??
+      0,
+  );
+}
+
+/** Primary line + multi-item summary for order history rows. */
+export function getOrderLineSummary(order) {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  if (!items.length) {
+    return { primaryName: "Order items", extraCount: 0, totalQty: 0 };
+  }
+  const primaryName =
+    String(items[0]?.name || items[0]?.product?.name || "Item").trim() || "Item";
+  const extraCount = Math.max(0, items.length - 1);
+  const totalQty = items.reduce((sum, line) => sum + Number(line.quantity || 1), 0);
+  return { primaryName, extraCount, totalQty };
+}
+
+const CUSTOMER_STATUS_STYLES = {
+  pending: {
+    badge: "bg-amber-50 text-amber-800 border-amber-100",
+    icon: "text-amber-600",
+  },
+  confirmed: {
+    badge: "bg-blue-50 text-blue-800 border-blue-100",
+    icon: "text-blue-600",
+  },
+  packed: {
+    badge: "bg-indigo-50 text-indigo-800 border-indigo-100",
+    icon: "text-indigo-600",
+  },
+  out_for_delivery: {
+    badge: "bg-violet-50 text-violet-800 border-violet-100",
+    icon: "text-violet-600",
+  },
+  delivered: {
+    badge: "bg-emerald-50 text-emerald-800 border-emerald-100",
+    icon: "text-emerald-600",
+  },
+  cancelled: {
+    badge: "bg-rose-50 text-rose-800 border-rose-100",
+    icon: "text-rose-600",
+  },
+};
+
+export function getCustomerOrderStatusStyles(order) {
+  const legacy = getLegacyStatusFromOrder(order);
+  return CUSTOMER_STATUS_STYLES[legacy] || CUSTOMER_STATUS_STYLES.pending;
 }

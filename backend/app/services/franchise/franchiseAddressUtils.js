@@ -66,3 +66,32 @@ export function formatFranchiseAddress(parts = {}) {
     .filter(Boolean)
     .join(", ");
 }
+
+/** Pull a 6-digit Indian pincode from explicit fields or embedded city text. */
+export function extractPincodeFromAddress(address = {}) {
+  const direct = String(address.pincode || address.zip || "").trim();
+  if (/^\d{6}$/.test(direct)) return direct;
+
+  const candidates = [
+    address.city,
+    address.address,
+    address.landmark,
+    address.locality,
+  ]
+    .map((v) => String(v || "").trim())
+    .filter(Boolean);
+
+  for (const text of candidates) {
+    const match = text.match(/\b(\d{6})\b/);
+    if (match) return match[1];
+  }
+  return "";
+}
+
+/** Normalize checkout/delivery address for franchise territory routing. */
+export function normalizeAddressForFranchiseRouting(address = {}) {
+  const normalized = { ...(address || {}) };
+  const pincode = extractPincodeFromAddress(normalized);
+  if (pincode) normalized.pincode = pincode;
+  return normalized;
+}

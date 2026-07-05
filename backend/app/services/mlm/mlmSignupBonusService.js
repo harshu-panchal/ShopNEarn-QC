@@ -343,8 +343,9 @@ async function creditDirectReferralEarning({
  * Signup bonus credits for the MLM program.
  *
  * Rule (Jun 2026): when the direct sponsor is still REGISTERED_UNPAID,
- * neither the sponsor nor the new referral receives the signup bonus in
- * wallet/history. Both amounts are held until the sponsor activates.
+ * signup bonuses are not paid at registration. The welcome self credit
+ * releases when the referral activates Plan A; the sponsor's referral
+ * bonus stays held until the sponsor activates.
  */
 
 async function creditMemberSignupBonus({
@@ -425,12 +426,40 @@ async function emitHeldSignupBonusEvent({
     null,
     session ? { session } : {},
   );
-  if (existing) return existing;
+  if (
+    existing?.status === MLM_COMMISSION_EVENT_STATUS.CREDITED
+    || existing?.status === MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION
+  ) {
+    return existing;
+  }
 
   const description =
     bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
       ? "MLM signup bonus — referral acquired (held until sponsor activates)"
       : "MLM signup bonus — welcome credit (held until sponsor activates)";
+
+  // Clawback reuses the same idempotencyKey row — convert it back to HELD
+  // instead of silently skipping (which stranded bonuses after sponsor activation).
+  if (existing?.status === MLM_COMMISSION_EVENT_STATUS.CLAWED_BACK) {
+    existing.status = MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION;
+    existing.cappedAmount = 0;
+    existing.rolloverAmount = 0;
+    existing.clawbackAt = undefined;
+    existing.clawbackAmount = undefined;
+    existing.ledgerEntryId = null;
+    existing.description = description;
+    existing.meta = {
+      ...(existing.meta || {}),
+      unpaidSponsorUserId: String(unpaidSponsorUserId),
+      heldReferralUserId: String(referralUserId),
+      mlmEvent:
+        bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
+          ? "SIGNUP_BONUS_SPONSOR_HELD"
+          : "SIGNUP_BONUS_SELF_HELD",
+    };
+    await existing.save({ session });
+    return existing;
+  }
 
   const [eventDoc] = await MlmCommissionEvent.create(
     [
@@ -837,6 +866,102 @@ export async function applyDirectReferralActivationBonusInSession({
  * Release signup bonuses held while this member was REGISTERED_UNPAID.
  * Called when the sponsor activates Plan A (paid or admin approval).
  */
+async function creditHeldSignupBonusEvent(
+  event,
+  { session, correlationId, releaseMeta = {} },
+) {
+  const recipientMembership = event.recipientMembershipId
+    ? await MlmMembership.findById(event.recipientMembershipId).session(session)
+    : await MlmMembership.findOne({ userId: event.recipientId }).session(session);
+
+  const ledgerType =
+    event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
+      ? LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SPONSOR
+      : LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SELF;
+
+  const creditResult = await creditWallet({
+    ownerType: OWNER_TYPE.CUSTOMER,
+    ownerId: event.recipientId,
+    amount: event.bonusAmount,
+    bucket: "shopping",
+    session,
+    ledgerType,
+    ledgerReference: event.idempotencyKey,
+    ledgerDescription:
+      event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
+        ? "MLM signup bonus — referral acquired"
+        : "MLM signup bonus — welcome credit",
+    metadata: {
+      ...(event.meta || {}),
+      ...releaseMeta,
+    },
+    idempotencyKey: event.idempotencyKey,
+    correlationId,
+    syncUserWalletBalance: false,
+  });
+
+  event.status = MLM_COMMISSION_EVENT_STATUS.CREDITED;
+  event.cappedAmount = event.bonusAmount;
+  event.ledgerEntryId = creditResult?.ledgerEntry?._id || null;
+  event.releasedAt = new Date();
+  event.description =
+    event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
+      ? "MLM signup bonus — referral acquired"
+      : "MLM signup bonus — welcome credit";
+  await event.save({ session });
+
+  if (
+    event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SELF &&
+    recipientMembership &&
+    !recipientMembership.signupBonusCreditedAt
+  ) {
+    recipientMembership.signupBonusCreditedAt = new Date();
+    await recipientMembership.save({ session });
+  }
+
+  return {
+    eventId: event._id,
+    bonusType: event.bonusType,
+    recipientId: event.recipientId,
+    amount: event.bonusAmount,
+  };
+}
+
+/**
+ * Release the welcome signup bonus held at registration once the referral
+ * activates Plan A, even if their direct sponsor is still unpaid.
+ */
+export async function releaseHeldSelfSignupBonusOnReferralActivation({
+  activatedUserId,
+  session,
+  correlationId = null,
+}) {
+  if (!session) {
+    throw new Error(
+      "releaseHeldSelfSignupBonusOnReferralActivation requires an open mongoose session.",
+    );
+  }
+  if (!activatedUserId) return [];
+
+  const heldSelf = await MlmCommissionEvent.findOne({
+    recipientId: activatedUserId,
+    bonusType: MLM_BONUS_TYPE.SIGNUP_BONUS_SELF,
+    status: MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
+  }).session(session);
+
+  if (!heldSelf) return [];
+
+  const released = await creditHeldSignupBonusEvent(heldSelf, {
+    session,
+    correlationId,
+    releaseMeta: {
+      releasedOnReferralActivation: String(activatedUserId),
+    },
+  });
+
+  return [released];
+}
+
 export async function releaseHeldSignupBonusesForSponsorActivation({
   sponsorUserId,
   session,
@@ -858,61 +983,15 @@ export async function releaseHeldSignupBonusesForSponsorActivation({
 
   const released = [];
   for (const event of heldEvents) {
-    const recipientMembership = event.recipientMembershipId
-      ? await MlmMembership.findById(event.recipientMembershipId).session(session)
-      : await MlmMembership.findOne({ userId: event.recipientId }).session(session);
-
-    const ledgerType =
-      event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
-        ? LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SPONSOR
-        : LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SELF;
-
-    const creditResult = await creditWallet({
-      ownerType: OWNER_TYPE.CUSTOMER,
-      ownerId: event.recipientId,
-      amount: event.bonusAmount,
-      bucket: "shopping",
-      session,
-      ledgerType,
-      ledgerReference: event.idempotencyKey,
-      ledgerDescription:
-        event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
-          ? "MLM signup bonus — referral acquired"
-          : "MLM signup bonus — welcome credit",
-      metadata: {
-        ...(event.meta || {}),
-        releasedOnSponsorActivation: String(sponsorUserId),
-      },
-      idempotencyKey: event.idempotencyKey,
-      correlationId,
-      syncUserWalletBalance: false,
-    });
-
-    event.status = MLM_COMMISSION_EVENT_STATUS.CREDITED;
-    event.cappedAmount = event.bonusAmount;
-    event.ledgerEntryId = creditResult?.ledgerEntry?._id || null;
-    event.releasedAt = new Date();
-    event.description =
-      event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
-        ? "MLM signup bonus — referral acquired"
-        : "MLM signup bonus — welcome credit";
-    await event.save({ session });
-
-    if (
-      event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SELF &&
-      recipientMembership &&
-      !recipientMembership.signupBonusCreditedAt
-    ) {
-      recipientMembership.signupBonusCreditedAt = new Date();
-      await recipientMembership.save({ session });
-    }
-
-    released.push({
-      eventId: event._id,
-      bonusType: event.bonusType,
-      recipientId: event.recipientId,
-      amount: event.bonusAmount,
-    });
+    released.push(
+      await creditHeldSignupBonusEvent(event, {
+        session,
+        correlationId,
+        releaseMeta: {
+          releasedOnSponsorActivation: String(sponsorUserId),
+        },
+      }),
+    );
   }
 
   return released;
@@ -1013,6 +1092,180 @@ export async function reclawSignupBonusesForUnpaidSponsor({
   }
 
   return { clawed };
+}
+
+async function resolveUnpaidSponsorUserIdForSignupEvent(event, session) {
+  const meta = event?.meta || {};
+  if (meta.unpaidSponsorUserId) return String(meta.unpaidSponsorUserId);
+  if (meta.sponsorUserId) return String(meta.sponsorUserId);
+
+  if (event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SELF) {
+    const membership = await MlmMembership.findOne({ userId: event.recipientId })
+      .select("sponsorId")
+      .session(session);
+    return membership?.sponsorId ? String(membership.sponsorId) : null;
+  }
+
+  if (event.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR) {
+    return event.recipientId ? String(event.recipientId) : null;
+  }
+
+  return null;
+}
+
+async function restoreOneClawedSignupBonusEvent(event, { session, correlationId }) {
+  const amount = roundCurrency(
+    event.bonusAmount || event.clawbackAmount || event.cappedAmount || 0,
+  );
+  if (amount <= 0) {
+    return { skipped: "ZERO_AMOUNT", idempotencyKey: event.idempotencyKey };
+  }
+
+  const alreadyCredited = await MlmCommissionEvent.findOne({
+    idempotencyKey: event.idempotencyKey,
+    status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+  }).session(session);
+  if (alreadyCredited) {
+    return { skipped: "ALREADY_CREDITED", idempotencyKey: event.idempotencyKey };
+  }
+
+  const live = await MlmCommissionEvent.findById(event._id).session(session);
+  if (!live || live.status !== MLM_COMMISSION_EVENT_STATUS.CLAWED_BACK) {
+    return { skipped: "NOT_CLAWED", idempotencyKey: event.idempotencyKey };
+  }
+
+  const ledgerType =
+    live.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
+      ? LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SPONSOR
+      : LEDGER_TRANSACTION_TYPE.MLM_SIGNUP_BONUS_SELF;
+
+  const restoreIdempotencyKey = `${live.idempotencyKey}-RESTORE`;
+  const creditResult = await creditWallet({
+    ownerType: OWNER_TYPE.CUSTOMER,
+    ownerId: live.recipientId,
+    amount,
+    bucket: "shopping",
+    session,
+    ledgerType,
+    ledgerReference: restoreIdempotencyKey,
+    ledgerDescription:
+      live.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
+        ? "MLM signup bonus — referral acquired (restored after sponsor activation)"
+        : "MLM signup bonus — welcome credit (restored after sponsor activation)",
+    metadata: {
+      ...(live.meta || {}),
+      restoredFromClawback: true,
+      originalIdempotencyKey: live.idempotencyKey,
+    },
+    idempotencyKey: restoreIdempotencyKey,
+    correlationId,
+    syncUserWalletBalance: false,
+  });
+
+  live.status = MLM_COMMISSION_EVENT_STATUS.CREDITED;
+  live.cappedAmount = amount;
+  live.rolloverAmount = 0;
+  live.clawbackAt = undefined;
+  live.clawbackAmount = undefined;
+  live.ledgerEntryId = creditResult?.ledgerEntry?._id || null;
+  live.releasedAt = new Date();
+  live.description =
+    live.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR
+      ? "MLM signup bonus — referral acquired"
+      : "MLM signup bonus — welcome credit";
+  await live.save({ session });
+
+  if (live.bonusType === MLM_BONUS_TYPE.SIGNUP_BONUS_SELF) {
+    const recipientMembership = live.recipientMembershipId
+      ? await MlmMembership.findById(live.recipientMembershipId).session(session)
+      : await MlmMembership.findOne({ userId: live.recipientId }).session(session);
+    if (recipientMembership && !recipientMembership.signupBonusCreditedAt) {
+      recipientMembership.signupBonusCreditedAt = new Date();
+      await recipientMembership.save({ session });
+    }
+  }
+
+  return {
+    restored: true,
+    idempotencyKey: live.idempotencyKey,
+    recipientId: String(live.recipientId),
+    bonusType: live.bonusType,
+    amount,
+  };
+}
+
+/**
+ * Re-credit signup bonuses that were clawed back while the sponsor was
+ * unpaid but the sponsor is now ACTIVE. Also handles the gap where clawback
+ * left CLAWED_BACK rows instead of HELD rows (idempotencyKey collision).
+ */
+export async function restoreClawedSignupBonusesForActivatedSponsors({
+  sponsorUserId = null,
+  recipientUserId = null,
+  session,
+  correlationId = null,
+}) {
+  if (!session) {
+    throw new Error(
+      "restoreClawedSignupBonusesForActivatedSponsors requires an open mongoose session.",
+    );
+  }
+
+  const clawedQuery = {
+    bonusType: {
+      $in: [MLM_BONUS_TYPE.SIGNUP_BONUS_SELF, MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR],
+    },
+    status: MLM_COMMISSION_EVENT_STATUS.CLAWED_BACK,
+  };
+  if (recipientUserId) {
+    clawedQuery.recipientId = recipientUserId;
+  }
+
+  const clawedEvents = await MlmCommissionEvent.find(clawedQuery).session(session);
+
+  const restored = [];
+  const skipped = [];
+
+  for (const event of clawedEvents) {
+    const unpaidSponsorUserId = await resolveUnpaidSponsorUserIdForSignupEvent(
+      event,
+      session,
+    );
+    if (!unpaidSponsorUserId) {
+      skipped.push({
+        idempotencyKey: event.idempotencyKey,
+        reason: "NO_UNPAID_SPONSOR",
+      });
+      continue;
+    }
+    if (sponsorUserId && String(sponsorUserId) !== unpaidSponsorUserId) {
+      continue;
+    }
+
+    const sponsorMembership = await MlmMembership.findOne({
+      userId: unpaidSponsorUserId,
+    }).session(session);
+    if (
+      !sponsorMembership
+      || sponsorMembership.status !== MLM_MEMBERSHIP_STATUS.ACTIVE
+    ) {
+      skipped.push({
+        idempotencyKey: event.idempotencyKey,
+        reason: "SPONSOR_NOT_ACTIVE",
+        unpaidSponsorUserId,
+      });
+      continue;
+    }
+
+    const result = await restoreOneClawedSignupBonusEvent(event, {
+      session,
+      correlationId,
+    });
+    if (result.restored) restored.push(result);
+    else skipped.push(result);
+  }
+
+  return { restored, skipped };
 }
 
 /** @deprecated Self bonus at activation is unused; kept for API compat. */

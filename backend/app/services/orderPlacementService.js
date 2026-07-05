@@ -53,6 +53,7 @@ import {
   resolveFranchiseOrderRouting,
 } from "./franchise/franchiseOrderRoutingService.js";
 import { notifyFranchisePartnerNewOrder } from "./franchise/franchiseOrderService.js";
+import { normalizeAddressForFranchiseRouting } from "./franchise/franchiseAddressUtils.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
 import * as logger from "./logger.js";
@@ -71,7 +72,7 @@ function normalizeWalletSource(raw) {
 }
 
 function normalizeAddress(address = {}) {
-  const normalized = { ...(address || {}) };
+  const normalized = normalizeAddressForFranchiseRouting(address || {});
   if (address?.location) {
     const lat = Number(address.location.lat);
     const lng = Number(address.location.lng);
@@ -484,6 +485,7 @@ export async function placeOrderAtomic({
       customerId,
     });
     const isFranchiseRoutedOrder = !!franchiseFields.franchisePartnerId;
+    const awaitingGatewayPayment = paymentMode === "ONLINE" && !isWalletPrepaid;
 
     const checkoutGroupId = await generateUniqueCheckoutGroupId({ session });
     // Stock commits immediately for wallet-prepaid orders (workflow mode
@@ -628,7 +630,9 @@ export async function placeOrderAtomic({
         timeSlot: normalizedPayload.timeSlot || "now",
         workflowVersion: 2,
         workflowStatus: isFranchiseRoutedOrder
-          ? WORKFLOW_STATUS.FRANCHISE_PENDING
+          ? awaitingGatewayPayment
+            ? WORKFLOW_STATUS.CREATED
+            : WORKFLOW_STATUS.FRANCHISE_PENDING
           : shouldStartSellerWorkflow
             ? WORKFLOW_STATUS.SELLER_PENDING
             : WORKFLOW_STATUS.CREATED,
@@ -650,6 +654,9 @@ export async function placeOrderAtomic({
           adminEarningCredited: false,
         },
         ...franchiseFields,
+        ...(isFranchiseRoutedOrder && awaitingGatewayPayment
+          ? { franchiseStatus: null }
+          : {}),
       });
 
       freezeFinancialSnapshot(order, entry.breakdown);
@@ -1007,8 +1014,8 @@ export async function placeOrderAtomic({
           customerId,
         });
       }
-      if (order.franchisePartnerId && franchisePartner) {
-        void notifyFranchisePartnerNewOrder(franchisePartner, order);
+      if (order.franchisePartnerId && !awaitingGatewayPayment) {
+        await notifyFranchisePartnerNewOrder(franchisePartner, order);
       }
     }
 

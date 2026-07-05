@@ -15,13 +15,14 @@ import {
 } from "./franchiseAdminShared";
 
 const DISPATCH_TABS = [
-  { value: "awaiting_dispatch", label: "Awaiting dispatch" },
   { value: "pending_partner", label: "Pending partner" },
+  { value: "awaiting_shipment", label: "Awaiting shipment" },
+  { value: "awaiting_dispatch", label: "Awaiting dispatch" },
   { value: "in_transit", label: "In transit" },
 ];
 
 const FranchiseDispatch = () => {
-  const [dispatchStatus, setDispatchStatus] = useState("awaiting_dispatch");
+  const [dispatchStatus, setDispatchStatus] = useState("pending_partner");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [riders, setRiders] = useState([]);
@@ -91,7 +92,7 @@ const FranchiseDispatch = () => {
   return (
     <PageShell
       title="Franchise dispatch"
-      subtitle="Assign delivery partners to Home Shoppy orders on behalf of franchise partners (Shiprocket desk)."
+      subtitle="Track franchise orders through partner acceptance, shipment creation, optional rider assignment, and delivery."
       actions={
         <button
           type="button"

@@ -29,6 +29,25 @@ export const FRANCHISE_ORDER_STATUS = {
 
 export const ALL_FRANCHISE_ORDER_STATUSES = Object.values(FRANCHISE_ORDER_STATUS);
 
+/** Legacy hub-confirmation step (deprecated — partners self-fulfill). */
+export const FRANCHISE_HUB_ACCEPTANCE_STATUS = {
+  PENDING: "pending",
+  ACCEPTED: "accepted",
+  REJECTED: "rejected",
+};
+
+export const ALL_FRANCHISE_HUB_ACCEPTANCE_STATUSES = Object.values(
+  FRANCHISE_HUB_ACCEPTANCE_STATUS,
+);
+
+/** Franchise partner creates shipment after accepting (no hub confirmation). */
+export const FRANCHISE_SHIPMENT_STATUS = {
+  PENDING: "pending",
+  CREATED: "created",
+};
+
+export const ALL_FRANCHISE_SHIPMENT_STATUSES = Object.values(FRANCHISE_SHIPMENT_STATUS);
+
 export const FRANCHISE_PAYMENT_MODE = {
   PHONEPE: "phonepe",
   MANUAL_QR: "manual_qr",

@@ -70,6 +70,10 @@ function buildMlmLink(subpath = "") {
   return sub ? `${baseUrl}/mlm/${sub}` : `${baseUrl}/mlm`;
 }
 
+function buildFranchiseOrdersLink() {
+  return `${getFrontendBaseUrl()}/mlm/franchise/orders`;
+}
+
 const MLM_EVENT_LINKS = {
   [NOTIFICATION_EVENTS.MLM_MEMBERSHIP_ACTIVATED]: () => buildMlmLink(""),
   [NOTIFICATION_EVENTS.MLM_BONUS_CREDITED]: () => buildMlmLink("earnings"),
@@ -193,6 +197,37 @@ function eventDefinition(eventType) {
           payload.orderId
             ? `New order #${payload.orderId} received.`
             : "You have received a new order.",
+      };
+    case NOTIFICATION_EVENTS.FRANCHISE_HUB_ORDER_PENDING:
+      return {
+        role: NOTIFICATION_ROLES.SELLER,
+        recipientIds: (payload) =>
+          normalizeIdList(payload.sellerId || payload.sellerIds),
+        title: () => "Franchise Order — Action Required",
+        body: (payload) =>
+          payload.orderId
+            ? `Order #${payload.orderId} was accepted by a franchise partner. Please confirm to proceed.`
+            : "A franchise partner accepted an order. Please confirm to proceed.",
+      };
+    case NOTIFICATION_EVENTS.FRANCHISE_HUB_ACCEPTED:
+      return {
+        role: NOTIFICATION_ROLES.CUSTOMER,
+        recipientIds: (payload) => normalizeIdList(payload.userId),
+        title: () => "Hub Confirmed Your Order",
+        body: (payload) =>
+          payload.orderId
+            ? `Harsh's Hub accepted order #${payload.orderId}. You can now create shipment.`
+            : "Harsh's Hub accepted the order. You can now create shipment.",
+      };
+    case NOTIFICATION_EVENTS.FRANCHISE_ORDER_ROUTED:
+      return {
+        role: NOTIFICATION_ROLES.CUSTOMER,
+        recipientIds: (payload) => normalizeIdList(payload.userId),
+        title: () => "New Customer Order",
+        body: (payload) =>
+          payload.orderId
+            ? `Order #${payload.orderId} was routed to your franchise location. Please accept or reject.`
+            : "A new customer order was routed to your franchise location.",
       };
     case NOTIFICATION_EVENTS.DELIVERY_ASSIGNED:
       return {
@@ -497,6 +532,26 @@ function eventData(eventType, payload = {}, role) {
     return {
       eventType,
       link: MLM_EVENT_LINKS[eventType](),
+      ...(payload.data || {}),
+    };
+  }
+
+  if (eventType === NOTIFICATION_EVENTS.FRANCHISE_ORDER_ROUTED) {
+    const orderId = String(payload.orderId || payload.publicOrderId || "").trim() || undefined;
+    return {
+      eventType,
+      orderId,
+      link: buildFranchiseOrdersLink(),
+      ...(payload.data || {}),
+    };
+  }
+
+  if (eventType === NOTIFICATION_EVENTS.FRANCHISE_HUB_ACCEPTED) {
+    const orderId = String(payload.orderId || payload.publicOrderId || "").trim() || undefined;
+    return {
+      eventType,
+      orderId,
+      link: buildFranchiseOrdersLink(),
       ...(payload.data || {}),
     };
   }

@@ -58,6 +58,7 @@ const { placeOrderAtomic } = await import("../app/services/orderPlacementService
 const {
   listFranchisePartnerOrders,
   acceptFranchiseOrder,
+  createFranchiseOrderShipment,
   assignFranchiseOrderDelivery,
   markFranchiseOrderDeliveredFromWorkflow,
 } = await import("../app/services/franchise/franchiseOrderService.js");
@@ -480,6 +481,15 @@ async function seedFranchiseFixture() {
     });
     expect(accepted.franchiseStatus).toBe(FRANCHISE_ORDER_STATUS.ACCEPTED);
     expect(accepted.workflowStatus).toBe(WORKFLOW_STATUS.FRANCHISE_ACCEPTED);
+    expect(accepted.status).toBe("confirmed");
+    expect(accepted.shipmentStatus).toBe("pending");
+
+    const shipped = await createFranchiseOrderShipment({
+      franchisePartnerId: partner._id,
+      orderId,
+    });
+    expect(shipped.shipmentStatus).toBe("created");
+    expect(shipped.shipmentReference).toBeTruthy();
 
     const assigned = await assignFranchiseOrderDelivery({
       orderId: placement.order.orderId,

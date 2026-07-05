@@ -16,6 +16,7 @@ import { MLM_MEMBERSHIP_STATUS } from "../app/constants/mlm.js";
 import {
   reclawSignupBonusesForUnpaidSponsor,
   releaseHeldSignupBonusesForSponsorActivation,
+  restoreClawedSignupBonusesForActivatedSponsors,
 } from "../app/services/mlm/mlmSignupBonusService.js";
 
 dotenv.config();
@@ -95,6 +96,14 @@ try {
         correlationId: `fix-unpaid-sponsor-release-${String(sponsor._id)}`,
       });
     }
+
+    const restoreResult = await restoreClawedSignupBonusesForActivatedSponsors({
+      session,
+      correlationId: "fix-unpaid-sponsor-restore-clawed",
+    });
+    console.log(
+      `Restored ${restoreResult.restored.length} clawed signup bonus event(s).`,
+    );
   });
 } finally {
   await session.endSession();

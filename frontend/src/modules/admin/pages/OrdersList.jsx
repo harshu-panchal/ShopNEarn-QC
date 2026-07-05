@@ -26,6 +26,7 @@ import { useToast } from '@shared/components/ui/Toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     getLegacyStatusFromOrder,
+    getOrderStatusLabel,
     adminRouteMatchesOrder,
 } from '@/shared/utils/orderStatus';
 
@@ -107,8 +108,13 @@ const OrdersList = () => {
                     items: o.items?.length || 0,
                     amount: o.pricing?.total || 0,
                     status: getLegacyStatusFromOrder(o),
+                    statusLabel: getOrderStatusLabel(o),
                     workflowStatus: o.workflowStatus,
                     workflowVersion: o.workflowVersion,
+                    franchisePartnerId: o.franchisePartnerId,
+                    franchiseStatus: o.franchiseStatus,
+                    shipmentStatus: o.shipmentStatus,
+                    isFranchiseStockOrder: o.isFranchiseStockOrder,
                     returnStatus: o.returnStatus,
                     date: new Date(o.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
                     payment: o.payment?.method === 'cod' ? 'COD' : 'Digital',

@@ -187,11 +187,17 @@ export async function adjustFranchiseWallet({
   }
 }
 
-export async function listFranchiseTopUps({ status, page = 1, limit = 25 } = {}) {
+export async function listFranchiseTopUps({
+  status,
+  franchisePartnerId = null,
+  page = 1,
+  limit = 25,
+} = {}) {
   const safePage = Math.max(parseInt(page, 10) || 1, 1);
   const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 25, 1), 100);
   const skip = (safePage - 1) * safeLimit;
   const filter = {};
+  if (franchisePartnerId) filter.franchisePartnerId = franchisePartnerId;
   if (status && status !== "ALL") filter.status = status;
   else if (!status) filter.status = FRANCHISE_TOPUP_STATUS.PENDING_REVIEW;
 

@@ -27,6 +27,7 @@ const TotalTeamPage = () => {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [legFilter, setLegFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState("ALL");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const limit = 50;
@@ -48,6 +49,7 @@ const TotalTeamPage = () => {
           page,
           limit,
           leg: legFilter !== "ALL" ? legFilter : undefined,
+          filter: statusFilter !== "ALL" ? statusFilter : undefined,
           search: search || undefined,
         });
         if (!mounted) return;
@@ -61,7 +63,7 @@ const TotalTeamPage = () => {
     return () => {
       mounted = false;
     };
-  }, [page, legFilter, search]);
+  }, [page, legFilter, statusFilter, search]);
 
   const items = data?.items || [];
   const totalPages = data?.totalPages || 1;
@@ -128,6 +130,85 @@ const TotalTeamPage = () => {
               />
             </div>
 
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilter("ALL");
+                  setPage(1);
+                }}
+                className={`rounded-2xl border p-4 text-left transition-all ${
+                  statusFilter === "ALL"
+                    ? "bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500"
+                    : "bg-white border-slate-200 hover:border-indigo-300"
+                }`}
+              >
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Total Members
+                </p>
+                <p className="text-2xl font-black text-slate-900">
+                  {loading ? "—" : (data.totalMembers ?? total).toLocaleString("en-IN")}
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilter("planA");
+                  setPage(1);
+                }}
+                className={`rounded-2xl border p-4 text-left transition-all ${
+                  statusFilter === "planA"
+                    ? "bg-emerald-100 border-emerald-500 ring-1 ring-emerald-500"
+                    : "bg-emerald-50 border-emerald-100 hover:border-emerald-300"
+                }`}
+              >
+                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">
+                  Active Plan A
+                </p>
+                <p className="text-2xl font-black text-emerald-700">
+                  {loading ? "—" : (data.activePlanA ?? 0).toLocaleString("en-IN")}
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilter("planB");
+                  setPage(1);
+                }}
+                className={`rounded-2xl border p-4 text-left transition-all ${
+                  statusFilter === "planB"
+                    ? "bg-indigo-100 border-indigo-500 ring-1 ring-indigo-500"
+                    : "bg-indigo-50 border-indigo-100 hover:border-indigo-300"
+                }`}
+              >
+                <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-1">
+                  Active Plan B
+                </p>
+                <p className="text-2xl font-black text-indigo-700">
+                  {loading ? "—" : (data.activePlanB ?? 0).toLocaleString("en-IN")}
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilter("inactive");
+                  setPage(1);
+                }}
+                className={`rounded-2xl border p-4 text-left transition-all ${
+                  statusFilter === "inactive"
+                    ? "bg-rose-100 border-rose-500 ring-1 ring-rose-500"
+                    : "bg-rose-50 border-rose-100 hover:border-rose-300"
+                }`}
+              >
+                <p className="text-[10px] font-bold text-rose-600 uppercase tracking-wider mb-1">
+                  Inactive
+                </p>
+                <p className="text-2xl font-black text-rose-700">
+                  {loading ? "—" : (data.inactiveMembers ?? 0).toLocaleString("en-IN")}
+                </p>
+              </button>
+            </div>
+
             <TeamMemberSearch
               value={searchInput}
               onChange={setSearchInput}
@@ -135,7 +216,7 @@ const TotalTeamPage = () => {
             />
 
             <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-white">
-              <div className="bg-gradient-to-r from-violet-700 to-indigo-800 px-4 py-3">
+              <div className="bg-linear-to-r from-violet-700 to-indigo-800 px-4 py-3">
                 <h2 className="text-sm md:text-base font-bold text-white tracking-wide">
                   Total Team List Statement
                 </h2>
@@ -145,33 +226,45 @@ const TotalTeamPage = () => {
                   {legFilter !== "ALL"
                     ? ` · ${legFilter === "L" ? "Left" : "Right"} leg`
                     : ""}
+                  {statusFilter !== "ALL"
+                    ? ` · ${
+                        statusFilter === "planA"
+                          ? "Plan A"
+                          : statusFilter === "planB"
+                            ? "Plan B"
+                            : "Inactive"
+                      }`
+                    : ""}
+                  {search ? ` · matching "${search}"` : ""}
                 </p>
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] text-left text-sm">
+                <table className="w-full min-w-[1100px] text-left text-sm">
                   <thead>
                     <tr className="bg-slate-800 text-white text-[11px] uppercase tracking-wider">
                       <th className="px-3 py-3 font-semibold whitespace-nowrap">Sl. No</th>
                       <th className="px-3 py-3 font-semibold whitespace-nowrap">User ID</th>
                       <th className="px-3 py-3 font-semibold whitespace-nowrap">Name</th>
+                      <th className="px-3 py-3 font-semibold whitespace-nowrap">Status</th>
                       <th className="px-3 py-3 font-semibold whitespace-nowrap">Sponsor ID</th>
                       <th className="px-3 py-3 font-semibold whitespace-nowrap">Sponsor Name</th>
                       <th className="px-3 py-3 font-semibold whitespace-nowrap">Placement</th>
                       <th className="px-3 py-3 font-semibold whitespace-nowrap">Position</th>
-                      <th className="px-3 py-3 font-semibold whitespace-nowrap">Date</th>
+                      <th className="px-3 py-3 font-semibold whitespace-nowrap">Joined Date</th>
+                      <th className="px-3 py-3 font-semibold whitespace-nowrap">Activation Date</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {loading ? (
                       <tr>
-                        <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                        <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
                           <Loader2 className="w-5 h-5 animate-spin mx-auto text-slate-400" />
                         </td>
                       </tr>
                     ) : items.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                        <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
                           No team members found.
                         </td>
                       </tr>
@@ -195,6 +288,23 @@ const TotalTeamPage = () => {
                               {row.name || "Member"}
                             </Link>
                           </td>
+                          <td className="px-3 py-2.5">
+                            <span
+                              className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                row.status === "active"
+                                  ? row.planType === "B"
+                                    ? "bg-indigo-100 text-indigo-700"
+                                    : "bg-emerald-100 text-emerald-700"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {row.status === "active"
+                                ? row.planType === "B"
+                                  ? "Plan B"
+                                  : "Plan A"
+                                : "Inactive"}
+                            </span>
+                          </td>
                           <td className="px-3 py-2.5 font-mono text-xs text-slate-700">
                             {row.sponsorPublicUserId || "—"}
                           </td>
@@ -217,6 +327,9 @@ const TotalTeamPage = () => {
                           </td>
                           <td className="px-3 py-2.5 text-slate-700 text-xs whitespace-nowrap">
                             {formatStatementDate(row.joinedAt)}
+                          </td>
+                          <td className="px-3 py-2.5 text-slate-700 text-xs whitespace-nowrap">
+                            {formatStatementDate(row.planAJoinedAt)}
                           </td>
                         </tr>
                       ))
