@@ -10,7 +10,10 @@ import Payout from "../models/payout.js";
 import OrderOtp from "../models/orderOtp.js";
 import handleResponse from "../utils/helper.js";
 import getPagination from "../utils/pagination.js";
-import { WORKFLOW_STATUS, DEFAULT_SELLER_TIMEOUT_MS } from "../constants/orderWorkflow.js";
+import {
+  WORKFLOW_STATUS,
+  DEFAULT_SELLER_TIMEOUT_MS,
+} from "../constants/orderWorkflow.js";
 import { ORDER_PAYMENT_STATUS } from "../constants/finance.js";
 import {
   afterPlaceOrderV2,
@@ -22,9 +25,7 @@ import {
   removeReturnPickupTimeoutJob,
 } from "../services/orderWorkflowService.js";
 import { applyDeliveredSettlement } from "../services/orderSettlement.js";
-import {
-  markFranchiseOrderDeliveredFromWorkflow,
-} from "../services/franchise/franchiseOrderService.js";
+import { markFranchiseOrderDeliveredFromWorkflow } from "../services/franchise/franchiseOrderService.js";
 import {
   freezeFinancialSnapshot,
   reverseOrderFinanceOnCancellation,
@@ -62,7 +63,9 @@ import { validateBody as validateWithJoi } from "../middleware/validate.js";
 import OrderReturnService from "../services/order/orderReturnService.js";
 
 function normalizePaymentMode(value) {
-  const raw = String(value || "").trim().toUpperCase();
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase();
   if (!raw) return null;
   if (raw === "ONLINE") return "ONLINE";
   if (raw === "COD" || raw === "CASH") return "COD";
@@ -83,12 +86,16 @@ function inferPaymentMode(payment = {}) {
   if (
     candidates.some(
       (value) =>
-        value.includes("online") || value.includes("upi") || value.includes("card"),
+        value.includes("online") ||
+        value.includes("upi") ||
+        value.includes("card"),
     )
   ) {
     return "ONLINE";
   }
-  if (candidates.some((value) => value.includes("cod") || value.includes("cash"))) {
+  if (
+    candidates.some((value) => value.includes("cod") || value.includes("cash"))
+  ) {
     return "COD";
   }
   return null;
@@ -153,8 +160,13 @@ export const placeOrder = async (req, res) => {
       return handleResponse(res, 401, "Unauthorized");
     }
 
-    const { address, payment, timeSlot, items, paymentMode: paymentModeRaw } =
-      req.body || {};
+    const {
+      address,
+      payment,
+      timeSlot,
+      items,
+      paymentMode: paymentModeRaw,
+    } = req.body || {};
 
     const payload = validateWithJoi(createFinanceOrderSchema, {
       items,
@@ -168,7 +180,8 @@ export const placeOrder = async (req, res) => {
       tipAmount: Number(req.body?.tipAmount || 0),
     });
 
-    const idempotencyKey = String(req.headers?.["idempotency-key"] || "").trim() || null;
+    const idempotencyKey =
+      String(req.headers?.["idempotency-key"] || "").trim() || null;
     const placement = await placeOrderAtomic({
       customerId,
       payload,
@@ -312,7 +325,12 @@ export const cancelOrder = async (req, res) => {
           order.orderId,
           reason,
         );
-        return handleResponse(res, 200, "Order cancelled successfully", updated);
+        return handleResponse(
+          res,
+          200,
+          "Order cancelled successfully",
+          updated,
+        );
       } catch (e) {
         return handleResponse(res, e.statusCode || 500, e.message);
       }
@@ -538,13 +556,20 @@ export const updateOrderStatus = async (req, res) => {
       });
 
       const refreshed = await Order.findById(order._id);
-      return handleResponse(res, 200, "Order status updated", refreshed || order);
+      return handleResponse(
+        res,
+        200,
+        "Order status updated",
+        refreshed || order,
+      );
     }
 
     await order.save();
 
     try {
-      await invalidate(buildKey("orders", "customer", `${order.customer.toString()}:*`));
+      await invalidate(
+        buildKey("orders", "customer", `${order.customer.toString()}:*`),
+      );
     } catch (cacheErr) {
       logger.warn("updateOrderStatus cache invalidation failed", {
         scope: "updateOrderStatus",
@@ -676,22 +701,34 @@ export const updateReturnQcStatus = async (req, res) => {
 
     if (qcStatus === "qc_passed") {
       const updated = await completeReturnAndRefund(order);
-      return handleResponse(res, 200, "QC passed and refund processed", updated);
+      return handleResponse(
+        res,
+        200,
+        "QC passed and refund processed",
+        updated,
+      );
     }
 
     // QC failed: allow seller payout release if on hold
     // Fraud guard — prevent double release
     if (order.sellerPayoutReleasedAt) {
-      return handleResponse(res, 409, "Seller payout already released for this order.");
+      return handleResponse(
+        res,
+        409,
+        "Seller payout already released for this order.",
+      );
     }
     const autoRelease =
-      String(process.env.AUTO_RELEASE_SELLER_PAYOUT || "true").toLowerCase() === "true";
+      String(process.env.AUTO_RELEASE_SELLER_PAYOUT || "true").toLowerCase() ===
+      "true";
     if (autoRelease) {
       const payout = await Payout.findOne({
         payoutType: "SELLER",
         relatedOrderIds: order._id,
         status: { $in: ["PENDING", "PROCESSING"] },
-      }).select("_id").lean();
+      })
+        .select("_id")
+        .lean();
       if (payout?._id) {
         try {
           await processPayout(payout._id);
@@ -739,7 +776,8 @@ export const assignReturnDelivery = async (req, res) => {
       return handleResponse(res, 404, "Order not found");
     }
 
-    const isOwnerSeller = role === "seller" && order.seller?.toString() === userId;
+    const isOwnerSeller =
+      role === "seller" && order.seller?.toString() === userId;
     const isAdmin = role === "admin";
 
     if (!isOwnerSeller && !isAdmin) {
@@ -750,7 +788,10 @@ export const assignReturnDelivery = async (req, res) => {
       );
     }
 
-    if (order.returnStatus !== "return_requested" && order.returnStatus !== "return_approved") {
+    if (
+      order.returnStatus !== "return_requested" &&
+      order.returnStatus !== "return_approved"
+    ) {
       return handleResponse(
         res,
         400,
@@ -850,7 +891,10 @@ export const acceptReturnPickup = async (req, res) => {
 
     if (!order) return handleResponse(res, 404, "Order not found");
 
-    if (order.returnDeliveryBoy && order.returnDeliveryBoy.toString() !== userId) {
+    if (
+      order.returnDeliveryBoy &&
+      order.returnDeliveryBoy.toString() !== userId
+    ) {
       return handleResponse(
         res,
         403,
@@ -894,7 +938,9 @@ export const acceptReturnPickup = async (req, res) => {
         customerId: order.customer,
         userId: order.customer,
         deliveryId: userId,
-        data: { message: "A delivery partner has accepted your return pickup!" },
+        data: {
+          message: "A delivery partner has accepted your return pickup!",
+        },
       });
     }
 
@@ -1009,9 +1055,9 @@ const completeReturnAndRefundLegacy = async (order) => {
     order.returnRefundAmount ||
     (Array.isArray(order.returnItems)
       ? order.returnItems.reduce(
-        (sum, item) => sum + (item.price || 0) * (item.quantity || 0),
-        0,
-      )
+          (sum, item) => sum + (item.price || 0) * (item.quantity || 0),
+          0,
+        )
       : 0);
 
   const commission = order.returnDeliveryCommission || 0;
@@ -1021,7 +1067,8 @@ const completeReturnAndRefundLegacy = async (order) => {
   if (order.customer && walletRefundTotal > 0) {
     const customer = await User.findById(order.customer);
     if (customer) {
-      customer.walletBalance = (customer.walletBalance || 0) + Number(walletRefundTotal.toFixed(2));
+      customer.walletBalance =
+        (customer.walletBalance || 0) + Number(walletRefundTotal.toFixed(2));
       await customer.save();
 
       await Transaction.create({
@@ -1032,7 +1079,7 @@ const completeReturnAndRefundLegacy = async (order) => {
         amount: Number(walletRefundTotal.toFixed(2)),
         status: "Settled",
         reference: `REF-WALLET-${order.orderId}`,
-        meta: { orderId: order._id, type: "return_wallet" }
+        meta: { orderId: order._id, type: "return_wallet" },
       });
     }
   }
@@ -1045,10 +1092,15 @@ const completeReturnAndRefundLegacy = async (order) => {
 
     if (isHeld) {
       try {
-        const { cancelPendingPayoutForOrder } = await import("../services/finance/payoutService.js");
-        const cancelled = await cancelPendingPayoutForOrder(order._id, "SELLER", {
-          remarks: `Payout cancelled due to return QC passed.`,
-        });
+        const { cancelPendingPayoutForOrder } =
+          await import("../services/finance/payoutService.js");
+        const cancelled = await cancelPendingPayoutForOrder(
+          order._id,
+          "SELLER",
+          {
+            remarks: `Payout cancelled due to return QC passed.`,
+          },
+        );
 
         if (cancelled) {
           // If payout was cancelled, we don't need to debit the seller's available balance
@@ -1069,7 +1121,8 @@ const completeReturnAndRefundLegacy = async (order) => {
       // If payment was already released (Available balance), we must debit to recover funds.
       const adjustment = Math.max(0, refundAmount + commission);
       try {
-        const { debitWallet } = await import("../services/finance/walletService.js");
+        const { debitWallet } =
+          await import("../services/finance/walletService.js");
         await debitWallet({
           ownerType: "SELLER",
           ownerId: order.seller,
@@ -1107,7 +1160,7 @@ const completeReturnAndRefundLegacy = async (order) => {
         ownerType: "DELIVERY_PARTNER",
         ownerId: order.returnDeliveryBoy,
         amount: commission,
-        bucket: "available"
+        bucket: "available",
       });
     } catch (error) {
       logger.error("Failed to credit delivery boy", {
@@ -1143,7 +1196,7 @@ const completeReturnAndRefundLegacy = async (order) => {
     data: {
       refundAmount,
       returnDeliveryCommission: commission,
-      isCOD: order.paymentMode === "COD"
+      isCOD: order.paymentMode === "COD",
     },
   });
   return order;
@@ -1261,7 +1314,6 @@ export const getSellerOrders = async (req, res) => {
       skip,
       limit,
     });
-
 
     return handleResponse(
       res,
@@ -1478,12 +1530,19 @@ export const uploadReturnPickupProof = async (req, res) => {
 
     const validConditions = ["good", "damaged", "suspicious"];
     if (condition && !validConditions.includes(condition)) {
-      return handleResponse(res, 400, "Condition must be: good, damaged, or suspicious.");
+      return handleResponse(
+        res,
+        400,
+        "Condition must be: good, damaged, or suspicious.",
+      );
     }
 
     order.returnPickupImages = images.slice(0, 10);
     if (condition) order.returnPickupCondition = condition;
-    if (conditionNote) order.returnPickupConditionNote = String(conditionNote).trim().slice(0, 500);
+    if (conditionNote)
+      order.returnPickupConditionNote = String(conditionNote)
+        .trim()
+        .slice(0, 500);
     await order.save();
 
     return handleResponse(res, 200, "Pickup proof uploaded", {

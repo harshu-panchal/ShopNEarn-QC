@@ -58,6 +58,7 @@ export const previewCheckoutFinance = async (req, res) => {
     return handleResponse(res, 200, "Checkout preview generated", {
       paymentMode: payload.paymentMode,
       breakdown: pricingSnapshot.aggregateBreakdown,
+      isFranchiseHubCart: !!pricingSnapshot.isFranchiseHubCart,
       sellerCount: pricingSnapshot.sellerCount,
       itemCount: pricingSnapshot.itemCount,
       sellerBreakdowns,

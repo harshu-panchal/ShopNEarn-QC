@@ -1,6 +1,7 @@
 import React from "react";
 import { Plus, Minus } from "lucide-react";
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
+import { getAvailableStock } from "@/core/utils/productStock";
 
 /**
  * CheckoutCartSummary
@@ -21,7 +22,10 @@ const CheckoutCartSummary = React.memo(function CheckoutCartSummary({
 }) {
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-4">
-      {cart.map((item) => (
+      {cart.map((item) => {
+        const availableStock = getAvailableStock(item, item.variantSku);
+        const atStockLimit = Number(item.quantity || 0) >= availableStock;
+        return (
         <div
           key={`${item.id}::${String(item.variantSku || "").trim()}`}
           className="flex items-start gap-3 pb-4 border-b border-slate-100 last:border-0 last:pb-0">
@@ -62,7 +66,8 @@ const CheckoutCartSummary = React.memo(function CheckoutCartSummary({
               </span>
               <button
                 onClick={() => onUpdateQuantity(item.id, 1, item.variantSku)}
-                className="text-white p-1 hover:bg-white/20 rounded transition-colors">
+                disabled={atStockLimit}
+                className="text-white p-1 hover:bg-white/20 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                 <Plus size={14} strokeWidth={3} />
               </button>
             </div>
@@ -91,7 +96,8 @@ const CheckoutCartSummary = React.memo(function CheckoutCartSummary({
             })()}
           </div>
         </div>
-      ))}
+      );
+      })}
     </div>
   );
 });

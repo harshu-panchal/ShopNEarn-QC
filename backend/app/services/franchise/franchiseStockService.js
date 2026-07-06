@@ -9,6 +9,10 @@ import { OWNER_TYPE, LEDGER_TRANSACTION_TYPE } from "../../constants/finance.js"
 import { debitWallet } from "../finance/walletService.js";
 import { listHubCatalogProducts } from "./franchiseCatalogService.js";
 import { getFranchiseWalletBalance } from "./franchiseWalletService.js";
+import {
+  buildInsufficientStockMessage,
+  resolveAvailableStock,
+} from "../../utils/productStockUtils.js";
 
 export async function getFranchiseStockSummary(franchisePartnerId) {
   const rows = await FranchiseStockLedger.find({ franchisePartnerId }).lean();
@@ -61,6 +65,13 @@ export async function purchaseFranchiseStock({
       throw err;
     }
     const product = catalog.items.find((p) => String(p._id) === productId);
+    const available = resolveAvailableStock(product, "");
+    if (qty > available) {
+      const err = new Error(buildInsufficientStockMessage(available, product?.name));
+      err.statusCode = 422;
+      err.code = "INSUFFICIENT_STOCK";
+      throw err;
+    }
     const unitPrice = Number(product.price) || 0;
     const lineTotal = unitPrice * qty;
     totalCost += lineTotal;

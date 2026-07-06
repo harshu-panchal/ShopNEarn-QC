@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { customerApi } from '../services/customerApi';
 import { useLocation as useAppLocation } from '../context/LocationContext';
 import { applyCloudinaryTransform } from '@/core/utils/imageUtils';
+import { getAvailableStock } from '@/core/utils/productStock';
 import { useSettings } from '@core/context/SettingsContext';
 import Lottie from 'lottie-react';
 
@@ -178,6 +179,9 @@ const ProductDetailPage = () => {
     const cartItem = cart.find(item => item.id === product.id);
     const quantity = cartItem ? cartItem.quantity : 0;
     const isWishlisted = isInWishlist(product.id);
+    const availableStock = getAvailableStock(product, "");
+    const isOutOfStock = availableStock <= 0;
+    const atStockLimit = quantity >= availableStock;
 
     return (
         <div className="relative z-10 py-8 w-full max-w-[1920px] mx-auto px-4 md:px-[50px] animate-in fade-in duration-700 mt-24">
@@ -265,7 +269,8 @@ const ProductDetailPage = () => {
                                 <span className="w-16 text-center font-black text-xl">{quantity}</span>
                                 <button
                                     onClick={() => updateQuantity(product.id, 1, "")}
-                                    className="w-12 h-12 flex items-center justify-center hover:bg-white/20 rounded-xl transition-all"
+                                    disabled={atStockLimit}
+                                    className="w-12 h-12 flex items-center justify-center hover:bg-white/20 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                     <Plus size={24} strokeWidth={3} />
                                 </button>
@@ -273,12 +278,14 @@ const ProductDetailPage = () => {
                         ) : (
                             <Button
                                 onClick={() => {
+                                    if (isOutOfStock) return;
                                     addToCart(product);
                                     showToast(`${product.name} added to cart`, 'success');
                                 }}
-                                className="h-16 w-full sm:w-64 bg-primary hover:bg-[var(--brand-400)] text-white text-lg font-black rounded-2xl shadow-xl transition-all hover:-translate-y-1"
+                                disabled={isOutOfStock}
+                                className="h-16 w-full sm:w-64 bg-primary hover:bg-[var(--brand-400)] text-white text-lg font-black rounded-2xl shadow-xl transition-all hover:-translate-y-1 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
                             >
-                                <Plus className="mr-2" size={24} strokeWidth={3} /> ADD TO CART
+                                <Plus className="mr-2" size={24} strokeWidth={3} /> {isOutOfStock ? 'OUT OF STOCK' : 'ADD TO CART'}
                             </Button>
                         )}
 
@@ -299,7 +306,7 @@ const ProductDetailPage = () => {
                         </div>
                         <div className="bg-white p-4 rounded-2xl border border-slate-100 text-center shadow-sm">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Stock</p>
-                            <p className="text-sm font-black text-slate-800">{product.stock > 0 ? 'In Stock' : 'Out of Stock'}</p>
+                            <p className="text-sm font-black text-slate-800">{availableStock > 0 ? `${availableStock} available` : 'Out of Stock'}</p>
                         </div>
                         <div className="bg-white p-4 rounded-2xl border border-slate-100 text-center shadow-sm">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Brand</p>

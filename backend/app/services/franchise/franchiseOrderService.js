@@ -7,7 +7,10 @@ import {
   FRANCHISE_HUB_ACCEPTANCE_STATUS,
   FRANCHISE_SHIPMENT_STATUS,
 } from "../../constants/franchise.js";
-import { WORKFLOW_STATUS, legacyStatusFromWorkflow } from "../../constants/orderWorkflow.js";
+import {
+  WORKFLOW_STATUS,
+  legacyStatusFromWorkflow,
+} from "../../constants/orderWorkflow.js";
 import { ORDER_PAYMENT_STATUS } from "../../constants/finance.js";
 import { emitNotificationEvent } from "../../modules/notifications/notification.emitter.js";
 import { emitOrderStatusUpdate } from "../orderSocketEmitter.js";
@@ -15,7 +18,10 @@ import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.co
 import logger from "../logger.js";
 import { requireCanonicalOrderId } from "../../utils/orderLookup.js";
 
-export async function listFranchisePartnerOrders(franchisePartnerId, { status, page = 1, limit = 25 } = {}) {
+export async function listFranchisePartnerOrders(
+  franchisePartnerId,
+  { status, page = 1, limit = 25 } = {},
+) {
   const safePage = Math.max(parseInt(page, 10) || 1, 1);
   const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 25, 1), 100);
   const skip = (safePage - 1) * safeLimit;
@@ -37,12 +43,21 @@ export async function listFranchisePartnerOrders(franchisePartnerId, { status, p
       .lean(),
     Order.countDocuments(query),
   ]);
-  return { items, page: safePage, limit: safeLimit, total, totalPages: Math.ceil(total / safeLimit) || 1 };
+  return {
+    items,
+    page: safePage,
+    limit: safeLimit,
+    total,
+    totalPages: Math.ceil(total / safeLimit) || 1,
+  };
 }
 
 async function assertPartnerOwnsOrder(franchisePartnerId, orderId) {
   const order = await Order.findById(orderId);
-  if (!order || String(order.franchisePartnerId) !== String(franchisePartnerId)) {
+  if (
+    !order ||
+    String(order.franchisePartnerId) !== String(franchisePartnerId)
+  ) {
     const err = new Error("Order not found");
     err.statusCode = 404;
     throw err;
@@ -87,12 +102,20 @@ export async function acceptFranchiseOrder({ franchisePartnerId, orderId }) {
   order.acceptedAt = now;
   await order.save();
 
-  emitOrderStatusUpdate(order.orderId, { workflowStatus: order.workflowStatus }, order.customer);
+  emitOrderStatusUpdate(
+    order.orderId,
+    { workflowStatus: order.workflowStatus },
+    order.customer,
+  );
 
   return order;
 }
 
-export async function rejectFranchiseOrder({ franchisePartnerId, orderId, reason }) {
+export async function rejectFranchiseOrder({
+  franchisePartnerId,
+  orderId,
+  reason,
+}) {
   const order = await assertPartnerOwnsOrder(franchisePartnerId, orderId);
   order.franchiseStatus = FRANCHISE_ORDER_STATUS.REJECTED;
   order.hubAcceptanceStatus = null;
@@ -101,12 +124,17 @@ export async function rejectFranchiseOrder({ franchisePartnerId, orderId, reason
   order.orderStatus = order.status;
   if (reason) order.cancelReason = String(reason).slice(0, 240);
   await order.save();
-  emitOrderStatusUpdate(order.orderId, { workflowStatus: order.workflowStatus }, order.customer);
+  emitOrderStatusUpdate(
+    order.orderId,
+    { workflowStatus: order.workflowStatus },
+    order.customer,
+  );
   emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
     orderId: order.orderId,
     customerId: order.customer,
     userId: order.customer,
-    customerMessage: reason || "Your Home Shoppy partner could not fulfill this order.",
+    customerMessage:
+      reason || "Your Home Shoppy partner could not fulfill this order.",
   });
   return order;
 }
@@ -147,7 +175,9 @@ export async function acceptHubFranchiseOrder({ sellerId, orderId }) {
     order.customer,
   );
 
-  const partnerUserId = await loadFranchisePartnerUserId(order.franchisePartnerId);
+  const partnerUserId = await loadFranchisePartnerUserId(
+    order.franchisePartnerId,
+  );
   if (partnerUserId) {
     emitNotificationEvent(NOTIFICATION_EVENTS.FRANCHISE_HUB_ACCEPTED, {
       userId: partnerUserId,
@@ -186,18 +216,27 @@ export async function rejectHubFranchiseOrder({ sellerId, orderId, reason }) {
   if (reason) order.cancelReason = String(reason).slice(0, 240);
   await order.save();
 
-  emitOrderStatusUpdate(order.orderId, { workflowStatus: order.workflowStatus }, order.customer);
+  emitOrderStatusUpdate(
+    order.orderId,
+    { workflowStatus: order.workflowStatus },
+    order.customer,
+  );
   emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
     orderId: order.orderId,
     customerId: order.customer,
     userId: order.customer,
-    customerMessage: reason || "Harsh's Hub could not fulfill this franchise order.",
+    customerMessage:
+      reason || "Harsh's Hub could not fulfill this franchise order.",
   });
 
   return order;
 }
 
-export async function createFranchiseOrderShipment({ franchisePartnerId, orderId, shipmentReference }) {
+export async function createFranchiseOrderShipment({
+  franchisePartnerId,
+  orderId,
+  shipmentReference,
+}) {
   const order = await assertPartnerOwnsOrder(franchisePartnerId, orderId);
   if (order.franchiseStatus !== FRANCHISE_ORDER_STATUS.ACCEPTED) {
     const err = new Error("Order must be accepted before creating shipment");
@@ -222,7 +261,10 @@ export async function createFranchiseOrderShipment({ franchisePartnerId, orderId
 
   emitOrderStatusUpdate(
     order.orderId,
-    { shipmentStatus: order.shipmentStatus, shipmentReference: order.shipmentReference },
+    {
+      shipmentStatus: order.shipmentStatus,
+      shipmentReference: order.shipmentReference,
+    },
     order.customer,
   );
 
@@ -237,7 +279,9 @@ export async function fulfillFranchiseOrder({ franchisePartnerId, orderId }) {
     throw err;
   }
   if (order.shipmentStatus !== FRANCHISE_SHIPMENT_STATUS.CREATED) {
-    const err = new Error("Create shipment before marking this order as delivered");
+    const err = new Error(
+      "Create shipment before marking this order as delivered",
+    );
     err.statusCode = 422;
     throw err;
   }
@@ -247,7 +291,11 @@ export async function fulfillFranchiseOrder({ franchisePartnerId, orderId }) {
   order.orderStatus = order.status;
   order.deliveredAt = new Date();
   await order.save();
-  emitOrderStatusUpdate(order.orderId, { workflowStatus: order.workflowStatus }, order.customer);
+  emitOrderStatusUpdate(
+    order.orderId,
+    { workflowStatus: order.workflowStatus },
+    order.customer,
+  );
   return order;
 }
 
@@ -295,16 +343,29 @@ export async function listFranchiseOrdersForAdmin({
       .skip(skip)
       .limit(safeLimit)
       .populate("customer", "name phone")
-      .populate("franchisePartnerId", "displayName referralCode territoryPincodes")
+      .populate(
+        "franchisePartnerId",
+        "displayName referralCode territoryPincodes",
+      )
       .populate("deliveryBoy", "name phone")
       .lean(),
     Order.countDocuments(query),
   ]);
 
-  return { items, page: safePage, limit: safeLimit, total, totalPages: Math.ceil(total / safeLimit) || 1 };
+  return {
+    items,
+    page: safePage,
+    limit: safeLimit,
+    total,
+    totalPages: Math.ceil(total / safeLimit) || 1,
+  };
 }
 
-export async function assignFranchiseOrderDelivery({ orderId, deliveryBoyId, adminId }) {
+export async function assignFranchiseOrderDelivery({
+  orderId,
+  deliveryBoyId,
+  adminId,
+}) {
   const canonicalOrderId = await requireCanonicalOrderId(orderId);
   const order = await Order.findOne({ orderId: canonicalOrderId });
   if (!order?.franchisePartnerId) {
@@ -323,17 +384,26 @@ export async function assignFranchiseOrderDelivery({ orderId, deliveryBoyId, adm
     throw err;
   }
   if (order.shipmentStatus !== FRANCHISE_SHIPMENT_STATUS.CREATED) {
-    const err = new Error("Franchise partner must create shipment before dispatch");
+    const err = new Error(
+      "Franchise partner must create shipment before dispatch",
+    );
     err.statusCode = 422;
     throw err;
   }
-  if (![WORKFLOW_STATUS.FRANCHISE_ACCEPTED, WORKFLOW_STATUS.DELIVERY_ASSIGNED].includes(order.workflowStatus)) {
+  if (
+    ![
+      WORKFLOW_STATUS.FRANCHISE_ACCEPTED,
+      WORKFLOW_STATUS.DELIVERY_ASSIGNED,
+    ].includes(order.workflowStatus)
+  ) {
     const err = new Error("Order is not ready for delivery assignment");
     err.statusCode = 422;
     throw err;
   }
 
-  const rider = await Delivery.findById(deliveryBoyId).select("_id name phone isVerified isOnline");
+  const rider = await Delivery.findById(deliveryBoyId).select(
+    "_id name phone isVerified isOnline",
+  );
   if (!rider) {
     const err = new Error("Delivery partner not found");
     err.statusCode = 404;
@@ -381,14 +451,20 @@ export async function notifyFranchisePartnerNewOrder(franchisePartner, order) {
         .lean();
     }
     if (!partner?.userId) {
-      logger.warn("[franchise] skipped partner order notification — no userId", {
-        orderId: order?.orderId,
-        franchisePartnerId: order?.franchisePartnerId ? String(order.franchisePartnerId) : null,
-      });
+      logger.warn(
+        "[franchise] skipped partner order notification — no userId",
+        {
+          orderId: order?.orderId,
+          franchisePartnerId: order?.franchisePartnerId
+            ? String(order.franchisePartnerId)
+            : null,
+        },
+      );
       return;
     }
 
-    const { notify } = await import("../../modules/notifications/notification.service.js");
+    const { notify } =
+      await import("../../modules/notifications/notification.service.js");
     const result = await notify(NOTIFICATION_EVENTS.FRANCHISE_ORDER_ROUTED, {
       userId: String(partner.userId),
       orderId: order.orderId,
@@ -411,25 +487,47 @@ export async function notifyFranchisePartnerNewOrder(franchisePartner, order) {
   }
 }
 
-export async function listAllFranchisePartners({ page = 1, limit = 25, q } = {}) {
+export async function listAllFranchisePartners({
+  page = 1,
+  limit = 25,
+  q,
+} = {}) {
   const safePage = Math.max(parseInt(page, 10) || 1, 1);
   const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 25, 1), 200);
   const skip = (safePage - 1) * safeLimit;
   const query = {};
   if (q) {
-    const rx = new RegExp(String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    const rx = new RegExp(
+      String(q)
+        .trim()
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      "i",
+    );
     query.$or = [{ referralCode: rx }, { displayName: rx }, { phone: rx }];
   }
   const [items, total] = await Promise.all([
-    FranchisePartner.find(query).sort({ createdAt: -1 }).skip(skip).limit(safeLimit)
+    FranchisePartner.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
       .populate("userId", "name phone email")
       .lean(),
     FranchisePartner.countDocuments(query),
   ]);
-  return { items, page: safePage, limit: safeLimit, total, totalPages: Math.ceil(total / safeLimit) || 1 };
+  return {
+    items,
+    page: safePage,
+    limit: safeLimit,
+    total,
+    totalPages: Math.ceil(total / safeLimit) || 1,
+  };
 }
 
-export async function updateFranchisePartnerTerritory({ franchisePartnerId, territoryPincodes, adminId }) {
+export async function updateFranchisePartnerTerritory({
+  franchisePartnerId,
+  territoryPincodes,
+  adminId,
+}) {
   const partner = await FranchisePartner.findById(franchisePartnerId);
   if (!partner) {
     const err = new Error("Partner not found");

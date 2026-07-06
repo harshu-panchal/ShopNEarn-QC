@@ -32,8 +32,14 @@ import Cart from "../app/models/cart.js";
 import StockHistory from "../app/models/stockHistory.js";
 import Delivery from "../app/models/delivery.js";
 
-import { OWNER_TYPE, LEDGER_TRANSACTION_TYPE } from "../app/constants/finance.js";
-import { FRANCHISE_ORDER_STATUS, FRANCHISE_PARTNER_STATUS } from "../app/constants/franchise.js";
+import {
+  OWNER_TYPE,
+  LEDGER_TRANSACTION_TYPE,
+} from "../app/constants/finance.js";
+import {
+  FRANCHISE_ORDER_STATUS,
+  FRANCHISE_PARTNER_STATUS,
+} from "../app/constants/franchise.js";
 import { WORKFLOW_STATUS } from "../app/constants/orderWorkflow.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -41,20 +47,21 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 process.env.REDIS_DISABLED = process.env.REDIS_DISABLED || "true";
-process.env.JWT_SECRET = process.env.JWT_SECRET || "franchise-integration-test-secret";
+process.env.JWT_SECRET =
+  process.env.JWT_SECRET || "franchise-integration-test-secret";
 
-const { creditWallet } = await import("../app/services/finance/walletService.js");
-const { purchaseFranchiseStock, getFranchiseStockSummary } = await import(
-  "../app/services/franchise/franchiseStockService.js"
-);
-const { getFranchiseWalletBalance } = await import(
-  "../app/services/franchise/franchiseWalletService.js"
-);
-const { cartIsHubOnly } = await import("../app/services/franchise/franchiseCatalogService.js");
-const { resolveFranchisePartner } = await import(
-  "../app/services/franchise/franchiseOrderRoutingService.js"
-);
-const { placeOrderAtomic } = await import("../app/services/orderPlacementService.js");
+const { creditWallet } =
+  await import("../app/services/finance/walletService.js");
+const { purchaseFranchiseStock, getFranchiseStockSummary } =
+  await import("../app/services/franchise/franchiseStockService.js");
+const { getFranchiseWalletBalance } =
+  await import("../app/services/franchise/franchiseWalletService.js");
+const { cartIsHubOnly } =
+  await import("../app/services/franchise/franchiseCatalogService.js");
+const { resolveFranchisePartner } =
+  await import("../app/services/franchise/franchiseOrderRoutingService.js");
+const { placeOrderAtomic } =
+  await import("../app/services/orderPlacementService.js");
 const {
   listFranchisePartnerOrders,
   acceptFranchiseOrder,
@@ -241,270 +248,297 @@ async function seedFranchiseFixture() {
   };
 }
 
-(RUN_INTEGRATION ? describe : describe.skip)("Franchise integration (Mongo + services)", () => {
-  let mongoUri;
+(RUN_INTEGRATION ? describe : describe.skip)(
+  "Franchise integration (Mongo + services)",
+  () => {
+    let mongoUri;
 
-  beforeAll(async () => {
-    mongoUri = process.env.MONGO_URI_E2E || process.env.MONGO_URI;
-    if (!mongoUri) {
-      throw new Error("Set MONGO_URI_E2E (or MONGO_URI) to run franchise integration tests");
-    }
+    beforeAll(async () => {
+      mongoUri = process.env.MONGO_URI_E2E || process.env.MONGO_URI;
+      if (!mongoUri) {
+        throw new Error(
+          "Set MONGO_URI_E2E (or MONGO_URI) to run franchise integration tests",
+        );
+      }
 
-    const dbName = `fr_int_${Date.now().toString(36)}`;
-    await mongoose.connect(mongoUri, {
-      dbName,
-      serverSelectionTimeoutMS: 15000,
-      socketTimeoutMS: 45000,
-    });
-  });
-
-  beforeEach(async () => {
-    await resetCollections();
-  });
-
-  afterAll(async () => {
-    if (mongoose.connection.readyState === 1) {
-      await mongoose.connection.dropDatabase();
-      await mongoose.connection.close();
-    }
-  });
-
-  it("purchases hub stock from franchise wallet and updates stock ledger", async () => {
-    const { partnerUser, partner, hubProduct } = await seedFranchiseFixture();
-
-    const beforeWallet = await getFranchiseWalletBalance(partner._id);
-    expect(beforeWallet.availableBalance).toBe(50000);
-
-    const result = await purchaseFranchiseStock({
-      franchisePartnerId: partner._id,
-      userId: partnerUser._id,
-      items: [{ productId: hubProduct._id, quantity: 3 }],
+      const dbName = `fr_int_${Date.now().toString(36)}`;
+      await mongoose.connect(mongoUri, {
+        dbName,
+        serverSelectionTimeoutMS: 15000,
+        socketTimeoutMS: 45000,
+      });
     });
 
-    expect(result.totalCost).toBe(300);
-    expect(result.lineItems).toHaveLength(1);
+    beforeEach(async () => {
+      await resetCollections();
+    });
 
-    const afterWallet = await getFranchiseWalletBalance(partner._id);
-    expect(afterWallet.availableBalance).toBe(49700);
+    afterAll(async () => {
+      if (mongoose.connection.readyState === 1) {
+        await mongoose.connection.dropDatabase();
+        await mongoose.connection.close();
+      }
+    });
 
-    const stock = await getFranchiseStockSummary(partner._id);
-    expect(stock).toHaveLength(1);
-    expect(stock[0].quantity).toBe(3);
-    expect(String(stock[0].productId)).toBe(String(hubProduct._id));
+    it("purchases hub stock from franchise wallet and updates stock ledger", async () => {
+      const { partnerUser, partner, hubProduct } = await seedFranchiseFixture();
 
-    const stockOrder = await Order.findById(result.stockOrderId).lean();
-    expect(stockOrder.isFranchiseStockOrder).toBe(true);
-    expect(String(stockOrder.franchisePartnerId)).toBe(String(partner._id));
-  });
+      const beforeWallet = await getFranchiseWalletBalance(partner._id);
+      expect(beforeWallet.availableBalance).toBe(50000);
 
-  it("rejects stock purchase when wallet balance is insufficient", async () => {
-    const { partnerUser, partner, hubProduct } = await seedFranchiseFixture();
-
-    await expect(
-      purchaseFranchiseStock({
+      const result = await purchaseFranchiseStock({
         franchisePartnerId: partner._id,
         userId: partnerUser._id,
-        items: [{ productId: hubProduct._id, quantity: 600 }],
-      }),
-    ).rejects.toMatchObject({
-      statusCode: 422,
-      code: "INSUFFICIENT_FRANCHISE_WALLET",
-    });
-  });
+        items: [{ productId: hubProduct._id, quantity: 3 }],
+      });
 
-  it("prices hub-only checkout from franchise partner distance, not hub warehouse radius", async () => {
-    const fixture = await seedFranchiseFixture();
+      expect(result.totalCost).toBe(300);
+      expect(result.lineItems).toHaveLength(1);
 
-    await Seller.findByIdAndUpdate(fixture.hubSeller._id, {
-      shopName: "Shop N Earn",
-      isPlatformHub: true,
-      location: { type: "Point", coordinates: [77.5946, 12.9716] },
-      serviceRadius: 10,
-    });
+      const afterWallet = await getFranchiseWalletBalance(partner._id);
+      expect(afterWallet.availableBalance).toBe(49700);
 
-    const { buildCheckoutPricingSnapshot } = await import("../app/services/checkoutPricingService.js");
+      const stock = await getFranchiseStockSummary(partner._id);
+      expect(stock).toHaveLength(1);
+      expect(stock[0].quantity).toBe(3);
+      expect(String(stock[0].productId)).toBe(String(hubProduct._id));
 
-    const snapshot = await buildCheckoutPricingSnapshot({
-      orderItems: [{ product: String(fixture.hubProduct._id), quantity: 1 }],
-      address: fixture.deliveryAddress,
-      customerId: fixture.buyerUser._id,
+      const stockOrder = await Order.findById(result.stockOrderId).lean();
+      expect(stockOrder.isFranchiseStockOrder).toBe(true);
+      expect(String(stockOrder.franchisePartnerId)).toBe(String(partner._id));
     });
 
-    expect(snapshot.sellerCount).toBe(1);
-    expect(snapshot.aggregateBreakdown.grandTotal).toBeGreaterThan(0);
-    expect(snapshot.sellerBreakdownEntries[0].distanceKm).toBeLessThan(1);
-  });
+    it("rejects stock purchase when wallet balance is insufficient", async () => {
+      const { partnerUser, partner, hubProduct } = await seedFranchiseFixture();
 
-  it("detects franchise hub cart via isPlatformHub when hubSellerId config is unset", async () => {
-    const fixture = await seedFranchiseFixture();
-
-    await Seller.findByIdAndUpdate(fixture.hubSeller._id, {
-      shopName: "Shop N Earn",
-      isPlatformHub: true,
-      location: { type: "Point", coordinates: [77.5946, 12.9716] },
-      serviceRadius: 10,
+      await expect(
+        purchaseFranchiseStock({
+          franchisePartnerId: partner._id,
+          userId: partnerUser._id,
+          items: [{ productId: hubProduct._id, quantity: 600 }],
+        }),
+      ).rejects.toMatchObject({
+        statusCode: 422,
+        code: "INSUFFICIENT_FRANCHISE_WALLET",
+      });
     });
-    await Setting.updateMany({}, { $set: { homeShoppy: { enabled: true } } });
 
-    const { buildCheckoutPricingSnapshot } = await import("../app/services/checkoutPricingService.js");
+    it("prices hub-only checkout from franchise partner distance, not hub warehouse radius", async () => {
+      const fixture = await seedFranchiseFixture();
 
-    await expect(
-      buildCheckoutPricingSnapshot({
+      await Seller.findByIdAndUpdate(fixture.hubSeller._id, {
+        shopName: "Shop N Earn",
+        isPlatformHub: true,
+        location: { type: "Point", coordinates: [77.5946, 12.9716] },
+        serviceRadius: 10,
+      });
+
+      const { buildCheckoutPricingSnapshot } =
+        await import("../app/services/checkoutPricingService.js");
+
+      const snapshot = await buildCheckoutPricingSnapshot({
         orderItems: [{ product: String(fixture.hubProduct._id), quantity: 1 }],
         address: fixture.deliveryAddress,
         customerId: fixture.buyerUser._id,
-      }),
-    ).resolves.toMatchObject({ sellerCount: 1 });
-  });
+      });
 
-  it("routes hub-only retail orders to the nearest active franchise partner", async () => {
-    const { buyerUser, hubProduct, partner, deliveryAddress, hubSeller } =
-      await seedFranchiseFixture();
+      expect(snapshot.sellerCount).toBe(1);
+      expect(snapshot.aggregateBreakdown.grandTotal).toBeGreaterThan(0);
+      expect(snapshot.isFranchiseHubCart).toBe(true);
+      expect(snapshot.sellerBreakdownEntries[0].distanceKm).toBeLessThan(1);
+    });
 
-    const isHubOnly = await cartIsHubOnly([{ sellerId: String(hubSeller._id) }]);
-    expect(isHubOnly).toBe(true);
+    it("detects franchise hub cart via isPlatformHub when hubSellerId config is unset", async () => {
+      const fixture = await seedFranchiseFixture();
 
-    const resolved = await resolveFranchisePartner({ address: deliveryAddress });
-    expect(String(resolved._id)).toBe(String(partner._id));
+      await Seller.findByIdAndUpdate(fixture.hubSeller._id, {
+        shopName: "Shop N Earn",
+        isPlatformHub: true,
+        location: { type: "Point", coordinates: [77.5946, 12.9716] },
+        serviceRadius: 10,
+      });
+      await Setting.updateMany({}, { $set: { homeShoppy: { enabled: true } } });
 
-    const placement = await placeOrderAtomic({
-      customerId: buyerUser._id,
-      payload: {
-        items: [{ product: String(hubProduct._id), quantity: 2 }],
+      const { buildCheckoutPricingSnapshot } =
+        await import("../app/services/checkoutPricingService.js");
+
+      await expect(
+        buildCheckoutPricingSnapshot({
+          orderItems: [
+            { product: String(fixture.hubProduct._id), quantity: 1 },
+          ],
+          address: fixture.deliveryAddress,
+          customerId: fixture.buyerUser._id,
+        }),
+      ).resolves.toMatchObject({ sellerCount: 1 });
+    });
+
+    it("routes hub-only retail orders to the nearest active franchise partner", async () => {
+      const { buyerUser, hubProduct, partner, deliveryAddress, hubSeller } =
+        await seedFranchiseFixture();
+
+      const isHubOnly = await cartIsHubOnly([
+        { sellerId: String(hubSeller._id) },
+      ]);
+      expect(isHubOnly).toBe(true);
+
+      const resolved = await resolveFranchisePartner({
         address: deliveryAddress,
-        paymentMode: "COD",
-        timeSlot: "now",
-        tipAmount: 0,
-        discountTotal: 0,
-      },
+      });
+      expect(String(resolved._id)).toBe(String(partner._id));
+
+      const placement = await placeOrderAtomic({
+        customerId: buyerUser._id,
+        payload: {
+          items: [{ product: String(hubProduct._id), quantity: 2 }],
+          address: deliveryAddress,
+          paymentMode: "COD",
+          timeSlot: "now",
+          tipAmount: 0,
+          discountTotal: 0,
+        },
+      });
+
+      expect(placement.duplicate).toBe(false);
+      expect(placement.order).toBeTruthy();
+      expect(String(placement.order.franchisePartnerId)).toBe(
+        String(partner._id),
+      );
+      expect(placement.order.franchiseStatus).toBe(
+        FRANCHISE_ORDER_STATUS.PENDING,
+      );
+      expect(placement.order.workflowStatus).toBe("FRANCHISE_PENDING");
+      expect(placement.order.isFranchiseStockOrder).not.toBe(true);
+
+      const stored = await Order.findOne({
+        orderId: placement.order.orderId,
+      }).lean();
+      expect(stored.franchiseRoutedAt).toBeInstanceOf(Date);
     });
 
-    expect(placement.duplicate).toBe(false);
-    expect(placement.order).toBeTruthy();
-    expect(String(placement.order.franchisePartnerId)).toBe(String(partner._id));
-    expect(placement.order.franchiseStatus).toBe(FRANCHISE_ORDER_STATUS.PENDING);
-    expect(placement.order.workflowStatus).toBe("FRANCHISE_PENDING");
-    expect(placement.order.isFranchiseStockOrder).not.toBe(true);
+    it("does not route mixed-seller carts to a franchise partner", async () => {
+      const suffix = randomSuffix();
+      const fixture = await seedFranchiseFixture();
 
-    const stored = await Order.findOne({ orderId: placement.order.orderId }).lean();
-    expect(stored.franchiseRoutedAt).toBeInstanceOf(Date);
-  });
+      const otherSeller = await Seller.create({
+        name: "Other Seller",
+        email: `other_${suffix}@franchise-test.example`,
+        phone: `8830${suffix.slice(-6)}`,
+        password: "Password@123",
+        shopName: "Other Shop",
+        isVerified: true,
+        isActive: true,
+        applicationStatus: "approved",
+        location: { type: "Point", coordinates: [72.52, 23.04] },
+      });
 
-  it("does not route mixed-seller carts to a franchise partner", async () => {
-    const suffix = randomSuffix();
-    const fixture = await seedFranchiseFixture();
+      const otherProduct = await Product.create({
+        name: "Non-hub Product",
+        slug: `other-product-${suffix}`,
+        sku: `OTHER-SKU-${suffix}`,
+        description: "Not from hub",
+        price: 50,
+        salePrice: 50,
+        stock: 50,
+        headerId: fixture.hubProduct.headerId,
+        categoryId: fixture.hubProduct.categoryId,
+        subcategoryId: fixture.hubProduct.subcategoryId,
+        sellerId: otherSeller._id,
+        status: "active",
+      });
 
-    const otherSeller = await Seller.create({
-      name: "Other Seller",
-      email: `other_${suffix}@franchise-test.example`,
-      phone: `8830${suffix.slice(-6)}`,
-      password: "Password@123",
-      shopName: "Other Shop",
-      isVerified: true,
-      isActive: true,
-      applicationStatus: "approved",
-      location: { type: "Point", coordinates: [72.52, 23.04] },
+      const placement = await placeOrderAtomic({
+        customerId: fixture.buyerUser._id,
+        payload: {
+          items: [
+            { product: String(fixture.hubProduct._id), quantity: 1 },
+            { product: String(otherProduct._id), quantity: 1 },
+          ],
+          address: fixture.deliveryAddress,
+          paymentMode: "COD",
+          timeSlot: "now",
+        },
+      });
+
+      for (const order of placement.orders) {
+        expect(order.franchisePartnerId).toBeFalsy();
+        expect(order.franchiseStatus).toBeFalsy();
+      }
     });
 
-    const otherProduct = await Product.create({
-      name: "Non-hub Product",
-      slug: `other-product-${suffix}`,
-      sku: `OTHER-SKU-${suffix}`,
-      description: "Not from hub",
-      price: 50,
-      salePrice: 50,
-      stock: 50,
-      headerId: fixture.hubProduct.headerId,
-      categoryId: fixture.hubProduct.categoryId,
-      subcategoryId: fixture.hubProduct.subcategoryId,
-      sellerId: otherSeller._id,
-      status: "active",
+    it("lists retail orders for partner and supports accept → admin dispatch → delivered", async () => {
+      const { buyerUser, hubProduct, partner, deliveryAddress, suffix } =
+        await seedFranchiseFixture();
+
+      const rider = await Delivery.create({
+        name: "Dispatch Rider",
+        phone: `8830${suffix.slice(-6)}`,
+        role: "delivery",
+        isVerified: true,
+        isOnline: true,
+        location: {
+          type: "Point",
+          coordinates: [72.51, 23.03],
+        },
+      });
+
+      const placement = await placeOrderAtomic({
+        customerId: buyerUser._id,
+        payload: {
+          items: [{ product: String(hubProduct._id), quantity: 1 }],
+          address: deliveryAddress,
+          paymentMode: "COD",
+          timeSlot: "now",
+        },
+      });
+
+      const orderId = placement.order._id;
+
+      const pendingList = await listFranchisePartnerOrders(partner._id, {
+        status: "pending",
+      });
+      expect(pendingList.total).toBe(1);
+      expect(String(pendingList.items[0]._id)).toBe(String(orderId));
+
+      const stockOnlyList = await listFranchisePartnerOrders(partner._id);
+      const stockOrders = stockOnlyList.items.filter(
+        (o) => o.isFranchiseStockOrder,
+      );
+      expect(stockOrders).toHaveLength(0);
+
+      const accepted = await acceptFranchiseOrder({
+        franchisePartnerId: partner._id,
+        orderId,
+      });
+      expect(accepted.franchiseStatus).toBe(FRANCHISE_ORDER_STATUS.ACCEPTED);
+      expect(accepted.workflowStatus).toBe(WORKFLOW_STATUS.FRANCHISE_ACCEPTED);
+      expect(accepted.status).toBe("confirmed");
+      expect(accepted.shipmentStatus).toBe("pending");
+
+      const shipped = await createFranchiseOrderShipment({
+        franchisePartnerId: partner._id,
+        orderId,
+      });
+      expect(shipped.shipmentStatus).toBe("created");
+      expect(shipped.shipmentReference).toBeTruthy();
+
+      const assigned = await assignFranchiseOrderDelivery({
+        orderId: placement.order.orderId,
+        deliveryBoyId: rider._id,
+        adminId: "admin-test",
+      });
+      expect(assigned.workflowStatus).toBe(WORKFLOW_STATUS.DELIVERY_ASSIGNED);
+      expect(String(assigned.deliveryBoy)).toBe(String(rider._id));
+
+      assigned.workflowStatus = WORKFLOW_STATUS.DELIVERED;
+      await markFranchiseOrderDeliveredFromWorkflow(assigned);
+      const delivered = await Order.findById(orderId);
+      expect(delivered.franchiseStatus).toBe(FRANCHISE_ORDER_STATUS.FULFILLED);
+
+      const fulfilledList = await listFranchisePartnerOrders(partner._id, {
+        status: "fulfilled",
+      });
+      expect(fulfilledList.total).toBe(1);
     });
-
-    const placement = await placeOrderAtomic({
-      customerId: fixture.buyerUser._id,
-      payload: {
-        items: [
-          { product: String(fixture.hubProduct._id), quantity: 1 },
-          { product: String(otherProduct._id), quantity: 1 },
-        ],
-        address: fixture.deliveryAddress,
-        paymentMode: "COD",
-        timeSlot: "now",
-      },
-    });
-
-    for (const order of placement.orders) {
-      expect(order.franchisePartnerId).toBeFalsy();
-      expect(order.franchiseStatus).toBeFalsy();
-    }
-  });
-
-  it("lists retail orders for partner and supports accept → admin dispatch → delivered", async () => {
-    const { buyerUser, hubProduct, partner, deliveryAddress, suffix } = await seedFranchiseFixture();
-
-    const rider = await Delivery.create({
-      name: "Dispatch Rider",
-      phone: `8830${suffix.slice(-6)}`,
-      role: "delivery",
-      isVerified: true,
-      isOnline: true,
-      location: {
-        type: "Point",
-        coordinates: [72.51, 23.03],
-      },
-    });
-
-    const placement = await placeOrderAtomic({
-      customerId: buyerUser._id,
-      payload: {
-        items: [{ product: String(hubProduct._id), quantity: 1 }],
-        address: deliveryAddress,
-        paymentMode: "COD",
-        timeSlot: "now",
-      },
-    });
-
-    const orderId = placement.order._id;
-
-    const pendingList = await listFranchisePartnerOrders(partner._id, { status: "pending" });
-    expect(pendingList.total).toBe(1);
-    expect(String(pendingList.items[0]._id)).toBe(String(orderId));
-
-    const stockOnlyList = await listFranchisePartnerOrders(partner._id);
-    const stockOrders = stockOnlyList.items.filter((o) => o.isFranchiseStockOrder);
-    expect(stockOrders).toHaveLength(0);
-
-    const accepted = await acceptFranchiseOrder({
-      franchisePartnerId: partner._id,
-      orderId,
-    });
-    expect(accepted.franchiseStatus).toBe(FRANCHISE_ORDER_STATUS.ACCEPTED);
-    expect(accepted.workflowStatus).toBe(WORKFLOW_STATUS.FRANCHISE_ACCEPTED);
-    expect(accepted.status).toBe("confirmed");
-    expect(accepted.shipmentStatus).toBe("pending");
-
-    const shipped = await createFranchiseOrderShipment({
-      franchisePartnerId: partner._id,
-      orderId,
-    });
-    expect(shipped.shipmentStatus).toBe("created");
-    expect(shipped.shipmentReference).toBeTruthy();
-
-    const assigned = await assignFranchiseOrderDelivery({
-      orderId: placement.order.orderId,
-      deliveryBoyId: rider._id,
-      adminId: "admin-test",
-    });
-    expect(assigned.workflowStatus).toBe(WORKFLOW_STATUS.DELIVERY_ASSIGNED);
-    expect(String(assigned.deliveryBoy)).toBe(String(rider._id));
-
-    assigned.workflowStatus = WORKFLOW_STATUS.DELIVERED;
-    await markFranchiseOrderDeliveredFromWorkflow(assigned);
-    const delivered = await Order.findById(orderId);
-    expect(delivered.franchiseStatus).toBe(FRANCHISE_ORDER_STATUS.FULFILLED);
-
-    const fulfilledList = await listFranchisePartnerOrders(partner._id, { status: "fulfilled" });
-    expect(fulfilledList.total).toBe(1);
-  });
-});
+  },
+);

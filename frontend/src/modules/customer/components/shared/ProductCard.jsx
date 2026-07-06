@@ -8,6 +8,7 @@ import { useCart } from "../../context/CartContext";
 import { useToast } from "@shared/components/ui/Toast";
 import { useCartAnimation } from "../../context/CartAnimationContext";
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
+import { getAvailableStock } from "@/core/utils/productStock";
 
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock } from "lucide-react";
@@ -72,6 +73,12 @@ const ProductCard = React.memo(
     );
     const quantity = cartItem ? cartItem.quantity : 0;
     const isWishlisted = isInWishlist(product.id || product._id);
+    const availableStock = React.useMemo(
+      () => getAvailableStock(product, variantKey),
+      [product, variantKey],
+    );
+    const isOutOfStock = availableStock <= 0;
+    const atStockLimit = quantity >= availableStock;
 
     const handleProductClick = React.useCallback(
       (e) => {
@@ -108,6 +115,7 @@ const ProductCard = React.memo(
       (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (isOutOfStock) return;
         if (imageRef.current) {
           animateAddToCart(
             imageRef.current.getBoundingClientRect(),
@@ -120,16 +128,17 @@ const ProductCard = React.memo(
           variantName: defaultVariant?.name || "",
         });
       },
-      [animateAddToCart, product, addToCart, variantKey, defaultVariant?.name],
+      [animateAddToCart, product, addToCart, variantKey, defaultVariant?.name, isOutOfStock],
     );
 
     const handleIncrement = React.useCallback(
       (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (atStockLimit) return;
         updateQuantity(productId, 1, variantKey);
       },
-      [updateQuantity, productId, variantKey],
+      [updateQuantity, productId, variantKey, atStockLimit],
     );
 
     const handleDecrement = React.useCallback(
@@ -331,20 +340,25 @@ const ProductCard = React.memo(
                   </span>
                   <button
                     onClick={handleIncrement}
-                    className="p-0.5 px-0.5 text-primary active:scale-90 transition-transform sm:p-1 sm:px-1">
+                    disabled={atStockLimit}
+                    className="p-0.5 px-0.5 text-primary active:scale-90 transition-transform sm:p-1 sm:px-1 disabled:opacity-40 disabled:cursor-not-allowed">
                     <Plus size={compact ? 10 : 12} strokeWidth={3.5} />
                   </button>
                 </div>
               ) : (
                 <button
                   onClick={handleAddToCart}
+                  disabled={isOutOfStock}
                   className={cn(
-                    "bg-white border-[1.5px] border-primary text-primary rounded-lg font-black shadow-sm hover:bg-primary/5 mb-0 transition-all uppercase tracking-wide leading-none active:scale-95",
+                    "bg-white border-[1.5px] rounded-lg font-black shadow-sm mb-0 transition-all uppercase tracking-wide leading-none",
+                    isOutOfStock
+                      ? "border-slate-200 text-slate-400 cursor-not-allowed opacity-60"
+                      : "border-primary text-primary hover:bg-primary/5 active:scale-95",
                     compact
                       ? "px-2.5 py-1 text-[10px]"
                       : "px-3.5 py-1.5 text-[11px] sm:px-7 sm:py-2 sm:text-[13px] md:text-sm md:px-8 md:py-2.5",
                   )}>
-                  ADD
+                  {isOutOfStock ? "OUT" : "ADD"}
                 </button>
               )}
             </div>

@@ -86,8 +86,14 @@ const SellerRoutes = () => {
             shipping-policy, ...) are configured under Admin → Legal Pages
             → Seller App. The catch-all `legal/:slug` route lets admins
             mint new pages without a frontend release. */}
-        <Route path="/privacy" element={<SellerLegalPage slug="privacy-policy" />} />
-        <Route path="/terms" element={<SellerLegalPage slug="terms-of-service" />} />
+        <Route
+          path="/privacy"
+          element={<SellerLegalPage slug="privacy-policy" />}
+        />
+        <Route
+          path="/terms"
+          element={<SellerLegalPage slug="terms-of-service" />}
+        />
         <Route path="/about" element={<SellerLegalPage slug="about" />} />
         <Route path="/legal/:slug" element={<SellerLegalPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

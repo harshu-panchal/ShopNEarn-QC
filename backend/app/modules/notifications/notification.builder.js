@@ -45,7 +45,9 @@ function buildOrderLink(orderId) {
 function buildCustomerSupportLink(ticketId) {
   const baseUrl = getFrontendBaseUrl();
   const id = String(ticketId || "").trim();
-  return id ? `${baseUrl}/chat?ticketId=${encodeURIComponent(id)}` : `${baseUrl}/chat`;
+  return id
+    ? `${baseUrl}/chat?ticketId=${encodeURIComponent(id)}`
+    : `${baseUrl}/chat`;
 }
 
 function buildAdminSupportLink(ticketId) {
@@ -66,7 +68,9 @@ function buildSellerInventoryLink(productId) {
 
 function buildMlmLink(subpath = "") {
   const baseUrl = getFrontendBaseUrl();
-  const sub = String(subpath || "").trim().replace(/^\/+|\/+$/g, "");
+  const sub = String(subpath || "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
   return sub ? `${baseUrl}/mlm/${sub}` : `${baseUrl}/mlm`;
 }
 
@@ -77,10 +81,14 @@ function buildFranchiseOrdersLink() {
 const MLM_EVENT_LINKS = {
   [NOTIFICATION_EVENTS.MLM_MEMBERSHIP_ACTIVATED]: () => buildMlmLink(""),
   [NOTIFICATION_EVENTS.MLM_BONUS_CREDITED]: () => buildMlmLink("earnings"),
-  [NOTIFICATION_EVENTS.MLM_PLAN_B_UPGRADED]: () => buildMlmLink("home-shopping"),
-  [NOTIFICATION_EVENTS.MLM_WITHDRAWAL_REQUESTED]: () => buildMlmLink("withdrawals"),
-  [NOTIFICATION_EVENTS.MLM_WITHDRAWAL_APPROVED]: () => buildMlmLink("withdrawals"),
-  [NOTIFICATION_EVENTS.MLM_WITHDRAWAL_REJECTED]: () => buildMlmLink("withdrawals"),
+  [NOTIFICATION_EVENTS.MLM_PLAN_B_UPGRADED]: () =>
+    buildMlmLink("home-shopping"),
+  [NOTIFICATION_EVENTS.MLM_WITHDRAWAL_REQUESTED]: () =>
+    buildMlmLink("withdrawals"),
+  [NOTIFICATION_EVENTS.MLM_WITHDRAWAL_APPROVED]: () =>
+    buildMlmLink("withdrawals"),
+  [NOTIFICATION_EVENTS.MLM_WITHDRAWAL_REJECTED]: () =>
+    buildMlmLink("withdrawals"),
   [NOTIFICATION_EVENTS.MLM_MILESTONE_REACHED]: () => buildMlmLink("earnings"),
 };
 
@@ -89,35 +97,40 @@ function eventDefinition(eventType) {
     case NOTIFICATION_EVENTS.ORDER_PLACED:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Order Placed",
         body: () => "Your order has been placed successfully.",
       };
     case NOTIFICATION_EVENTS.PAYMENT_SUCCESS:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Payment Successful",
         body: () => "Payment received for your order.",
       };
     case NOTIFICATION_EVENTS.ORDER_CONFIRMED:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Order Confirmed",
         body: () => "Seller has confirmed your order.",
       };
     case NOTIFICATION_EVENTS.ORDER_PACKED:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Order Packed",
         body: () => "Your order is packed and ready.",
       };
     case NOTIFICATION_EVENTS.OUT_FOR_DELIVERY:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Out For Delivery",
         body: () => "Your order is on the way.",
       };
@@ -127,7 +140,8 @@ function eventDefinition(eventType) {
         definitions: [
           {
             role: NOTIFICATION_ROLES.CUSTOMER,
-            recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+            recipientIds: (payload) =>
+              normalizeIdList(payload.userId || payload.customerId),
             title: () => "Order Delivered",
             body: () => "Your order has been delivered.",
           },
@@ -157,13 +171,16 @@ function eventDefinition(eventType) {
         definitions: [
           {
             role: NOTIFICATION_ROLES.CUSTOMER,
-            recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+            recipientIds: (payload) =>
+              normalizeIdList(payload.userId || payload.customerId),
             title: () => "Order Cancelled",
-            body: (payload) => payload.customerMessage || "Your order has been cancelled.",
+            body: (payload) =>
+              payload.customerMessage || "Your order has been cancelled.",
           },
           {
             role: NOTIFICATION_ROLES.SELLER,
-            recipientIds: (payload) => normalizeIdList(payload.sellerId || payload.sellerIds),
+            recipientIds: (payload) =>
+              normalizeIdList(payload.sellerId || payload.sellerIds),
             title: () => "Order Cancelled",
             body: (payload) =>
               payload.sellerMessage ||
@@ -176,14 +193,16 @@ function eventDefinition(eventType) {
     case NOTIFICATION_EVENTS.REFUND_INITIATED:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Refund Initiated",
         body: () => "Refund has been initiated for your order.",
       };
     case NOTIFICATION_EVENTS.REFUND_COMPLETED:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Refund Completed",
         body: () => "Refund has been completed.",
       };
@@ -377,10 +396,12 @@ function eventDefinition(eventType) {
               return normalizeIdList(payload.adminIds);
             },
             title: (payload) => {
-              const name = String(payload.userName || "Customer").trim() || "Customer";
+              const name =
+                String(payload.userName || "Customer").trim() || "Customer";
               return `Support message from ${name}`;
             },
-            body: (payload) => truncateText(payload.messageText || "New message"),
+            body: (payload) =>
+              truncateText(payload.messageText || "New message"),
           },
           {
             role: NOTIFICATION_ROLES.CUSTOMER,
@@ -390,7 +411,8 @@ function eventDefinition(eventType) {
               return normalizeIdList(payload.userId || payload.customerId);
             },
             title: () => "Support reply",
-            body: (payload) => truncateText(payload.messageText || "New message"),
+            body: (payload) =>
+              truncateText(payload.messageText || "New message"),
           },
         ],
       };
@@ -399,7 +421,8 @@ function eventDefinition(eventType) {
         role: NOTIFICATION_ROLES.SELLER,
         recipientIds: (payload) => normalizeIdList(payload.sellerId),
         title: (payload) => {
-          const productName = String(payload.productName || "Product").trim() || "Product";
+          const productName =
+            String(payload.productName || "Product").trim() || "Product";
           return `${productName} is running low`;
         },
         body: (payload) => {
@@ -413,7 +436,8 @@ function eventDefinition(eventType) {
     case NOTIFICATION_EVENTS.MLM_MEMBERSHIP_ACTIVATED:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Welcome to the rewards programme 🎉",
         body: (payload) =>
           payload.data?.referralCode
@@ -423,7 +447,8 @@ function eventDefinition(eventType) {
     case NOTIFICATION_EVENTS.MLM_BONUS_CREDITED:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Bonus credited 💰",
         body: (payload) => {
           const amt = Number(payload.data?.amount || 0);
@@ -440,7 +465,8 @@ function eventDefinition(eventType) {
     case NOTIFICATION_EVENTS.MLM_PLAN_B_UPGRADED:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Plan B unlocked 🚀",
         body: () =>
           "You've been auto-upgraded to Plan B. Premium shopping wallet + Home Shopping unlocked.",
@@ -448,7 +474,8 @@ function eventDefinition(eventType) {
     case NOTIFICATION_EVENTS.MLM_WITHDRAWAL_REQUESTED:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Withdrawal request received",
         body: (payload) => {
           const amt = Number(payload.data?.amount || 0);
@@ -459,7 +486,8 @@ function eventDefinition(eventType) {
     case NOTIFICATION_EVENTS.MLM_WITHDRAWAL_APPROVED:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Withdrawal paid ✅",
         body: (payload) => {
           const net = Number(payload.data?.netAmount || 0);
@@ -470,7 +498,8 @@ function eventDefinition(eventType) {
     case NOTIFICATION_EVENTS.MLM_WITHDRAWAL_REJECTED:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Withdrawal rejected",
         body: (payload) => {
           const reason = String(payload.data?.reason || "").trim();
@@ -482,10 +511,13 @@ function eventDefinition(eventType) {
     case NOTIFICATION_EVENTS.MLM_MILESTONE_REACHED:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,
-        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        recipientIds: (payload) =>
+          normalizeIdList(payload.userId || payload.customerId),
         title: () => "Milestone achieved 🏆",
         body: (payload) => {
-          const name = String(payload.data?.milestoneName || "milestone").trim() || "milestone";
+          const name =
+            String(payload.data?.milestoneName || "milestone").trim() ||
+            "milestone";
           const reward = Number(payload.data?.rewardAmount || 0);
           return reward > 0
             ? `${name} unlocked. ₹${reward.toLocaleString("en-IN")} reward credited.`
@@ -537,7 +569,9 @@ function eventData(eventType, payload = {}, role) {
   }
 
   if (eventType === NOTIFICATION_EVENTS.FRANCHISE_ORDER_ROUTED) {
-    const orderId = String(payload.orderId || payload.publicOrderId || "").trim() || undefined;
+    const orderId =
+      String(payload.orderId || payload.publicOrderId || "").trim() ||
+      undefined;
     return {
       eventType,
       orderId,
@@ -547,7 +581,9 @@ function eventData(eventType, payload = {}, role) {
   }
 
   if (eventType === NOTIFICATION_EVENTS.FRANCHISE_HUB_ACCEPTED) {
-    const orderId = String(payload.orderId || payload.publicOrderId || "").trim() || undefined;
+    const orderId =
+      String(payload.orderId || payload.publicOrderId || "").trim() ||
+      undefined;
     return {
       eventType,
       orderId,
@@ -557,7 +593,8 @@ function eventData(eventType, payload = {}, role) {
   }
 
   const orderId = String(payload.orderId || "").trim() || undefined;
-  const checkoutGroupId = String(payload.checkoutGroupId || "").trim() || undefined;
+  const checkoutGroupId =
+    String(payload.checkoutGroupId || "").trim() || undefined;
   return {
     eventType,
     orderId,

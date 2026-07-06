@@ -9,6 +9,7 @@ import { useToast } from '@shared/components/ui/Toast';
 import { useSettings } from '@core/context/SettingsContext';
 import { cn } from '@/lib/utils';
 import { applyCloudinaryTransform } from '@/core/utils/imageUtils';
+import { getAvailableStock } from '@/core/utils/productStock';
 import { customerApi } from '../../services/customerApi';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
@@ -140,6 +141,11 @@ const ProductDetailSheet = () => {
         : null;
     const quantity = cartItem ? cartItem.quantity : 0;
     const isWishlisted = selectedProduct ? isInWishlist(selectedProduct.id) : false;
+    const availableStock = selectedProduct
+        ? getAvailableStock(selectedProduct, variantKey)
+        : 0;
+    const isOutOfStock = availableStock <= 0;
+    const atStockLimit = quantity >= availableStock;
 
     useEffect(() => {
         if (isOpen) {
@@ -188,6 +194,7 @@ const ProductDetailSheet = () => {
     };
 
     const handleAddToCart = () => {
+        if (isOutOfStock) return;
         addToCart({
             ...selectedProduct,
             variantSku: String(selectedVariant?.sku || selectedVariant?.name || "").trim(),
@@ -195,8 +202,10 @@ const ProductDetailSheet = () => {
         showToast(`${selectedProduct.name} added to cart`, 'success');
     };
 
-    const handleIncrement = () =>
+    const handleIncrement = () => {
+        if (atStockLimit) return;
         updateQuantity(selectedProduct.id, 1, String(selectedVariant?.sku || selectedVariant?.name || "").trim());
+    };
 
     const handleDecrement = () => {
         if (quantity === 1) {
@@ -484,7 +493,7 @@ const ProductDetailSheet = () => {
                                                                 <Minus size={16} strokeWidth={2.5} />
                                                             </motion.button>
                                                             <span className="font-[800] text-base text-gray-800 w-8 text-center">{quantity}</span>
-                                                            <motion.button whileTap={{ scale: 0.85 }} onClick={handleIncrement} className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center text-white hover:bg-[var(--brand-400)] transition-colors shadow-sm">
+                                                            <motion.button whileTap={{ scale: 0.85 }} onClick={handleIncrement} disabled={atStockLimit} className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center text-white hover:bg-[var(--brand-400)] transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">
                                                                 <Plus size={16} strokeWidth={2.5} />
                                                             </motion.button>
                                                         </div>
@@ -493,10 +502,11 @@ const ProductDetailSheet = () => {
                                                         whileHover={{ scale: 1.02, y: -2 }}
                                                         whileTap={{ scale: 0.98 }}
                                                         onClick={handleAddToCart}
-                                                        className="bg-gradient-to-r from-primary to-[var(--brand-400)] text-white h-12 px-8 rounded-xl font-black text-[13px] flex items-center gap-2 shadow-lg shadow-brand-100 hover:shadow-brand-200 transition-all uppercase tracking-widest border border-white/20"
+                                                        disabled={isOutOfStock}
+                                                        className="bg-gradient-to-r from-primary to-[var(--brand-400)] text-white h-12 px-8 rounded-xl font-black text-[13px] flex items-center gap-2 shadow-lg shadow-brand-100 hover:shadow-brand-200 transition-all uppercase tracking-widest border border-white/20 disabled:opacity-60 disabled:cursor-not-allowed"
                                                     >
                                                         <ShoppingBag size={16} strokeWidth={3} />
-                                                        Add to Cart
+                                                        {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
                                                     </motion.button>
                                                     )}
                                                 </div>
@@ -1014,7 +1024,8 @@ const ProductDetailSheet = () => {
                                             <motion.button
                                                 whileTap={{ scale: 0.9 }}
                                                 onClick={handleIncrement}
-                                                className="w-10 h-10 bg-gradient-to-br from-primary to-[var(--brand-400)] rounded-xl flex items-center justify-center text-white shadow-lg shadow-brand-100/50 hover:shadow-brand-200 transition-all border border-white/20"
+                                                disabled={atStockLimit}
+                                                className="w-10 h-10 bg-gradient-to-br from-primary to-[var(--brand-400)] rounded-xl flex items-center justify-center text-white shadow-lg shadow-brand-100/50 hover:shadow-brand-200 transition-all border border-white/20 disabled:opacity-40 disabled:cursor-not-allowed"
                                             >
                                                 <Plus size={18} strokeWidth={3.5} />
                                             </motion.button>
@@ -1024,10 +1035,11 @@ const ProductDetailSheet = () => {
                                             whileHover={{ scale: 1.02 }}
                                             whileTap={{ scale: 0.95 }}
                                             onClick={handleAddToCart}
-                                            className="flex-1 bg-gradient-to-r from-primary to-[var(--brand-400)] text-white h-[56px] rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-brand-100 transition-all border border-white/20 uppercase tracking-[0.05em] whitespace-nowrap px-4"
+                                            disabled={isOutOfStock}
+                                            className="flex-1 bg-gradient-to-r from-primary to-[var(--brand-400)] text-white h-[56px] rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-brand-100 transition-all border border-white/20 uppercase tracking-[0.05em] whitespace-nowrap px-4 disabled:opacity-60 disabled:cursor-not-allowed"
                                         >
                                             <ShoppingBag size={18} strokeWidth={3} />
-                                            ADD TO CART
+                                            {isOutOfStock ? 'OUT OF STOCK' : 'ADD TO CART'}
                                         </motion.button>
                                     )}
                                 </div>

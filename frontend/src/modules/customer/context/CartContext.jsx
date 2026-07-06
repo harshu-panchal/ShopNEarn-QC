@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { customerApi } from "../services/customerApi";
 import { useAuth } from "../../../core/context/AuthContext";
 import { getJSON, setJSON, remove as removeStorage, STORAGE_KEYS } from "@core/utils/storage";
+import { getAvailableStock, stockLimitToastMessage } from "@core/utils/productStock";
+import { useToast } from "@shared/components/ui/Toast";
 
 const CartContext = createContext();
 
@@ -18,6 +20,7 @@ export const useCart = () => useContext(CartContext);
 
 export const CartProvider = ({ children }) => {
   const { isAuthenticated } = useAuth();
+  const { showToast } = useToast();
   const [cart, setCart] = useState(() => loadGuestCart());
 
   const [loading, setLoading] = useState(false);
@@ -120,18 +123,27 @@ export const CartProvider = ({ children }) => {
     };
   }, [cart, isAuthenticated]);
 
-  const addToCart = async (product) => {
+  const addToCart = useCallback(async (product) => {
     const variantSku = String(product?.variantSku || product?.variantName || "").trim();
     const id = product.id || product._id;
     const key = `${id}::${variantSku || ""}`;
     const { price, salePrice, variantName } = resolveVariantPricing(product, variantSku);
+    const available = getAvailableStock(product, variantSku);
+    const existingItem = cart.find(
+      (item) => `${item.id || item._id}::${String(item.variantSku || "").trim()}` === key,
+    );
+    const nextQty = (existingItem?.quantity || 0) + 1;
 
-    // Optimistic UI update for instant feedback
+    if (nextQty > available) {
+      showToast(stockLimitToastMessage(product, variantSku, available), "error");
+      return false;
+    }
+
     setCart((prev) => {
-      const existingItem = prev.find(
+      const existing = prev.find(
         (item) => `${item.id || item._id}::${String(item.variantSku || "").trim()}` === key,
       );
-      if (existingItem) {
+      if (existing) {
         return prev.map((item) =>
           `${item.id || item._id}::${String(item.variantSku || "").trim()}` === key
             ? { ...item, quantity: item.quantity + 1 }
@@ -166,16 +178,21 @@ export const CartProvider = ({ children }) => {
         await syncCart(response.data.result.items);
       } catch (error) {
         pendingRequestsRef.current -= 1;
-        console.error("Error adding to cart on backend", error);
-        // Re-fetch entire cart to ensure consistency on error
+        showToast(
+          error.response?.data?.message || "Could not add item to cart",
+          "error",
+        );
         if (pendingRequestsRef.current === 0) {
           await fetchCart();
         }
+        return false;
       }
     }
-  };
 
-  const removeFromCart = async (productId, variantSku = "") => {
+    return true;
+  }, [cart, isAuthenticated, showToast]);
+
+  const removeFromCart = useCallback(async (productId, variantSku = "") => {
     const normalizedVariantSku = String(variantSku || "").trim();
     const key = `${productId}::${normalizedVariantSku || ""}`;
 
@@ -205,25 +222,35 @@ export const CartProvider = ({ children }) => {
         }
       }
     }
-  };
+  }, [isAuthenticated]);
 
-  const updateQuantity = async (productId, delta, variantSku = "") => {
+  const updateQuantity = useCallback(async (productId, delta, variantSku = "") => {
     const normalizedVariantSku = String(variantSku || "").trim();
     const key = `${productId}::${normalizedVariantSku || ""}`;
     const currentItem = cart.find(
       (item) =>
         `${item.id || item._id}::${String(item.variantSku || "").trim()}` === key,
     );
-    if (!currentItem) return;
+    if (!currentItem) return false;
 
     const newQty = Math.max(0, currentItem.quantity + delta);
 
     if (newQty === 0) {
       removeFromCart(productId, normalizedVariantSku);
-      return;
+      return true;
     }
 
-    // Optimistic update
+    if (delta > 0) {
+      const available = getAvailableStock(currentItem, normalizedVariantSku);
+      if (newQty > available) {
+        showToast(
+          stockLimitToastMessage(currentItem, normalizedVariantSku, available),
+          "error",
+        );
+        return false;
+      }
+    }
+
     setCart((prev) =>
       prev.map((item) => {
         if (
@@ -248,15 +275,21 @@ export const CartProvider = ({ children }) => {
         await syncCart(response.data.result.items);
       } catch (error) {
         pendingRequestsRef.current -= 1;
-        console.error("Error updating quantity on backend", error);
+        showToast(
+          error.response?.data?.message || "Could not update cart quantity",
+          "error",
+        );
         if (pendingRequestsRef.current === 0) {
           await fetchCart();
         }
+        return false;
       }
     }
-  };
 
-  const clearCart = async () => {
+    return true;
+  }, [cart, isAuthenticated, showToast, removeFromCart]);
+
+  const clearCart = useCallback(async () => {
     if (isAuthenticated) {
       try {
         await customerApi.clearCart();
@@ -267,7 +300,7 @@ export const CartProvider = ({ children }) => {
     } else {
       setCart([]);
     }
-  };
+  }, [isAuthenticated]);
 
   const cartTotal = cart.reduce((total, item) => {
     const unit =
@@ -287,8 +320,7 @@ export const CartProvider = ({ children }) => {
     cartTotal,
     cartCount,
     loading,
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [cart, cartTotal, cartCount, loading]);
+  }), [cart, cartTotal, cartCount, loading, addToCart, removeFromCart, updateQuantity, clearCart]);
 
   return (
     <CartContext.Provider value={cartValue}>

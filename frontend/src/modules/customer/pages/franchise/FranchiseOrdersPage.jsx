@@ -34,7 +34,8 @@ const getOrderFlowLabel = (order) => {
   if (order.franchiseStatus === "pending") return "pending";
   if (order.franchiseStatus === "rejected") return "rejected";
   if (order.franchiseStatus === "fulfilled") return "fulfilled";
-  if (order.shipmentStatus === "pending" || !order.shipmentStatus) return "ready_to_ship";
+  if (order.shipmentStatus === "pending" || !order.shipmentStatus)
+    return "ready_to_ship";
   if (order.shipmentStatus === "created") return "shipment_created";
   return "accepted";
 };
@@ -110,12 +111,11 @@ const FranchiseOrdersPage = () => {
             type="button"
             onClick={() => load()}
             disabled={loading}
-            className="inline-flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-white border border-slate-200 rounded-lg"
-          >
-            <RefreshCcw size={14} className={loading ? "animate-spin" : ""} /> Refresh
+            className="inline-flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider bg-white border border-slate-200 rounded-lg">
+            <RefreshCcw size={14} className={loading ? "animate-spin" : ""} />{" "}
+            Refresh
           </button>
-        }
-      >
+        }>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <FranchiseStatCard
             label="Pending"
@@ -146,15 +146,16 @@ const FranchiseOrdersPage = () => {
                 status === tab.key
                   ? "bg-indigo-600 text-white border-indigo-600"
                   : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300"
-              }`}
-            >
+              }`}>
               {tab.label}
             </button>
           ))}
         </div>
 
         {loading ? (
-          <p className="text-sm text-slate-500 text-center py-8">Loading orders…</p>
+          <p className="text-sm text-slate-500 text-center py-8">
+            Loading orders…
+          </p>
         ) : items.length === 0 ? (
           <SectionCard>
             <EmptyState message="No orders in this view. New customer orders will appear here when routed to your location." />
@@ -165,7 +166,10 @@ const FranchiseOrdersPage = () => {
               const total =
                 order.paymentBreakdown?.grandTotal ??
                 order.pricing?.total ??
-                order.items?.reduce((s, i) => s + (i.price || 0) * (i.quantity || 0), 0) ??
+                order.items?.reduce(
+                  (s, i) => s + (i.price || 0) * (i.quantity || 0),
+                  0,
+                ) ??
                 0;
               const busy = actingId === order._id;
               const flowKey = getOrderFlowLabel(order);
@@ -179,14 +183,18 @@ const FranchiseOrdersPage = () => {
                         <p className="font-mono font-bold text-slate-900">
                           {order.orderId || order._id}
                         </p>
-                        <p className="text-xs text-slate-500 mt-0.5">{formatDate(order.createdAt)}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {formatDate(order.createdAt)}
+                        </p>
                       </div>
                       <div className="text-right">
                         <OrderStatusPill status={order.franchiseStatus} />
                         <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mt-1">
                           {flowMeta.text}
                         </p>
-                        <p className="text-lg font-black text-slate-900 mt-1">{formatINR(total)}</p>
+                        <p className="text-lg font-black text-slate-900 mt-1">
+                          {formatINR(total)}
+                        </p>
                       </div>
                     </div>
 
@@ -195,7 +203,9 @@ const FranchiseOrdersPage = () => {
                         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">
                           Customer
                         </p>
-                        <p className="font-semibold">{order.customer?.name || "Customer"}</p>
+                        <p className="font-semibold">
+                          {order.customer?.name || "Customer"}
+                        </p>
                         {order.customer?.phone && (
                           <p className="flex items-center gap-1.5 text-slate-600 mt-1 text-xs">
                             <Phone size={12} /> {order.customer.phone}
@@ -207,11 +217,16 @@ const FranchiseOrdersPage = () => {
                           Delivery
                         </p>
                         <p className="flex items-start gap-1.5 text-xs text-slate-700 leading-relaxed">
-                          <MapPin size={14} className="text-indigo-500 shrink-0 mt-0.5" />
+                          <MapPin
+                            size={14}
+                            className="text-indigo-500 shrink-0 mt-0.5"
+                          />
                           {formatAddress(order.address)}
                         </p>
                         {order.address?.phone && (
-                          <p className="text-xs text-slate-500 mt-1">Contact: {order.address.phone}</p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Contact: {order.address.phone}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -225,14 +240,15 @@ const FranchiseOrdersPage = () => {
                           {order.items.map((line, idx) => (
                             <li
                               key={idx}
-                              className="flex items-center gap-3 text-sm bg-white border border-slate-100 rounded-lg px-3 py-2"
-                            >
+                              className="flex items-center gap-3 text-sm bg-white border border-slate-100 rounded-lg px-3 py-2">
                               <OrderLineThumb line={line} size="sm" />
                               <span className="flex-1 min-w-0 truncate">
                                 {line.name || "Item"} × {line.quantity}
                               </span>
                               <span className="font-semibold shrink-0">
-                                {formatINR((line.price || 0) * (line.quantity || 1))}
+                                {formatINR(
+                                  (line.price || 0) * (line.quantity || 1),
+                                )}
                               </span>
                             </li>
                           ))}
@@ -245,9 +261,10 @@ const FranchiseOrdersPage = () => {
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={() => act(franchiseApi.acceptOrder, order._id)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl disabled:opacity-50"
-                        >
+                          onClick={() =>
+                            act(franchiseApi.acceptOrder, order._id)
+                          }
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl disabled:opacity-50">
                           <CheckCircle2 size={14} /> Accept order
                         </button>
                         <button
@@ -255,52 +272,63 @@ const FranchiseOrdersPage = () => {
                           disabled={busy}
                           onClick={() =>
                             act(
-                              (id) => franchiseApi.rejectOrder(id, { reason: "Unavailable at location" }),
+                              (id) =>
+                                franchiseApi.rejectOrder(id, {
+                                  reason: "Unavailable at location",
+                                }),
                               order._id,
                             )
                           }
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl disabled:opacity-50"
-                        >
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl disabled:opacity-50">
                           <XCircle size={14} /> Reject
                         </button>
                       </div>
                     )}
 
                     {order.franchiseStatus === "accepted" &&
-                      (order.shipmentStatus === "pending" || !order.shipmentStatus) && (
+                      (order.shipmentStatus === "pending" ||
+                        !order.shipmentStatus) && (
                         <div className="flex flex-wrap gap-2 pt-1">
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() => act(franchiseApi.createShipment, order._id)}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl disabled:opacity-50"
-                          >
+                            onClick={() =>
+                              act(franchiseApi.createShipment, order._id)
+                            }
+                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl disabled:opacity-50">
                             <Truck size={14} /> Create shipment
                           </button>
                         </div>
                       )}
 
-                    {order.franchiseStatus === "accepted" && order.shipmentStatus === "created" && (
-                      <div className="space-y-3 pt-1">
-                        <div className="flex items-start gap-2 px-4 py-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-900">
-                          <Truck size={14} className="shrink-0 mt-0.5" />
-                          <div>
-                            <p>Shipment is ready. Deliver to the customer and mark the order as fulfilled when done.</p>
-                            {order.shipmentReference && (
-                              <p className="mt-1 font-mono text-[11px]">Ref: {order.shipmentReference}</p>
-                            )}
+                    {order.franchiseStatus === "accepted" &&
+                      order.shipmentStatus === "created" && (
+                        <div className="space-y-3 pt-1">
+                          <div className="flex items-start gap-2 px-4 py-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-900">
+                            <Truck size={14} className="shrink-0 mt-0.5" />
+                            <div>
+                              <p>
+                                Shipment is ready. Deliver to the customer and
+                                mark the order as fulfilled when done.
+                              </p>
+                              {order.shipmentReference && (
+                                <p className="mt-1 font-mono text-[11px]">
+                                  Ref: {order.shipmentReference}
+                                </p>
+                              )}
+                            </div>
                           </div>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              act(franchiseApi.fulfillOrder, order._id)
+                            }
+                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl disabled:opacity-50">
+                            <CheckCircle2 size={14} /> Mark delivered
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => act(franchiseApi.fulfillOrder, order._id)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl disabled:opacity-50"
-                        >
-                          <CheckCircle2 size={14} /> Mark delivered
-                        </button>
-                      </div>
-                    )}
+                      )}
                   </div>
                 </SectionCard>
               );

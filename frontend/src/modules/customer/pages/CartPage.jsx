@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useToast } from '@shared/components/ui/Toast';
 import { applyCloudinaryTransform } from '@/core/utils/imageUtils';
+import { getAvailableStock } from '@/core/utils/productStock';
 
 const CartPage = () => {
     const { cart, removeFromCart, updateQuantity, cartTotal, clearCart } = useCart();
@@ -57,7 +58,10 @@ const CartPage = () => {
                             </div>
 
                             <div className="space-y-3">
-                                {cart.map((item) => (
+                                {cart.map((item) => {
+                                    const availableStock = getAvailableStock(item, item.variantSku);
+                                    const atStockLimit = item.quantity >= availableStock;
+                                    return (
                                     <article
                                         key={`${item.id}::${String(item.variantSku || "").trim()}`}
                                         className="group overflow-hidden rounded-[1.5rem] border border-white/80 bg-white/85 backdrop-blur-sm shadow-[0_12px_35px_rgba(15,23,42,0.08)] transition-transform duration-300 hover:-translate-y-0.5"
@@ -118,7 +122,8 @@ const CartPage = () => {
                                                         </span>
                                                         <button
                                                             onClick={() => updateQuantity(item.id, 1, item.variantSku)}
-                                                            className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-all hover:bg-white hover:text-slate-900 hover:shadow-md"
+                                                            disabled={atStockLimit}
+                                                            className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-all hover:bg-white hover:text-slate-900 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-30"
                                                         >
                                                             <Plus size={15} strokeWidth={3} />
                                                         </button>
@@ -127,7 +132,8 @@ const CartPage = () => {
                                             </div>
                                         </div>
                                     </article>
-                                ))}
+                                    );
+                                })}
                             </div>
 
                             <div className="flex flex-col gap-3 rounded-[1.5rem] border border-white/80 bg-white/80 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] sm:flex-row sm:items-center sm:justify-between">

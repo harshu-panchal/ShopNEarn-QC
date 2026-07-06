@@ -645,6 +645,8 @@ export async function buildCheckoutPricingSnapshot({
     aggregateBreakdown,
     sellerCount: sellerBreakdownEntries.length,
     itemCount: hydratedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+    // Hub / platform-franchise catalog carts may pay via the shopping wallet bucket.
+    isFranchiseHubCart,
     // Audit Phase 5 (C-2 + H-6): `null` when the flag is off OR no
     // coupon was supplied. When present, callers persist this on every
     // Order document so per-user usage counts and audits replay

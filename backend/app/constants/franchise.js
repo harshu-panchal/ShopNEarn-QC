@@ -18,7 +18,9 @@ export const FRANCHISE_PARTNER_STATUS = {
   TERMINATED: "terminated",
 };
 
-export const ALL_FRANCHISE_PARTNER_STATUSES = Object.values(FRANCHISE_PARTNER_STATUS);
+export const ALL_FRANCHISE_PARTNER_STATUSES = Object.values(
+  FRANCHISE_PARTNER_STATUS,
+);
 
 export const FRANCHISE_ORDER_STATUS = {
   PENDING: "pending",
@@ -27,7 +29,9 @@ export const FRANCHISE_ORDER_STATUS = {
   FULFILLED: "fulfilled",
 };
 
-export const ALL_FRANCHISE_ORDER_STATUSES = Object.values(FRANCHISE_ORDER_STATUS);
+export const ALL_FRANCHISE_ORDER_STATUSES = Object.values(
+  FRANCHISE_ORDER_STATUS,
+);
 
 /** Legacy hub-confirmation step (deprecated — partners self-fulfill). */
 export const FRANCHISE_HUB_ACCEPTANCE_STATUS = {
@@ -46,14 +50,18 @@ export const FRANCHISE_SHIPMENT_STATUS = {
   CREATED: "created",
 };
 
-export const ALL_FRANCHISE_SHIPMENT_STATUSES = Object.values(FRANCHISE_SHIPMENT_STATUS);
+export const ALL_FRANCHISE_SHIPMENT_STATUSES = Object.values(
+  FRANCHISE_SHIPMENT_STATUS,
+);
 
 export const FRANCHISE_PAYMENT_MODE = {
   PHONEPE: "phonepe",
   MANUAL_QR: "manual_qr",
 };
 
-export const ALL_FRANCHISE_PAYMENT_MODES = Object.values(FRANCHISE_PAYMENT_MODE);
+export const ALL_FRANCHISE_PAYMENT_MODES = Object.values(
+  FRANCHISE_PAYMENT_MODE,
+);
 
 export const FRANCHISE_TOPUP_STATUS = {
   CREATED: "created",
@@ -62,7 +70,9 @@ export const FRANCHISE_TOPUP_STATUS = {
   REJECTED: "rejected",
 };
 
-export const ALL_FRANCHISE_TOPUP_STATUSES = Object.values(FRANCHISE_TOPUP_STATUS);
+export const ALL_FRANCHISE_TOPUP_STATUSES = Object.values(
+  FRANCHISE_TOPUP_STATUS,
+);
 
 export const FRANCHISE_IDEMPOTENCY_PREFIX = {
   REGISTRATION_ACTIVATED: "FRANCHISE-REG-ACTIVATED",

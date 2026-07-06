@@ -12,6 +12,7 @@ import {
   EmptyState,
   formatINR,
 } from "./franchiseCustomerShared";
+import { getAvailableStock, stockLimitToastMessage } from "@/core/utils/productStock";
 
 const FranchiseCatalogPage = () => {
   const [items, setItems] = useState([]);
@@ -46,8 +47,19 @@ const FranchiseCatalogPage = () => {
   }, []);
 
   const setQty = (productId, delta) => {
+    const product = items.find((p) => String(p._id) === String(productId));
+    if (!product) return;
+
     setCart((prev) => {
-      const next = Math.max(0, (prev[productId] || 0) + delta);
+      const current = prev[productId] || 0;
+      const next = Math.max(0, current + delta);
+      const available = getAvailableStock(product, "");
+
+      if (delta > 0 && next > available) {
+        toast.error(stockLimitToastMessage(product, "", available));
+        return prev;
+      }
+
       if (next === 0) {
         const copy = { ...prev };
         delete copy[productId];
@@ -155,6 +167,9 @@ const FranchiseCatalogPage = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {filtered.map((p) => {
               const qty = cart[p._id] || 0;
+              const availableStock = getAvailableStock(p, "");
+              const isOutOfStock = availableStock <= 0;
+              const atStockLimit = qty >= availableStock;
               return (
                 <div
                   key={p._id}
@@ -164,6 +179,9 @@ const FranchiseCatalogPage = () => {
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-slate-900 truncate">{p.name}</p>
                     <p className="text-lg font-black text-indigo-600 mt-0.5">{formatINR(p.price)}</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider mt-1 text-slate-500">
+                      {isOutOfStock ? "Out of stock" : `${availableStock} in hub stock`}
+                    </p>
                     {p.description && (
                       <p className="text-xs text-slate-500 mt-1 line-clamp-2">{p.description}</p>
                     )}
@@ -180,7 +198,8 @@ const FranchiseCatalogPage = () => {
                       <button
                         type="button"
                         onClick={() => setQty(p._id, 1)}
-                        className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center"
+                        disabled={isOutOfStock || atStockLimit}
+                        className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <Plus size={14} />
                       </button>

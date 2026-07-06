@@ -31,6 +31,7 @@ import {
   Clipboard,
   Check,
   Contact2,
+  ShoppingBag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
@@ -140,6 +141,8 @@ const CheckoutPage = () => {
   const [useWallet, setUseWallet] = useState(false);
   const [walletAmountToUse, setWalletAmountToUse] = useState(0);
   const [earningWalletBalance, setEarningWalletBalance] = useState(0);
+  const [shoppingWalletBalance, setShoppingWalletBalance] = useState(0);
+  const [isFranchiseHubCart, setIsFranchiseHubCart] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [orderId, setOrderId] = useState(null);
   const [pricingPreview, setPricingPreview] = useState(null);
@@ -192,16 +195,19 @@ const CheckoutPage = () => {
   const paymentMethods = useMemo(() => {
     const orderTotal = Number(pricingPreview?.grandTotal || 0);
     const earningBalance = Number(earningWalletBalance || 0);
+    const shoppingBalance = Number(shoppingWalletBalance || 0);
     const earningWalletDisabled =
       orderTotal > 0 && earningBalance < orderTotal;
+    const shoppingWalletDisabled =
+      orderTotal > 0 && shoppingBalance < orderTotal;
 
     const insufficientReason = (disabled) =>
       disabled && orderTotal > 0
         ? `Insufficient balance (need ₹${formatWalletBalance(orderTotal)})`
         : null;
 
-    // Payment options: Pay Online, Earning Wallet.
-    // Cash on Delivery and Shopping Wallet are not offered on this checkout.
+    // Pay Online + Earning Wallet for all carts; Shopping Wallet only for
+    // franchise / hub catalog orders (ordinary seller carts hide it).
     return [
       ...(settings?.onlineEnabled === false
         ? []
@@ -213,6 +219,21 @@ const CheckoutPage = () => {
               sublabel: "UPI / Cards / NetBanking",
             },
           ]),
+      ...(isFranchiseHubCart
+        ? [
+            {
+              id: "shopping_wallet",
+              label: "Shopping Wallet",
+              icon: ShoppingBag,
+              sublabel:
+                shoppingBalance > 0
+                  ? `Available balance: ₹${formatWalletBalance(shoppingBalance)}`
+                  : "No balance available",
+              disabled: shoppingWalletDisabled,
+              disabledReason: insufficientReason(shoppingWalletDisabled),
+            },
+          ]
+        : []),
       {
         id: "earning_wallet",
         label: "Earning Wallet",
@@ -225,7 +246,13 @@ const CheckoutPage = () => {
         disabledReason: insufficientReason(earningWalletDisabled),
       },
     ];
-  }, [settings?.onlineEnabled, earningWalletBalance, pricingPreview?.grandTotal]);
+  }, [
+    settings?.onlineEnabled,
+    earningWalletBalance,
+    shoppingWalletBalance,
+    pricingPreview?.grandTotal,
+    isFranchiseHubCart,
+  ]);
 
   const tipAmounts = [
     { value: 0, label: "No Tip" },
@@ -260,6 +287,7 @@ const CheckoutPage = () => {
   useEffect(() => {
     if (!isAuthenticated) {
       setEarningWalletBalance(0);
+      setShoppingWalletBalance(0);
       return;
     }
     mlmApi
@@ -267,17 +295,23 @@ const CheckoutPage = () => {
       .then((res) => {
         const wallet = res?.data?.result?.wallet ?? res?.data?.data?.wallet;
         setEarningWalletBalance(Number(wallet?.earningsBalance || 0));
+        setShoppingWalletBalance(Number(wallet?.shoppingBalance || 0));
       })
       .catch(() => {
         setEarningWalletBalance(0);
+        setShoppingWalletBalance(0);
       });
   }, [isAuthenticated]);
 
   // Map a payment method id to the backend wallet bucket tender.
-  const getWalletSource = (methodId) =>
-    methodId === "earning_wallet" ? "earnings" : null;
+  const getWalletSource = (methodId) => {
+    if (methodId === "earning_wallet") return "earnings";
+    if (methodId === "shopping_wallet") return "shopping";
+    return null;
+  };
 
-  const isWalletMethod = selectedPayment === "earning_wallet";
+  const isWalletMethod =
+    selectedPayment === "earning_wallet" || selectedPayment === "shopping_wallet";
 
   useEffect(() => {
     const totalToPay = Number(pricingPreview?.grandTotal || 0);
@@ -285,6 +319,11 @@ const CheckoutPage = () => {
     // the amount used equals the order total (shows ₹0 out-of-pocket).
     if (selectedPayment === "earning_wallet" && totalToPay > 0) {
       const available = Number(earningWalletBalance || 0);
+      setWalletAmountToUse(available >= totalToPay ? totalToPay : 0);
+      return;
+    }
+    if (selectedPayment === "shopping_wallet" && totalToPay > 0) {
+      const available = Number(shoppingWalletBalance || 0);
       setWalletAmountToUse(available >= totalToPay ? totalToPay : 0);
       return;
     }
@@ -299,15 +338,16 @@ const CheckoutPage = () => {
     useWallet,
     user?.walletBalance,
     earningWalletBalance,
+    shoppingWalletBalance,
     pricingPreview?.grandTotal,
   ]);
 
-  // Online and earning-wallet tenders settle as prepaid ONLINE orders; no COD.
+  // Online and wallet tenders settle as prepaid ONLINE orders; no COD.
   const resolvePaymentMode = () => "ONLINE";
 
   const handleSelectPayment = (methodId) => {
     setSelectedPayment(methodId);
-    if (methodId === "earning_wallet") {
+    if (methodId === "earning_wallet" || methodId === "shopping_wallet") {
       setUseWallet(false);
     }
   };
@@ -720,6 +760,7 @@ const CheckoutPage = () => {
   useEffect(() => {
     if (!isAuthenticated || cart.length === 0) {
       setPricingPreview(null);
+      setIsFranchiseHubCart(false);
       return;
     }
 
@@ -749,7 +790,9 @@ const CheckoutPage = () => {
         setIsPreviewLoading(true);
         const res = await customerApi.checkoutPreview(buildPreviewPayload());
         if (res.data?.success) {
-          setPricingPreview(res.data.result?.breakdown ?? null);
+          const preview = res.data.result || {};
+          setPricingPreview(preview.breakdown ?? null);
+          setIsFranchiseHubCart(!!preview.isFranchiseHubCart);
         }
       } catch (error) {
         console.error("Checkout preview failed", error);
@@ -814,9 +857,15 @@ const CheckoutPage = () => {
     const walletSource = getWalletSource(selectedPayment);
     if (walletSource) {
       const orderTotal = Number(pricingPreview?.grandTotal || 0);
-      if (earningWalletBalance < orderTotal) {
+      const bucketBalance =
+        walletSource === "shopping"
+          ? shoppingWalletBalance
+          : earningWalletBalance;
+      const bucketLabel =
+        walletSource === "shopping" ? "shopping" : "earning";
+      if (bucketBalance < orderTotal) {
         showToast(
-          "Insufficient earning wallet balance for this order.",
+          `Insufficient ${bucketLabel} wallet balance for this order.`,
           "error",
         );
         return;
