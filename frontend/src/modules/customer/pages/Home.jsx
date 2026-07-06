@@ -151,6 +151,7 @@ const EMPTY_HERO_CONFIG = {
 
 const homePageDataCache = new Map();
 const heroConfigMemoryCache = {};
+const HOME_PAGE_CACHE_TTL_MS = 60 * 1000;
 
 const getHomePageDataCacheKey = (location) => {
   const lat = Number(location?.latitude);
@@ -159,8 +160,16 @@ const getHomePageDataCacheKey = (location) => {
   return `home:${lat.toFixed(5)}:${lng.toFixed(5)}`;
 };
 
-const getCachedHomePageData = (location) =>
-  homePageDataCache.get(getHomePageDataCacheKey(location)) || null;
+const getCachedHomePageData = (location) => {
+  const key = getHomePageDataCacheKey(location);
+  const entry = homePageDataCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - (entry.ts || 0) > HOME_PAGE_CACHE_TTL_MS) {
+    homePageDataCache.delete(key);
+    return null;
+  }
+  return entry.data || null;
+};
 
 const FALLBACK_PRODUCT_IMAGE =
   "https://images.unsplash.com/photo-1550989460-0adf9ea622e2?auto=format&fit=crop&q=80&w=400&h=400";
@@ -231,23 +240,21 @@ const Home = () => {
       if (!prev || prev._id === "all") return data.activeCategory || data.categories?.[0] || ALL_CATEGORY;
       return (data.categories || []).find((cat) => cat._id === prev._id) || data.activeCategory || prev;
     });
-    if (persist && cacheKey) homePageDataCache.set(cacheKey, data);
+    if (persist && cacheKey) homePageDataCache.set(cacheKey, { data, ts: Date.now() });
   };
 
   const fetchData = async ({ forceRefresh = false } = {}) => {
     const cacheKey = getHomePageDataCacheKey(currentLocation);
-    if (!forceRefresh) {
-      const cached = homePageDataCache.get(cacheKey);
-      if (cached) {
-        applyHomePageData(cached, { cacheKey, persist: false });
-        setIsLoading(false);
-        return;
-      }
+    const cached = !forceRefresh ? getCachedHomePageData(currentLocation) : null;
+    if (cached) {
+      applyHomePageData(cached, { cacheKey, persist: false });
+      setIsLoading(false);
+    } else if (!cached) {
+      setIsLoading(true);
     }
-    setIsLoading(true);
     try {
       const hasValidLocation = Number.isFinite(currentLocation?.latitude) && Number.isFinite(currentLocation?.longitude);
-      const productParams = { limit: 20 };
+      const productParams = { limit: 20, sort: "newest" };
       if (hasValidLocation) {
         productParams.lat = currentLocation.latitude;
         productParams.lng = currentLocation.longitude;
@@ -259,7 +266,7 @@ const Home = () => {
       }
       const [catRes, prodRes, sectionsRes] = await Promise.all([
         customerApi.getCategories(),
-        customerApi.getProducts(productParams),
+        customerApi.getProducts(productParams, { forceRefresh: true, ttl: 0 }),
         customerApi.getOfferSections(offerParams).catch(() => ({ data: {} })),
       ]);
       const nextHomeData = {
@@ -301,7 +308,19 @@ const Home = () => {
     } catch (error) { console.error("Error:", error); } finally { setIsLoading(false); }
   };
 
-  useEffect(() => { fetchData(); }, [currentLocation?.latitude, currentLocation?.longitude]);
+  useEffect(() => {
+    fetchData();
+  }, [currentLocation?.latitude, currentLocation?.longitude]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        fetchData({ forceRefresh: true });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [currentLocation?.latitude, currentLocation?.longitude]);
   const heroConfigCache = useRef(heroConfigMemoryCache);
 
   useEffect(() => {
@@ -315,7 +334,16 @@ const Home = () => {
         if (!payload || (payload.banners?.items?.length === 0 && !payload.categoryIds?.length)) { const homeRes = await customerApi.getHeroConfig({ pageType: "home" }); if (homeRes.data?.success && homeRes.data?.result) payload = homeRes.data.result; }
         const resolved = payload && (payload.banners?.items?.length > 0 || payload.categoryIds?.length > 0) ? { banners: payload.banners || { items: [] }, categoryIds: payload.categoryIds || [] } : { banners: { items: [] }, categoryIds: [] };
         heroConfigCache.current[cacheKey] = resolved;
-        if (cacheKey === "__home__") { const homeCacheKey = getHomePageDataCacheKey(currentLocation); const cachedHomeData = homePageDataCache.get(homeCacheKey); if (cachedHomeData) homePageDataCache.set(homeCacheKey, { ...cachedHomeData, heroConfig: resolved }); }
+        if (cacheKey === "__home__") {
+          const homeCacheKey = getHomePageDataCacheKey(currentLocation);
+          const cachedEntry = homePageDataCache.get(homeCacheKey);
+          if (cachedEntry?.data) {
+            homePageDataCache.set(homeCacheKey, {
+              data: { ...cachedEntry.data, heroConfig: resolved },
+              ts: cachedEntry.ts || Date.now(),
+            });
+          }
+        }
         setHeroConfig(resolved);
       } catch (e) { setHeroConfig(EMPTY_HERO_CONFIG); }
     };
@@ -363,7 +391,7 @@ const Home = () => {
           <div className="w-64 h-64 md:w-96 md:h-96 mb-8">{noServiceData && <Lottie animationData={noServiceData} loop={true} />}</div>
           <h3 className="text-3xl md:text-5xl font-black text-slate-800 text-center uppercase">Service <span className="text-primary">Unavailable</span></h3>
           <p className="text-slate-500 font-bold max-w-md text-center px-10 text-sm md:text-lg opacity-80">Ah! We haven't reached your neighborhood yet.</p>
-          <button onClick={() => window.location.reload()} className="mt-12 px-10 py-4 bg-primary text-white font-black rounded-[24px] uppercase text-[13px] tracking-widest transition-all active:scale-95">Check Again</button>
+          <button onClick={() => fetchData({ forceRefresh: true })} className="mt-12 px-10 py-4 bg-primary text-white font-black rounded-[24px] uppercase text-[13px] tracking-widest transition-all active:scale-95">Check Again</button>
         </div>
       ) : (
         <>

@@ -13,6 +13,7 @@ import getPagination from "../utils/pagination.js";
 import {
   WORKFLOW_STATUS,
   DEFAULT_SELLER_TIMEOUT_MS,
+  applyManualLegacyStatusOverride,
 } from "../constants/orderWorkflow.js";
 import { ORDER_PAYMENT_STATUS } from "../constants/finance.js";
 import {
@@ -52,6 +53,7 @@ import {
   retractDeliveryBroadcastForOrder,
   emitToSeller,
   emitToDelivery,
+  emitOrderStatusUpdate,
 } from "../services/orderSocketEmitter.js";
 import * as walletService from "../services/finance/walletService.js";
 import { OWNER_TYPE } from "../constants/finance.js";
@@ -488,8 +490,7 @@ export const updateOrderStatus = async (req, res) => {
 
     const oldStatus = order.status;
     if (status) {
-      order.status = status;
-      order.orderStatus = status;
+      applyManualLegacyStatusOverride(order, status);
     }
     if (deliveryBoyId) order.deliveryBoy = deliveryBoyId;
 
@@ -578,6 +579,19 @@ export const updateOrderStatus = async (req, res) => {
         correlationId: req.correlationId,
         error: cacheErr.message,
       });
+    }
+
+    if (status) {
+      emitOrderStatusUpdate(
+        canonicalOrderId,
+        {
+          status: order.status,
+          workflowStatus: order.workflowStatus,
+          franchiseStatus: order.franchiseStatus,
+          shipmentStatus: order.shipmentStatus,
+        },
+        order.customer,
+      );
     }
 
     if (status === "confirmed" && role === "seller") {

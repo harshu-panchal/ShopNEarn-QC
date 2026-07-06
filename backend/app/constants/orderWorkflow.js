@@ -1,3 +1,9 @@
+import {
+  FRANCHISE_HUB_ACCEPTANCE_STATUS,
+  FRANCHISE_ORDER_STATUS,
+  FRANCHISE_SHIPMENT_STATUS,
+} from "./franchise.js";
+
 /**
  * Canonical workflow statuses for Quick Commerce orders (v2).
  * Legacy `status` on Order is kept in sync for admin / older UIs.
@@ -79,4 +85,71 @@ export function workflowFromLegacyStatus(legacy) {
   if (s === "delivered") return WORKFLOW_STATUS.DELIVERED;
   if (s === "cancelled") return WORKFLOW_STATUS.CANCELLED;
   return WORKFLOW_STATUS.SELLER_PENDING;
+}
+
+/**
+ * Keep canonical workflow / franchise fields aligned when admin or seller
+ * manually changes the legacy `status` dropdown (v2 orders).
+ */
+export function applyManualLegacyStatusOverride(order, legacyStatus) {
+  const s = String(legacyStatus || "").toLowerCase();
+  if (!s) return;
+
+  order.status = s;
+  order.orderStatus = s;
+
+  const workflowVersion = Number(order.workflowVersion) || 0;
+  const isFranchiseCustomerOrder =
+    order.franchisePartnerId && order.isFranchiseStockOrder !== true;
+
+  if (isFranchiseCustomerOrder) {
+    switch (s) {
+      case "pending":
+        order.franchiseStatus = FRANCHISE_ORDER_STATUS.PENDING;
+        order.shipmentStatus = FRANCHISE_SHIPMENT_STATUS.PENDING;
+        if (workflowVersion >= 2) {
+          order.workflowStatus = WORKFLOW_STATUS.FRANCHISE_PENDING;
+        }
+        break;
+      case "confirmed":
+        order.franchiseStatus = FRANCHISE_ORDER_STATUS.ACCEPTED;
+        order.hubAcceptanceStatus = FRANCHISE_HUB_ACCEPTANCE_STATUS.ACCEPTED;
+        order.shipmentStatus = FRANCHISE_SHIPMENT_STATUS.PENDING;
+        if (workflowVersion >= 2) {
+          order.workflowStatus = WORKFLOW_STATUS.FRANCHISE_ACCEPTED;
+        }
+        break;
+      case "packed":
+        order.franchiseStatus = FRANCHISE_ORDER_STATUS.ACCEPTED;
+        order.shipmentStatus = FRANCHISE_SHIPMENT_STATUS.CREATED;
+        if (workflowVersion >= 2) {
+          order.workflowStatus = WORKFLOW_STATUS.DELIVERY_ASSIGNED;
+        }
+        break;
+      case "out_for_delivery":
+        if (workflowVersion >= 2) {
+          order.workflowStatus = WORKFLOW_STATUS.OUT_FOR_DELIVERY;
+        }
+        break;
+      case "delivered":
+        order.franchiseStatus = FRANCHISE_ORDER_STATUS.FULFILLED;
+        if (workflowVersion >= 2) {
+          order.workflowStatus = WORKFLOW_STATUS.DELIVERED;
+        }
+        break;
+      case "cancelled":
+        order.franchiseStatus = FRANCHISE_ORDER_STATUS.REJECTED;
+        if (workflowVersion >= 2) {
+          order.workflowStatus = WORKFLOW_STATUS.CANCELLED;
+        }
+        break;
+      default:
+        break;
+    }
+    return;
+  }
+
+  if (workflowVersion >= 2) {
+    order.workflowStatus = workflowFromLegacyStatus(s);
+  }
 }

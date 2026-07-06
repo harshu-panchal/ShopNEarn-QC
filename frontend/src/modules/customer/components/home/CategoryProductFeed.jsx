@@ -60,7 +60,7 @@ const CategoryProductFeed = ({ activeCategory, location }) => {
 
   const buildParams = useCallback(
     (pageNum) => {
-      const params = { page: pageNum, limit: PAGE_SIZE };
+      const params = { page: pageNum, limit: PAGE_SIZE, sort: "newest" };
       const headerId = activeCategory?._id;
       if (headerId && headerId !== "all") {
         params.headerId = headerId;
@@ -86,7 +86,10 @@ const CategoryProductFeed = ({ activeCategory, location }) => {
       }
 
       try {
-        const res = await customerApi.getProducts(buildParams(pageNum));
+        const res = await customerApi.getProducts(buildParams(pageNum), {
+          forceRefresh: !append,
+          ttl: append ? undefined : 0,
+        });
         if (!res.data?.success) {
           if (!append) {
             setItems([]);
