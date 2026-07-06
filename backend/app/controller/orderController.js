@@ -447,27 +447,27 @@ export const updateOrderStatus = async (req, res) => {
     const canonicalOrderId = order.orderId;
 
     if (order.workflowVersion >= 2 && role === "seller") {
-      if (order.franchisePartnerId) {
-        return handleResponse(
-          res,
-          422,
-          "This order is fulfilled by the local Home Shoppy franchise partner. Hub confirmation is not required.",
-        );
-      }
-      if (status === "confirmed") {
-        try {
-          const updated = await sellerAcceptAtomic(userId, canonicalOrderId);
-          return handleResponse(res, 200, "Order accepted", updated);
-        } catch (e) {
-          return handleResponse(res, e.statusCode || 500, e.message);
+      const isFranchiseCustomerOrder =
+        order.franchisePartnerId && order.isFranchiseStockOrder !== true;
+
+      // Partner-routed orders are fulfilled by the local franchise partner.
+      // Hub seller (order.seller) may still manually advance status for oversight.
+      if (!isFranchiseCustomerOrder) {
+        if (status === "confirmed") {
+          try {
+            const updated = await sellerAcceptAtomic(userId, canonicalOrderId);
+            return handleResponse(res, 200, "Order accepted", updated);
+          } catch (e) {
+            return handleResponse(res, e.statusCode || 500, e.message);
+          }
         }
-      }
-      if (status === "cancelled") {
-        try {
-          const updated = await sellerRejectAtomic(userId, canonicalOrderId);
-          return handleResponse(res, 200, "Order rejected", updated);
-        } catch (e) {
-          return handleResponse(res, e.statusCode || 500, e.message);
+        if (status === "cancelled") {
+          try {
+            const updated = await sellerRejectAtomic(userId, canonicalOrderId);
+            return handleResponse(res, 200, "Order rejected", updated);
+          } catch (e) {
+            return handleResponse(res, e.statusCode || 500, e.message);
+          }
         }
       }
     }
