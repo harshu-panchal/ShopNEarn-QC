@@ -16,6 +16,10 @@ export const franchiseApi = {
     axiosInstance.get("/customer/franchise/wallet/transactions", { params }),
   purchaseStock: (data) => axiosInstance.post("/customer/franchise/stock/purchase", data),
   getStock: () => axiosInstance.get("/customer/franchise/stock"),
+  getInventorySummary: () => axiosInstance.get("/customer/franchise/inventory/summary"),
+  getInventoryMovements: (params) =>
+    axiosInstance.get("/customer/franchise/inventory/movements", { params }),
+  adjustInventory: (data) => axiosInstance.post("/customer/franchise/inventory/adjust", data),
   listOrders: (params) => axiosInstance.get("/customer/franchise/orders", { params }),
   acceptOrder: (orderId) => axiosInstance.patch(`/customer/franchise/orders/${orderId}/accept`),
   rejectOrder: (orderId, data) =>

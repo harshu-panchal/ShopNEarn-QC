@@ -12,6 +12,9 @@ import {
   getTransactionHistory,
   purchaseStock,
   getStock,
+  getInventorySummary,
+  getInventoryMovements,
+  adjustInventory,
   listOrders,
   acceptOrder,
   rejectOrder,
@@ -32,6 +35,9 @@ router.get("/wallet/topups", verifyToken, listMyTopUps);
 router.get("/wallet/transactions", verifyToken, getTransactionHistory);
 router.post("/stock/purchase", verifyToken, purchaseStock);
 router.get("/stock", verifyToken, getStock);
+router.get("/inventory/summary", verifyToken, getInventorySummary);
+router.get("/inventory/movements", verifyToken, getInventoryMovements);
+router.post("/inventory/adjust", verifyToken, adjustInventory);
 router.get("/orders", verifyToken, listOrders);
 router.patch("/orders/:orderId/accept", verifyToken, acceptOrder);
 router.patch("/orders/:orderId/reject", verifyToken, rejectOrder);

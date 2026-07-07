@@ -465,6 +465,12 @@ const orderSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    /** True after franchise ledger was decremented for customer-order fulfillment. */
+    franchiseStockConsumed: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     expiresAt: {
       type: Date,
     },

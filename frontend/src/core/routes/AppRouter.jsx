@@ -63,6 +63,7 @@ const FranchiseRegistrationPaymentPage = lazy(() => import('../../modules/custom
 const FranchiseWalletPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseWalletPage'));
 const FranchiseCatalogPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseCatalogPage'));
 const FranchiseStockPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseStockPage'));
+const FranchiseInventoryPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseInventoryPage'));
 const FranchiseOrdersPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseOrdersPage'));
 const FranchiseTransactionHistoryPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseTransactionHistoryPage'));
 // Customer-MLM-rebuild Phase 8 — new dashboard + Genealogy + Payouts sections.
@@ -312,6 +313,7 @@ const AppRouter = () => {
                                         { path: 'wallet', element: <FranchiseWalletPage /> },
                                         { path: 'catalog', element: <FranchiseCatalogPage /> },
                                         { path: 'stock', element: <FranchiseStockPage /> },
+                                        { path: 'inventory', element: <FranchiseInventoryPage /> },
                                         { path: 'orders', element: <FranchiseOrdersPage /> },
                                         { path: 'transactions', element: <FranchiseTransactionHistoryPage /> },
                                     ],

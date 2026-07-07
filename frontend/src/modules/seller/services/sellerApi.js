@@ -43,9 +43,10 @@ export const sellerApi = {
   getProfile: () => axiosInstance.get("/seller/profile"),
   updateProfile: (data) => axiosInstance.put("/seller/profile", data),
 
-  // Stock
+  // Stock / Inventory
   adjustStock: (data) => axiosInstance.post("/products/adjust-stock", data),
-  getStockHistory: () => axiosInstance.get("/products/stock-history"),
+  getStockHistory: (params) => axiosInstance.get("/products/stock-history", { params }),
+  getInventorySummary: () => axiosInstance.get("/products/inventory/summary"),
 
   // Notifications
   getNotifications: () => axiosInstance.get("/notifications"),

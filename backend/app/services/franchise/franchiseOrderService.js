@@ -2,6 +2,7 @@ import Order from "../../models/order.js";
 import FranchisePartner from "../../models/franchisePartner.js";
 import Seller from "../../models/seller.js";
 import Delivery from "../../models/delivery.js";
+import mongoose from "mongoose";
 import {
   FRANCHISE_ORDER_STATUS,
   FRANCHISE_HUB_ACCEPTANCE_STATUS,
@@ -17,6 +18,56 @@ import { emitOrderStatusUpdate } from "../orderSocketEmitter.js";
 import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.constants.js";
 import logger from "../logger.js";
 import { requireCanonicalOrderId } from "../../utils/orderLookup.js";
+import {
+  decrementFranchiseStock,
+  restoreFranchiseStock,
+} from "../inventory/inventoryMovementService.js";
+import { FRANCHISE_STOCK_TYPES } from "../../constants/inventory.js";
+
+/**
+ * Restore franchise ledger stock if this order had consumed inventory on fulfill.
+ * Idempotent via order.franchiseStockConsumed.
+ */
+export async function restoreFranchiseStockForOrder(order, { session } = {}) {
+  if (!order?.franchisePartnerId || order.isFranchiseStockOrder) {
+    return order;
+  }
+  if (!order.franchiseStockConsumed) {
+    return order;
+  }
+
+  const run = async (sess) => {
+    for (const item of order.items || []) {
+      const productId = item.product?._id || item.product;
+      const qty = Math.max(1, Number(item.quantity) || 1);
+      if (!productId) continue;
+      await restoreFranchiseStock({
+        franchisePartnerId: order.franchisePartnerId,
+        productId,
+        quantity: qty,
+        session: sess,
+        type: FRANCHISE_STOCK_TYPES.RETURN_IN,
+        note: `Order #${order.orderId} cancelled — stock restored`,
+        orderId: order._id,
+      });
+    }
+    order.franchiseStockConsumed = false;
+    await order.save({ session: sess });
+  };
+
+  if (session) {
+    await run(session);
+  } else {
+    const localSession = await mongoose.startSession();
+    try {
+      await localSession.withTransaction(() => run(localSession));
+    } finally {
+      await localSession.endSession();
+    }
+  }
+
+  return order;
+}
 
 export async function listFranchisePartnerOrders(
   franchisePartnerId,
@@ -117,6 +168,11 @@ export async function rejectFranchiseOrder({
   reason,
 }) {
   const order = await assertPartnerOwnsOrder(franchisePartnerId, orderId);
+
+  if (order.franchiseStockConsumed) {
+    await restoreFranchiseStockForOrder(order);
+  }
+
   order.franchiseStatus = FRANCHISE_ORDER_STATUS.REJECTED;
   order.hubAcceptanceStatus = null;
   order.workflowStatus = WORKFLOW_STATUS.CANCELLED;
@@ -285,12 +341,39 @@ export async function fulfillFranchiseOrder({ franchisePartnerId, orderId }) {
     err.statusCode = 422;
     throw err;
   }
-  order.franchiseStatus = FRANCHISE_ORDER_STATUS.FULFILLED;
-  order.workflowStatus = WORKFLOW_STATUS.DELIVERED;
-  order.status = legacyStatusFromWorkflow(WORKFLOW_STATUS.DELIVERED);
-  order.orderStatus = order.status;
-  order.deliveredAt = new Date();
-  await order.save();
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      if (!order.franchiseStockConsumed) {
+        for (const item of order.items || []) {
+          const productId = item.product?._id || item.product;
+          const qty = Math.max(1, Number(item.quantity) || 1);
+          if (!productId) continue;
+          await decrementFranchiseStock({
+            franchisePartnerId,
+            productId,
+            quantity: qty,
+            session,
+            type: FRANCHISE_STOCK_TYPES.FULFILLMENT,
+            note: `Fulfilled order #${order.orderId}`,
+            orderId: order._id,
+          });
+        }
+        order.franchiseStockConsumed = true;
+      }
+
+      order.franchiseStatus = FRANCHISE_ORDER_STATUS.FULFILLED;
+      order.workflowStatus = WORKFLOW_STATUS.DELIVERED;
+      order.status = legacyStatusFromWorkflow(WORKFLOW_STATUS.DELIVERED);
+      order.orderStatus = order.status;
+      order.deliveredAt = new Date();
+      await order.save({ session });
+    });
+  } finally {
+    await session.endSession();
+  }
+
   emitOrderStatusUpdate(
     order.orderId,
     { workflowStatus: order.workflowStatus },

@@ -18,6 +18,11 @@ import {
 import { listHubCatalogProducts } from "../services/franchise/franchiseCatalogService.js";
 import { purchaseFranchiseStock, getFranchiseStockSummary } from "../services/franchise/franchiseStockService.js";
 import {
+  getFranchiseInventorySummary,
+  listFranchiseStockMovements,
+  adjustFranchiseInventory,
+} from "../services/inventory/franchiseInventoryService.js";
+import {
   listFranchisePartnerOrders,
   acceptFranchiseOrder,
   rejectFranchiseOrder,
@@ -233,6 +238,60 @@ export const getStock = async (req, res) => {
     return handleResponse(res, 200, "Franchise stock", { items });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+export const getInventorySummary = async (req, res) => {
+  try {
+    const partner = await getFranchisePartnerByUserId(req.user.id);
+    if (!partner) return handleResponse(res, 404, "Not a franchise partner");
+    const summary = await getFranchiseInventorySummary(partner._id);
+    return handleResponse(res, 200, "Franchise inventory summary", summary);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+export const getInventoryMovements = async (req, res) => {
+  try {
+    const partner = await getFranchisePartnerByUserId(req.user.id);
+    if (!partner) return handleResponse(res, 404, "Not a franchise partner");
+    const result = await listFranchiseStockMovements(partner._id, {
+      page: req.query.page,
+      limit: req.query.limit,
+      type: req.query.type,
+      direction: req.query.direction,
+      productId: req.query.productId,
+      startDate: req.query.startDate,
+      endDate: req.query.endDate,
+    });
+    return handleResponse(res, 200, "Franchise inventory movements", result);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+export const adjustInventory = async (req, res) => {
+  try {
+    const partner = await getFranchisePartnerByUserId(req.user.id);
+    if (!partner) return handleResponse(res, 404, "Not a franchise partner");
+    const { productId, type, quantity, note } = req.body || {};
+    const result = await adjustFranchiseInventory({
+      franchisePartnerId: partner._id,
+      productId,
+      type,
+      quantity,
+      note,
+      userId: req.user.id,
+    });
+    return handleResponse(res, 200, "Inventory adjusted", result);
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 400,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
   }
 };
 

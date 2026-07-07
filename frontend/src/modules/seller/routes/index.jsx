@@ -13,6 +13,7 @@ import {
   HiOutlineChartBarSquare,
   HiOutlineCreditCard,
   HiOutlineMapPin,
+  HiOutlineClipboardDocumentList,
 } from "react-icons/hi2";
 
 const Dashboard = React.lazy(() => import("../pages/Dashboard"));
@@ -20,6 +21,7 @@ const ProductManagement = React.lazy(
   () => import("../pages/ProductManagement"),
 );
 const StockManagement = React.lazy(() => import("../pages/StockManagement"));
+const InventoryManagement = React.lazy(() => import("../pages/InventoryManagement"));
 const AddProduct = React.lazy(() => import("../pages/AddProduct"));
 // Note: Orders is imported eagerly above to avoid dynamic import issues
 const Returns = React.lazy(() => import("../pages/Returns"));
@@ -35,6 +37,11 @@ const navItems = [
   { label: "Dashboard", path: "/seller", icon: HiOutlineSquares2X2, end: true },
   { label: "Products", path: "/seller/products", icon: HiOutlineCube },
   { label: "Stock", path: "/seller/inventory", icon: HiOutlineArchiveBox },
+  {
+    label: "Inventory",
+    path: "/seller/inventory-management",
+    icon: HiOutlineClipboardDocumentList,
+  },
   { label: "Orders", path: "/seller/orders", icon: HiOutlineTruck },
   { label: "Returns", path: "/seller/returns", icon: HiOutlineArchiveBox },
   { label: "Track Orders", path: "/seller/tracking", icon: HiOutlineMapPin },
@@ -73,6 +80,7 @@ const SellerRoutes = () => {
         <Route path="/products" element={<ProductManagement />} />
         <Route path="/products/add" element={<AddProduct />} />
         <Route path="/inventory" element={<StockManagement />} />
+        <Route path="/inventory-management" element={<InventoryManagement />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/returns" element={<Returns />} />
         <Route path="/tracking" element={<DeliveryTracking />} />

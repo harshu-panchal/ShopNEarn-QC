@@ -341,8 +341,14 @@ const PartnerDashboard = ({ data, navigate, onRefresh, refreshing }) => {
         <ActionCard
           icon={Store}
           title="My stock"
-          description="View products you hold and quantities available to fulfill orders"
+          description="Quick view of products you hold locally"
           onClick={() => navigate("/mlm/franchise/stock")}
+        />
+        <ActionCard
+          icon={Boxes}
+          title="Inventory management"
+          description="Track incoming transfers, outgoing fulfillment, damage, and movement history"
+          onClick={() => navigate("/mlm/franchise/inventory")}
         />
         <ActionCard
           icon={ClipboardList}

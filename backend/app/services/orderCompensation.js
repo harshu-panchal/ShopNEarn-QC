@@ -4,6 +4,7 @@ import CheckoutGroup from "../models/checkoutGroup.js";
 import { releaseReservedStockForOrder } from "./stockService.js";
 import { clearOrderTracking } from "./firebaseService.js";
 import { reverseOrderFinanceOnCancellation } from "./finance/orderFinanceService.js";
+import { restoreFranchiseStockForOrder } from "./franchise/franchiseOrderService.js";
 import logger from "./logger.js";
 
 /**
@@ -31,6 +32,17 @@ export async function compensateOrderCancellation(order, orderIdString, opts = {
     await releaseReservedStockForOrder(existing, {
       reason: "Cancelled",
     });
+    if (existing.franchisePartnerId && !existing.isFranchiseStockOrder) {
+      try {
+        await restoreFranchiseStockForOrder(existing);
+      } catch (franchiseRestoreErr) {
+        logger.warn?.("compensateOrderCancellation franchise stock restore failed", {
+          scope: "compensateOrderCancellation",
+          orderId: existing.orderId || orderIdString,
+          error: franchiseRestoreErr?.message,
+        });
+      }
+    }
     await existing.save();
   }
 

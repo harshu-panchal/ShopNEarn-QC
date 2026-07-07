@@ -13,6 +13,12 @@ import {
   buildInsufficientStockMessage,
   resolveAvailableStock,
 } from "../../utils/productStockUtils.js";
+import {
+  createTransferGroupId,
+  decrementHubProductStock,
+  incrementFranchiseStock,
+} from "../inventory/inventoryMovementService.js";
+import { HUB_STOCK_TYPES, FRANCHISE_STOCK_TYPES } from "../../constants/inventory.js";
 
 export async function getFranchiseStockSummary(franchisePartnerId) {
   const rows = await FranchiseStockLedger.find({ franchisePartnerId }).lean();
@@ -32,6 +38,7 @@ export async function getFranchiseStockSummary(franchisePartnerId) {
 
 /**
  * Franchise B2B stock purchase from Harsh's Hub catalog using wallet balance.
+ * Atomically: hub stock out + franchise ledger in (linked transferGroupId).
  */
 export async function purchaseFranchiseStock({
   franchisePartnerId,
@@ -87,8 +94,11 @@ export async function purchaseFranchiseStock({
   }
 
   const session = await mongoose.startSession();
+  const transferGroupId = createTransferGroupId();
+
   try {
     let stockOrderId;
+    let stockOrderDocId;
     await session.withTransaction(async () => {
       const idempotencyKey = `${FRANCHISE_IDEMPOTENCY_PREFIX.STOCK_PURCHASE}-${franchisePartnerId}-${Date.now()}`;
       await debitWallet({
@@ -101,17 +111,9 @@ export async function purchaseFranchiseStock({
         ledgerReference: idempotencyKey,
         ledgerDescription: `Franchise stock purchase (${lineItems.length} SKU)`,
         idempotencyKey,
-        metadata: { lineItems },
+        metadata: { lineItems, transferGroupId },
         syncUserWalletBalance: false,
       });
-
-      for (const line of lineItems) {
-        await FranchiseStockLedger.findOneAndUpdate(
-          { franchisePartnerId, productId: line.productId },
-          { $inc: { quantity: line.qty }, $set: { note: "Stock purchase" } },
-          { upsert: true, new: true, session },
-        );
-      }
 
       const publicOrderId = await generateUniquePublicOrderId({ session });
       const order = await Order.create(
@@ -120,7 +122,11 @@ export async function purchaseFranchiseStock({
             orderId: publicOrderId,
             customer: userId,
             seller: catalog.hubSellerId,
-            address: { type: "Work", name: partner.displayName || "Franchise", address: "Stock purchase" },
+            address: {
+              type: "Work",
+              name: partner.displayName || "Franchise",
+              address: "Stock purchase",
+            },
             items: lineItems.map((l) => ({
               product: l.productId,
               quantity: l.qty,
@@ -139,9 +145,35 @@ export async function purchaseFranchiseStock({
         ],
         { session },
       );
-      stockOrderId = order[0]._id;
+      stockOrderDocId = order[0]._id;
+      stockOrderId = publicOrderId;
+
+      for (const line of lineItems) {
+        await decrementHubProductStock({
+          productId: line.productId,
+          sellerId: catalog.hubSellerId,
+          quantity: line.qty,
+          session,
+          type: HUB_STOCK_TYPES.TRANSFER_OUT,
+          note: `Transfer to franchise partner (${publicOrderId})`,
+          orderId: stockOrderDocId,
+          transferGroupId,
+        });
+
+        await incrementFranchiseStock({
+          franchisePartnerId,
+          productId: line.productId,
+          quantity: line.qty,
+          session,
+          type: FRANCHISE_STOCK_TYPES.TRANSFER_IN,
+          note: `Stock purchase from hub (${publicOrderId})`,
+          orderId: stockOrderDocId,
+          transferGroupId,
+          createdBy: userId,
+        });
+      }
     });
-    return { stockOrderId, totalCost, lineItems };
+    return { stockOrderId, stockOrderDocId, totalCost, lineItems, transferGroupId };
   } finally {
     await session.endSession();
   }

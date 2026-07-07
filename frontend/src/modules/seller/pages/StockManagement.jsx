@@ -101,7 +101,11 @@ const StockManagement = () => {
         try {
             const res = await sellerApi.getStockHistory();
             if (res.data.success) {
-                setHistory(res.data.result || []);
+                const payload = res.data.result || {};
+                const rows = Array.isArray(payload.items)
+                    ? payload.items
+                    : (Array.isArray(payload) ? payload : []);
+                setHistory(rows);
             }
         } catch (error) {
             toast.error("Failed to load stock history");

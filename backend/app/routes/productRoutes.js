@@ -14,7 +14,7 @@ import {
     getBulkUploadTemplate,
     bulkUploadProducts,
 } from "../controller/productBulkController.js";
-import { adjustStock, getStockHistory } from "../controller/stockController.js";
+import { adjustStock, getStockHistory, getInventorySummary } from "../controller/stockController.js";
 import {
     verifyToken,
     allowRoles,
@@ -36,6 +36,7 @@ router.get("/seller/me", verifyToken, allowRoles("seller"), requireApprovedSelle
 router.get("/seller/bulk-template", verifyToken, allowRoles("seller"), getBulkUploadTemplate);
 router.post("/seller/bulk-upload", verifyToken, allowRoles("seller"), requireApprovedSeller, upload.single("file"), bulkUploadProducts);
 router.get("/stock-history", verifyToken, allowRoles("seller"), requireApprovedSeller, getStockHistory);
+router.get("/inventory/summary", verifyToken, allowRoles("seller"), requireApprovedSeller, getInventorySummary);
 router.post("/adjust-stock", verifyToken, allowRoles("seller"), requireApprovedSeller, adjustStock);
 router.get("/moderation", verifyToken, allowRoles("admin"), getModerationProducts);
 router.patch("/moderation/:id/approve", verifyToken, allowRoles("admin"), approveProduct);

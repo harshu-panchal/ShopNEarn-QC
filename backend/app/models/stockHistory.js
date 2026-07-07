@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { ALL_HUB_STOCK_TYPES } from "../constants/inventory.js";
 
 const stockHistorySchema = new mongoose.Schema(
     {
@@ -14,7 +15,7 @@ const stockHistorySchema = new mongoose.Schema(
         },
         type: {
             type: String,
-            enum: ["Restock", "Sale", "Correction", "Reservation", "Release"],
+            enum: ALL_HUB_STOCK_TYPES,
             required: true,
         },
         quantity: {
@@ -28,6 +29,17 @@ const stockHistorySchema = new mongoose.Schema(
         order: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Order",
+        },
+        transferGroupId: {
+            type: String,
+            trim: true,
+            default: null,
+            index: true,
+        },
+        variantSku: {
+            type: String,
+            trim: true,
+            default: null,
         },
     },
     { timestamps: true }
