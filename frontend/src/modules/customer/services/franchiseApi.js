@@ -30,6 +30,8 @@ export const adminFranchiseApi = {
   getSettings: () => axiosInstance.get("/admin/franchise/settings"),
   updateSettings: (data) => axiosInstance.put("/admin/franchise/settings", data),
   markHubSeller: (sellerId) => axiosInstance.post(`/admin/franchise/hub-seller/${sellerId}`),
+  issueHubImpersonationToken: () =>
+    axiosInstance.post("/admin/franchise/hub-seller/impersonation-token"),
   listRegistrations: (params) => axiosInstance.get("/admin/franchise/registrations", { params }),
   approveRegistration: (id, data) =>
     axiosInstance.post(`/admin/franchise/registrations/${id}/approve`, data || {}),

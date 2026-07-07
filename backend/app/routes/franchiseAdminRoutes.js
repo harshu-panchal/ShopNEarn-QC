@@ -15,6 +15,7 @@ import {
   updateFranchiseSettings,
   getFranchiseSettings,
   markHubSeller,
+  issueHubSellerImpersonationToken,
   listFranchiseDispatchOrders,
   assignFranchiseDispatchDelivery,
 } from "../controller/admin/franchiseAdminController.js";
@@ -25,6 +26,7 @@ const adminGuard = [verifyToken, allowRoles("admin")];
 router.get("/dashboard", ...adminGuard, getFranchiseAdminDashboard);
 router.get("/settings", ...adminGuard, getFranchiseSettings);
 router.put("/settings", ...adminGuard, updateFranchiseSettings);
+router.post("/hub-seller/impersonation-token", ...adminGuard, issueHubSellerImpersonationToken);
 router.post("/hub-seller/:sellerId", ...adminGuard, markHubSeller);
 
 router.get("/registrations", ...adminGuard, listRegistrationReviews);

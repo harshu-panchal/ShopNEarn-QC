@@ -58,32 +58,53 @@ function legacyFromWorkflow(workflowStatus) {
 export function getLegacyStatusFromOrder(order) {
   if (!order) return "pending";
 
+  const explicit = String(order.status ?? order.orderStatus ?? "").toLowerCase();
+  const workflowVersion = Number(order.workflowVersion) || 0;
+  const workflowStatus = String(order.workflowStatus || "").toUpperCase();
+
   if (order.franchisePartnerId && order.isFranchiseStockOrder !== true) {
-    if (order.franchiseStatus === "fulfilled") return "delivered";
-    if (order.franchiseStatus === "rejected") return "cancelled";
-    if (order.franchiseStatus === "accepted" && order.shipmentStatus === "created") {
-      return "packed";
+    if (order.franchiseStatus === "fulfilled" || workflowStatus === WORKFLOW_STATUS.DELIVERED) {
+      return "delivered";
     }
-  }
-
-  const v = Number(order.workflowVersion) || 0;
-  if (v >= 2 && order.workflowStatus) {
-    const workflowStatus = String(order.workflowStatus).toUpperCase();
-
+    if (order.franchiseStatus === "rejected" || workflowStatus === WORKFLOW_STATUS.CANCELLED) {
+      return "cancelled";
+    }
     if (workflowStatus === WORKFLOW_STATUS.OUT_FOR_DELIVERY) {
       return "out_for_delivery";
     }
-    if (workflowStatus === WORKFLOW_STATUS.DELIVERED) {
+    if (order.franchiseStatus === "accepted" && order.shipmentStatus === "created") {
+      return "packed";
+    }
+    if (order.franchiseStatus === "accepted") {
+      return "confirmed";
+    }
+    if (order.franchiseStatus === "pending") {
+      return "pending";
+    }
+  }
+
+  const v = workflowVersion;
+  if (v >= 2 && order.workflowStatus) {
+    const ws = workflowStatus;
+
+    if (ws === WORKFLOW_STATUS.OUT_FOR_DELIVERY) {
+      return "out_for_delivery";
+    }
+    if (ws === WORKFLOW_STATUS.DELIVERED) {
       return "delivered";
     }
+    if (ws === WORKFLOW_STATUS.CANCELLED) {
+      return "cancelled";
+    }
     if (
-      workflowStatus === WORKFLOW_STATUS.DELIVERY_ASSIGNED ||
-      workflowStatus === WORKFLOW_STATUS.PICKUP_READY
+      ws === WORKFLOW_STATUS.DELIVERY_ASSIGNED ||
+      ws === WORKFLOW_STATUS.PICKUP_READY
     ) {
+      if (explicit === "packed") return "packed";
       return "confirmed";
     }
 
-    return legacyFromWorkflow(workflowStatus);
+    return legacyFromWorkflow(ws);
   }
 
   const riderStep = Number(order.deliveryRiderStep) || 0;
@@ -94,7 +115,7 @@ export function getLegacyStatusFromOrder(order) {
     return "confirmed";
   }
 
-  const s = String(order.status ?? "pending").toLowerCase();
+  const s = explicit;
   if (LEGACY_ENUM.has(s)) return s;
   return "pending";
 }

@@ -87,6 +87,96 @@ export function workflowFromLegacyStatus(legacy) {
   return WORKFLOW_STATUS.SELLER_PENDING;
 }
 
+const LEGACY_STATUS_ENUM = new Set([
+  "pending",
+  "confirmed",
+  "packed",
+  "out_for_delivery",
+  "delivered",
+  "cancelled",
+]);
+
+/**
+ * Single source of truth for mapping an order document to the legacy status
+ * bucket used by admin/seller dropdowns and list filters.
+ */
+export function resolveLegacyStatusFromOrder(order) {
+  if (!order) return "pending";
+
+  const explicit = String(order.status ?? order.orderStatus ?? "").toLowerCase();
+  const workflowVersion = Number(order.workflowVersion) || 0;
+  const workflowStatus = String(order.workflowStatus || "").toUpperCase();
+
+  const isFranchiseCustomerOrder =
+    order.franchisePartnerId && order.isFranchiseStockOrder !== true;
+
+  if (isFranchiseCustomerOrder) {
+    if (
+      order.franchiseStatus === FRANCHISE_ORDER_STATUS.FULFILLED ||
+      workflowStatus === WORKFLOW_STATUS.DELIVERED
+    ) {
+      return "delivered";
+    }
+    if (
+      order.franchiseStatus === FRANCHISE_ORDER_STATUS.REJECTED ||
+      workflowStatus === WORKFLOW_STATUS.CANCELLED
+    ) {
+      return "cancelled";
+    }
+    if (workflowStatus === WORKFLOW_STATUS.OUT_FOR_DELIVERY) {
+      return "out_for_delivery";
+    }
+    if (
+      order.franchiseStatus === FRANCHISE_ORDER_STATUS.ACCEPTED &&
+      order.shipmentStatus === FRANCHISE_SHIPMENT_STATUS.CREATED
+    ) {
+      return "packed";
+    }
+    if (order.franchiseStatus === FRANCHISE_ORDER_STATUS.ACCEPTED) {
+      return "confirmed";
+    }
+    if (order.franchiseStatus === FRANCHISE_ORDER_STATUS.PENDING) {
+      return "pending";
+    }
+  }
+
+  if (workflowVersion >= 2 && workflowStatus) {
+    if (workflowStatus === WORKFLOW_STATUS.OUT_FOR_DELIVERY) {
+      return "out_for_delivery";
+    }
+    if (workflowStatus === WORKFLOW_STATUS.DELIVERED) {
+      return "delivered";
+    }
+    if (workflowStatus === WORKFLOW_STATUS.CANCELLED) {
+      return "cancelled";
+    }
+    if (
+      workflowStatus === WORKFLOW_STATUS.DELIVERY_ASSIGNED ||
+      workflowStatus === WORKFLOW_STATUS.PICKUP_READY
+    ) {
+      if (explicit === "packed") return "packed";
+      return "confirmed";
+    }
+    return legacyStatusFromWorkflow(workflowStatus);
+  }
+
+  const riderStep = Number(order.deliveryRiderStep) || 0;
+  if (riderStep >= 3 || order.outForDeliveryAt || order.pickupConfirmedAt) {
+    return "out_for_delivery";
+  }
+  if (
+    riderStep >= 1 ||
+    order.assignedAt ||
+    order.pickupReadyAt ||
+    order.deliveryBoy
+  ) {
+    return "confirmed";
+  }
+
+  if (LEGACY_STATUS_ENUM.has(explicit)) return explicit;
+  return "pending";
+}
+
 /**
  * Keep canonical workflow / franchise fields aligned when admin or seller
  * manually changes the legacy `status` dropdown (v2 orders).
@@ -127,12 +217,17 @@ export function applyManualLegacyStatusOverride(order, legacyStatus) {
         }
         break;
       case "out_for_delivery":
+        order.franchiseStatus = FRANCHISE_ORDER_STATUS.ACCEPTED;
+        order.shipmentStatus = FRANCHISE_SHIPMENT_STATUS.CREATED;
+        order.outForDeliveryAt = order.outForDeliveryAt || new Date();
         if (workflowVersion >= 2) {
           order.workflowStatus = WORKFLOW_STATUS.OUT_FOR_DELIVERY;
         }
         break;
       case "delivered":
         order.franchiseStatus = FRANCHISE_ORDER_STATUS.FULFILLED;
+        order.shipmentStatus = FRANCHISE_SHIPMENT_STATUS.CREATED;
+        order.deliveredAt = order.deliveredAt || new Date();
         if (workflowVersion >= 2) {
           order.workflowStatus = WORKFLOW_STATUS.DELIVERED;
         }
@@ -151,5 +246,14 @@ export function applyManualLegacyStatusOverride(order, legacyStatus) {
 
   if (workflowVersion >= 2) {
     order.workflowStatus = workflowFromLegacyStatus(s);
+    if (s === "packed") {
+      order.workflowStatus = WORKFLOW_STATUS.DELIVERY_ASSIGNED;
+    }
+    if (s === "out_for_delivery") {
+      order.outForDeliveryAt = order.outForDeliveryAt || new Date();
+    }
+    if (s === "delivered") {
+      order.deliveredAt = order.deliveredAt || new Date();
+    }
   }
 }

@@ -2,7 +2,7 @@ import Order from "../models/order.js";
 import Delivery from "../models/delivery.js";
 import Seller from "../models/seller.js";
 import CheckoutGroup from "../models/checkoutGroup.js";
-import { WORKFLOW_STATUS, legacyStatusFromWorkflow } from "../constants/orderWorkflow.js";
+import { WORKFLOW_STATUS, resolveLegacyStatusFromOrder } from "../constants/orderWorkflow.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import {
   orderMatchQueryFlexible,
@@ -17,23 +17,11 @@ function svcErr(message, statusCode) {
   return error;
 }
 
-/** Keep legacy `status` aligned with v2 franchise workflow for list/detail APIs. */
+/** Keep legacy `status` aligned with v2 workflow for list/detail APIs. */
 function hydrateFranchiseLegacyStatus(order) {
-  if (!order || (Number(order.workflowVersion) || 0) < 2) return order;
+  if (!order) return order;
 
-  let nextStatus = null;
-  if (order.franchisePartnerId && order.isFranchiseStockOrder !== true) {
-    if (order.franchiseStatus === "fulfilled") nextStatus = "delivered";
-    else if (order.franchiseStatus === "rejected") nextStatus = "cancelled";
-    else if (order.franchiseStatus === "accepted" && order.shipmentStatus === "created") {
-      nextStatus = "packed";
-    } else if (order.workflowStatus) {
-      nextStatus = legacyStatusFromWorkflow(order.workflowStatus);
-    }
-  } else if (order.workflowStatus) {
-    nextStatus = legacyStatusFromWorkflow(order.workflowStatus);
-  }
-
+  const nextStatus = resolveLegacyStatusFromOrder(order);
   if (nextStatus && nextStatus !== order.status) {
     return { ...order, status: nextStatus, orderStatus: nextStatus };
   }

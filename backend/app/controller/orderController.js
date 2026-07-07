@@ -539,14 +539,37 @@ export const updateOrderStatus = async (req, res) => {
 
     // Handle Confirmation/Delivery (Settle Transaction for Demo)
     if (status === "delivered" && oldStatus !== "delivered") {
-      order.deliveredAt = new Date();
+      order.deliveredAt = order.deliveredAt || new Date();
 
       // Important: persist deliveryBoy/status first so settlement can correctly:
       // - queue rider payout
       // - mark COD cash collected (system float)
       await order.save();
-      await applyDeliveredSettlement(order, canonicalOrderId);
-      await markFranchiseOrderDeliveredFromWorkflow(order);
+
+      const isManualOverride = role === "admin" || isOwnerSeller;
+      try {
+        await applyDeliveredSettlement(order, canonicalOrderId);
+      } catch (settlementErr) {
+        if (!isManualOverride) throw settlementErr;
+        logger.warn("updateOrderStatus delivered settlement skipped for manual override", {
+          scope: "updateOrderStatus",
+          orderId: canonicalOrderId,
+          role,
+          error: settlementErr.message,
+        });
+      }
+
+      try {
+        await markFranchiseOrderDeliveredFromWorkflow(order);
+      } catch (franchiseErr) {
+        if (!isManualOverride) throw franchiseErr;
+        logger.warn("updateOrderStatus franchise delivered hook failed for manual override", {
+          scope: "updateOrderStatus",
+          orderId: canonicalOrderId,
+          role,
+          error: franchiseErr.message,
+        });
+      }
 
       emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_DELIVERED, {
         orderId: canonicalOrderId,

@@ -1,5 +1,7 @@
+import jwt from "jsonwebtoken";
 import handleResponse from "../../utils/helper.js";
 import Customer from "../../models/customer.js";
+import Seller from "../../models/seller.js";
 import FranchisePartner from "../../models/franchisePartner.js";
 import {
   listFranchiseRegistrationReviews,
@@ -255,6 +257,80 @@ export const markHubSeller = async (req, res) => {
     return handleResponse(res, 200, "Hub seller updated", { sellerId: String(seller._id), shopName: seller.shopName });
   } catch (error) {
     return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+const HUB_IMPERSONATION_TOKEN_TTL_SECONDS = 15 * 60;
+
+/**
+ * POST /api/admin/franchise/hub-seller/impersonation-token
+ *
+ * Admin support tool: mints a short-lived seller JWT for the
+ * configured hub seller (Harsh's Hub) so the admin frontend can
+ * open the seller panel in a new tab pre-authenticated — same
+ * pattern as MLM member impersonation.
+ */
+export const issueHubSellerImpersonationToken = async (req, res) => {
+  try {
+    const cfg = await getFranchiseConfig();
+    const hubSellerId = await resolveHubSellerId(cfg);
+    if (!hubSellerId) {
+      return handleResponse(res, 404, "Hub seller is not configured.");
+    }
+
+    const seller = await Seller.findById(hubSellerId).lean();
+    if (!seller) {
+      return handleResponse(res, 404, "Hub seller account not found.");
+    }
+
+    const applicationStatus =
+      seller.applicationStatus || (seller.isVerified ? "approved" : "pending");
+    const isApproved =
+      seller.isVerified === true &&
+      seller.isActive === true &&
+      applicationStatus === "approved";
+
+    if (!isApproved) {
+      return handleResponse(
+        res,
+        403,
+        "Cannot sign in — the hub seller account is not approved or active.",
+      );
+    }
+
+    const adminId = req.user?.id || null;
+    const hubName = cfg.hubShopDisplayName || seller.shopName || "Harsh's Hub";
+
+    const token = jwt.sign(
+      {
+        id: seller._id,
+        role: "seller",
+        act: { id: adminId, type: "admin" },
+        impersonated: true,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: HUB_IMPERSONATION_TOKEN_TTL_SECONDS },
+    );
+
+    console.warn(
+      `[admin-impersonation] admin=${adminId} -> hub-seller=${seller._id}`,
+    );
+
+    const { password: _password, ...safeSeller } = seller;
+
+    return handleResponse(res, 200, "Hub impersonation token issued", {
+      token,
+      expiresInSeconds: HUB_IMPERSONATION_TOKEN_TTL_SECONDS,
+      redirect: "/seller",
+      hubShopDisplayName: hubName,
+      seller: safeSeller,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to issue hub impersonation token",
+    );
   }
 };
 

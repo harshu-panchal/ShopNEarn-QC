@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { RefreshCcw, Store, Users, Wallet, ClipboardList, Settings } from "lucide-react";
+import { RefreshCcw, Store, Users, Wallet, ClipboardList, Settings, LogIn, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { adminFranchiseApi } from "../../../customer/services/franchiseApi";
 import {
@@ -20,6 +20,7 @@ const FranchiseAdminDashboard = () => {
   const [recentRegs, setRecentRegs] = useState([]);
   const [recentTopUps, setRecentTopUps] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loggingIntoHub, setLoggingIntoHub] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -44,6 +45,54 @@ const FranchiseAdminDashboard = () => {
   }, []);
 
   const cfg = data?.config || {};
+  const hubName = cfg.hubShopDisplayName || "Harsh's Hub";
+  const hubSellerId = data?.hubSellerId || cfg.hubSellerId;
+
+  const handleLoginToHub = async () => {
+    if (loggingIntoHub) return;
+    if (!hubSellerId) {
+      toast.error("Hub seller is not configured. Set it in Franchise Settings.");
+      return;
+    }
+    if (!window.confirm(
+      `Open a new tab and sign in to ${hubName}? ` +
+      "If you already have a seller session open in this browser, it will be replaced.",
+    )) {
+      return;
+    }
+
+    const newTab = window.open("about:blank", "_blank");
+    if (!newTab) {
+      toast.error("Pop-up blocked. Please allow pop-ups for this site and try again.");
+      return;
+    }
+
+    setLoggingIntoHub(true);
+    try {
+      const res = await adminFranchiseApi.issueHubImpersonationToken();
+      const payload = res.data?.result ?? res.data?.data ?? {};
+      if (!payload.token) {
+        throw new Error("Backend returned no impersonation token.");
+      }
+      const redirect = payload.redirect || "/seller";
+      const handoffUrl =
+        `${window.location.origin}/auth/handoff` +
+        `#token=${encodeURIComponent(payload.token)}` +
+        `&role=seller` +
+        `&redirect=${encodeURIComponent(redirect)}`;
+      newTab.location.replace(handoffUrl);
+      toast.success(`Opening ${payload.hubShopDisplayName || hubName} seller panel…`);
+    } catch (err) {
+      try { newTab.close(); } catch { /* ignore */ }
+      toast.error(
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to open hub seller panel.",
+      );
+    } finally {
+      setLoggingIntoHub(false);
+    }
+  };
 
   return (
     <PageShell
@@ -106,10 +155,24 @@ const FranchiseAdminDashboard = () => {
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div className="bg-slate-50 rounded-xl p-4">
               <dt className="text-xs uppercase tracking-wide text-slate-500">Hub catalog</dt>
-              <dd className="font-semibold text-slate-900 mt-1">{cfg.hubShopDisplayName || "Harsh's Hub"}</dd>
+              <dd className="font-semibold text-slate-900 mt-1">{hubName}</dd>
               <dd className="text-xs text-slate-500 mt-1 font-mono break-all">
-                Seller ID: {data?.hubSellerId || cfg.hubSellerId || "Not configured"}
+                Seller ID: {hubSellerId || "Not configured"}
               </dd>
+              <button
+                type="button"
+                onClick={handleLoginToHub}
+                disabled={loggingIntoHub || !hubSellerId}
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed text-white transition-colors shadow-sm"
+                title={hubSellerId ? `Open seller panel for ${hubName}` : "Configure hub seller ID first"}
+              >
+                {loggingIntoHub ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <LogIn size={14} />
+                )}
+                {loggingIntoHub ? "Signing in…" : `Log in to ${hubName}`}
+              </button>
             </div>
             <div className="bg-slate-50 rounded-xl p-4">
               <dt className="text-xs uppercase tracking-wide text-slate-500">Order routing</dt>
