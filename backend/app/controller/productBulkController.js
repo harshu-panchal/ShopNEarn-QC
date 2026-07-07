@@ -10,6 +10,7 @@ import { enqueueProductIndex } from "../services/searchSyncService.js";
 import { buildKey, invalidate } from "../services/cacheService.js";
 import { getProductApprovalConfig } from "../services/productModerationService.js";
 import { slugify } from "../utils/slugify.js";
+import { sumVariantStock } from "../utils/productStockUtils.js";
 
 // Helper to sanitize category names for Excel Defined Names.
 // IMPORTANT: This must produce EXACTLY the same string as the SUBSTITUTE()
@@ -638,7 +639,7 @@ export const bulkUploadProducts = async (req, res) => {
           status,
           price: v1Price,
           salePrice: v1SalePrice,
-          stock: v1Stock,
+          stock: sumVariantStock(variants),
           variants,
           mainImage,
           galleryImages,

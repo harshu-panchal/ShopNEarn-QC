@@ -1,22 +1,52 @@
 /**
  * Resolve sellable quantity for a product line.
- * When variantSku is set, uses variants[].stock; otherwise Product.stock.
+ * Variant lines are limited by both variant stock and master product.stock
+ * because checkout reserves against both counters atomically.
  */
-export function resolveAvailableStock(product, variantSku = "") {
-  if (!product) return 0;
 
+export function sumVariantStock(variants = []) {
+  if (!Array.isArray(variants) || variants.length === 0) return 0;
+  return variants.reduce(
+    (sum, variant) => sum + Math.max(0, Number(variant?.stock || 0)),
+    0,
+  );
+}
+
+export function findVariantBySkuOrName(variants = [], variantSku = "") {
   const normalized = String(variantSku || "").trim();
-  if (normalized) {
-    const variants = Array.isArray(product.variants) ? product.variants : [];
-    const hit = variants.find((variant) => {
+  if (!normalized || !Array.isArray(variants)) return null;
+
+  return (
+    variants.find((variant) => {
       const sku = String(variant?.sku || "").trim();
       const name = String(variant?.name || "").trim();
       return (sku && sku === normalized) || name === normalized;
-    });
-    return hit ? Math.max(0, Number(hit.stock || 0)) : 0;
+    }) || null
+  );
+}
+
+export function resolveAvailableStock(product, variantSku = "") {
+  if (!product) return 0;
+
+  const masterStock = Math.max(0, Number(product?.stock || 0));
+  const normalized = String(variantSku || "").trim();
+  if (normalized) {
+    const hit = findVariantBySkuOrName(product.variants, normalized);
+    if (!hit) return 0;
+    const variantStock = Math.max(0, Number(hit.stock || 0));
+    return Math.min(variantStock, masterStock);
   }
 
-  return Math.max(0, Number(product.stock || 0));
+  return masterStock;
+}
+
+export function syncMasterStockFromVariants(productData = {}) {
+  if (!productData || !Array.isArray(productData.variants) || productData.variants.length === 0) {
+    return productData;
+  }
+
+  productData.stock = sumVariantStock(productData.variants);
+  return productData;
 }
 
 export function buildInsufficientStockMessage(available, productName = "Product") {
@@ -24,4 +54,24 @@ export function buildInsufficientStockMessage(available, productName = "Product"
     return `${productName} is out of stock`;
   }
   return `Only ${available} unit(s) of ${productName} available`;
+}
+
+export function assertHydratedItemsStock(hydratedItems = [], productMap = new Map()) {
+  for (const item of hydratedItems) {
+    const product = productMap.get(String(item.productId));
+    const available = resolveAvailableStock(product, item.variantSku);
+    const quantity = Math.max(0, Number(item.quantity || 0));
+    if (quantity <= available) continue;
+
+    const variantSku = String(item.variantSku || "").trim();
+    const productName = item.productName || product?.name || "Product";
+    const err = new Error(
+      variantSku
+        ? `Insufficient stock for product: ${productName} (variant: ${variantSku})`
+        : buildInsufficientStockMessage(available, productName),
+    );
+    err.statusCode = 409;
+    err.code = "INSUFFICIENT_STOCK";
+    throw err;
+  }
 }

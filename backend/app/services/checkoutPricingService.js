@@ -17,6 +17,8 @@ import { cartIsHubOnly } from "./franchise/franchiseCatalogService.js";
 import { getHubSellerId } from "./franchise/franchiseConfigService.js";
 import { resolveFranchisePartner } from "./franchise/franchiseOrderRoutingService.js";
 import { normalizeAddressForFranchiseRouting } from "./franchise/franchiseAddressUtils.js";
+import { assertHydratedItemsStock } from "../utils/productStockUtils.js";
+import Product from "../models/product.js";
 
 /**
  * MLM-specific carve-out: the home-shopping SKU is a digital product
@@ -493,6 +495,15 @@ export async function buildCheckoutPricingSnapshot({
     err.statusCode = 400;
     throw err;
   }
+
+  const productIds = hydratedItems.map((item) => item.productId);
+  const stockProductQuery = Product.find({ _id: { $in: productIds } })
+    .select("_id name stock variants")
+    .lean();
+  if (session) stockProductQuery.session(session);
+  const stockProducts = await stockProductQuery;
+  const stockProductMap = new Map(stockProducts.map((product) => [String(product._id), product]));
+  assertHydratedItemsStock(hydratedItems, stockProductMap);
 
   const hubOnlyCart = await cartIsHubOnly(hydratedItems);
   const itemsBySeller = groupHydratedItemsBySeller(hydratedItems);

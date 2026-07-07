@@ -1498,23 +1498,29 @@ export const adjustMemberWallet = async (req, res) => {
     try {
       let event;
       await session.withTransaction(async () => {
+        const resolvedBucket = ["available", "pending", "shopping", "earnings"].includes(bucket)
+          ? bucket
+          : "earnings";
         const args = {
           ownerType: OWNER_TYPE.CUSTOMER,
           ownerId: membership.userId,
           amount: Number(amount),
-          bucket: ["available", "pending", "shopping", "earnings"].includes(bucket)
-            ? bucket
-            : "earnings",
+          bucket: resolvedBucket,
           session,
           ledgerType: LEDGER_TRANSACTION_TYPE.MLM_MANUAL_ADJUSTMENT,
           ledgerReference: idempotencyKey,
           ledgerDescription: `Manual admin adjustment: ${reason}`,
           idempotencyKey,
           metadata: {
+            // Persist the target bucket so wallet-history labelling and
+            // category filters resolve the correct wallet. Without this,
+            // an earnings adjustment defaults to the "Shopping Wallet"
+            // label because `metadata.bucket` is undefined.
+            bucket: resolvedBucket,
             adminId: req.user?.id ? String(req.user.id) : null,
             reason: String(reason).trim(),
           },
-          syncUserWalletBalance: bucket === "available",
+          syncUserWalletBalance: resolvedBucket === "available",
         };
         if (String(direction).toUpperCase() === "CREDIT") {
           event = await creditWallet(args);
@@ -1882,6 +1888,9 @@ export const applyMlmPayoutReportCorrection = async (req, res) => {
           ledgerDescription: `Payout report ${report.reportDate} correction: ${reason}`,
           idempotencyKey,
           metadata: {
+            // Persist the target bucket so wallet-history labelling and
+            // category filters resolve the correct wallet (earnings).
+            bucket: "earnings",
             adminId: req.user?.id ? String(req.user.id) : null,
             reason: String(reason).trim(),
             reportDate: report.reportDate,

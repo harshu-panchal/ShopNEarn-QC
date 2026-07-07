@@ -25,6 +25,7 @@ import {
   resolveProductApprovalStatus,
 } from "../services/productModerationService.js";
 import { buildSearchRegex } from "../utils/regex.js";
+import { syncMasterStockFromVariants } from "../utils/productStockUtils.js";
 
 // Phase 3 P3-5: when search term is reasonably specific and the env flag
 // is enabled, prefer Mongo's `name + tags` text index over case-insensitive
@@ -792,6 +793,7 @@ export const createProduct = async (req, res) => {
             : makeProductSku(productData.name, idx + 1),
       }));
     }
+    syncMasterStockFromVariants(productData);
 
     let moderationUpdate = {};
     let successMessage = "Product created successfully";
@@ -957,6 +959,7 @@ export const updateProduct = async (req, res) => {
             : makeProductSku(skuBaseName, idx + 1),
       }));
     }
+    syncMasterStockFromVariants(productData);
 
     let moderationUpdate = {};
     let successMessage = "Product updated successfully";

@@ -1,10 +1,12 @@
 /**
  * Resolve sellable quantity for a product line.
- * When variantSku is set, uses variants[].stock; otherwise Product.stock.
+ * Variant lines are limited by both variant stock and master product.stock
+ * because checkout reserves against both counters atomically.
  */
 export function getAvailableStock(product, variantSku = "") {
   if (!product) return 0;
 
+  const masterStock = Math.max(0, Number(product?.stock || 0));
   const normalized = String(variantSku || "").trim();
   if (normalized) {
     const variants = Array.isArray(product?.variants) ? product.variants : [];
@@ -13,10 +15,12 @@ export function getAvailableStock(product, variantSku = "") {
       const name = String(variant?.name || "").trim();
       return (sku && sku === normalized) || name === normalized;
     });
-    return hit ? Math.max(0, Number(hit.stock || 0)) : 0;
+    if (!hit) return 0;
+    const variantStock = Math.max(0, Number(hit.stock || 0));
+    return Math.min(variantStock, masterStock);
   }
 
-  return Math.max(0, Number(product?.stock || 0));
+  return masterStock;
 }
 
 export function isAtStockLimit(product, variantSku, quantity) {

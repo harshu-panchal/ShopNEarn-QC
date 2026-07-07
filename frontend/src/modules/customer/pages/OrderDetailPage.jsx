@@ -27,6 +27,7 @@ import {
   Navigation2,
   Camera,
   X,
+  Network,
 } from "lucide-react";
 import { customerApi } from "../services/customerApi";
 import { toast } from "sonner";
@@ -878,6 +879,21 @@ const OrderDetailPage = () => {
             arrivingInText={estimatedArrival.arrivingInText}
             totalDistanceText={estimatedArrival.totalDistanceText}
           />
+        )}
+
+        {!isAwaitingOnlinePayment && status !== "cancelled" && (
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            onClick={() => navigate("/mlm")}
+            className="w-full flex items-center justify-center gap-2 rounded-2xl bg-violet-600 px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-violet-200 transition-all hover:bg-violet-700 active:scale-[0.98]"
+          >
+            <Network size={18} />
+            Go to MLM Dashboard
+            <ArrowRight size={16} />
+          </motion.button>
         )}
 
         {/* Proximity-based Delivery OTP Display */}
