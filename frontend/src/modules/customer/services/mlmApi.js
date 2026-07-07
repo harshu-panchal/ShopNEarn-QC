@@ -87,6 +87,27 @@ export const mlmApi = {
     return axiosInstance.post("/customer/mlm/join/submit-proof", payload);
   },
 
+  initiateUpgrade: (payload) => {
+    invalidateCache("/customer/mlm/membership");
+    invalidateCache("/customer/mlm/dashboard-overview");
+    invalidateCache("/customer/mlm/upgrade/payment");
+    return axiosInstance.post("/customer/mlm/upgrade/initiate", payload);
+  },
+
+  getUpgradePayment: (paymentId) =>
+    getWithDedupe(
+      `/customer/mlm/upgrade/payment/${paymentId}`,
+      {},
+      { ttl: 1500 },
+    ),
+
+  submitUpgradeProof: (payload) => {
+    invalidateCache("/customer/mlm/membership");
+    invalidateCache("/customer/mlm/dashboard-overview");
+    invalidateCache("/customer/mlm/upgrade/payment");
+    return axiosInstance.post("/customer/mlm/upgrade/submit-proof", payload);
+  },
+
   // Customer-MLM-rebuild Phase 5 — Main dashboard one-shot payload.
   getDashboardOverview: () =>
     getWithDedupe("/customer/mlm/dashboard-overview", {}, { ttl: 5000 }),

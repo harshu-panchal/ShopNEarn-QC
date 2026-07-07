@@ -4,6 +4,7 @@ import {
   adjustMemberWallet,
   approveJoiningReview,
   approveMlmMember,
+  approveUpgradeReview,
   approveWithdrawal,
   createMilestoneRule,
   deactivateMember,
@@ -15,9 +16,11 @@ import {
   issueImpersonationToken,
   listAdminWithdrawals,
   listJoiningReviews,
+  listUpgradeReviews,
   listMilestoneRules,
   listMlmMembers,
   rejectJoiningReview,
+  rejectUpgradeReview,
   rejectWithdrawal,
   softDeleteMember,
   updateMemberProfile,
@@ -115,6 +118,14 @@ router.post(
   approveJoiningReview,
 );
 router.post("/joining-reviews/:id/reject", ...adminGuard, rejectJoiningReview);
+
+router.get("/upgrade-reviews", ...adminGuard, listUpgradeReviews);
+router.post(
+  "/upgrade-reviews/:id/approve",
+  ...adminGuard,
+  approveUpgradeReview,
+);
+router.post("/upgrade-reviews/:id/reject", ...adminGuard, rejectUpgradeReview);
 
 router.get("/settings", ...adminGuard, getMlmSettings);
 router.put("/settings", ...adminGuard, updateMlmSettings);

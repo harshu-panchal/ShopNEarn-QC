@@ -7,6 +7,7 @@ import {
   getEarningsHistory,
   getEarningsSummary,
   getJoiningPayment,
+  getUpgradePayment,
   getMyBinaryGenealogy,
   getMyDirectReferrals,
   getMyDirectSponsor,
@@ -18,9 +19,11 @@ import {
   getMyUpline,
   getMyWalletHistory,
   initiateJoin,
+  initiateUpgrade,
   listMyWithdrawals,
   requestWithdrawal,
   submitJoiningProof,
+  submitUpgradeProof,
   updateMyTreeLayout,
   updateMyMembership,
   getMyLegTeam,
@@ -85,5 +88,9 @@ router.post("/home-shopping/claim", verifyToken, claimHomeShopping);
 router.post("/join/initiate", verifyToken, initiateJoin);
 router.post("/join/submit-proof", verifyToken, submitJoiningProof);
 router.get("/join/payment/:paymentId", verifyToken, getJoiningPayment);
+
+router.post("/upgrade/initiate", verifyToken, initiateUpgrade);
+router.post("/upgrade/submit-proof", verifyToken, submitUpgradeProof);
+router.get("/upgrade/payment/:paymentId", verifyToken, getUpgradePayment);
 
 export default router;

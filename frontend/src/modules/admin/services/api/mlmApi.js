@@ -115,6 +115,19 @@ export const adminMlmApi = {
             data || {},
         ),
 
+    listUpgradeReviews: (params) =>
+        axiosInstance.get('/admin/mlm/upgrade-reviews', { params }),
+    approveUpgradeReview: (id, data) =>
+        axiosInstance.post(
+            `/admin/mlm/upgrade-reviews/${id}/approve`,
+            data || {},
+        ),
+    rejectUpgradeReview: (id, data) =>
+        axiosInstance.post(
+            `/admin/mlm/upgrade-reviews/${id}/reject`,
+            data || {},
+        ),
+
     // Renamed from getSettings/updateSettings to avoid a name collision
     // with adminSettingsApi inside the aggregate `adminApi` (the MLM slice
     // was spread last and was silently overriding the platform-settings

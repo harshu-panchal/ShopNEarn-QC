@@ -57,6 +57,7 @@ const MlmEarningsPage = lazy(() => import('../../modules/customer/pages/mlm/MlmE
 const MlmWithdrawalPage = lazy(() => import('../../modules/customer/pages/mlm/MlmWithdrawalPage'));
 const MlmProfilePage = lazy(() => import('../../modules/customer/pages/mlm/MlmProfilePage'));
 const ManualPaymentPage = lazy(() => import('../../modules/customer/pages/mlm/ManualPaymentPage'));
+const UpgradePaymentPage = lazy(() => import('../../modules/customer/pages/mlm/UpgradePaymentPage'));
 const FranchiseDashboardPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseDashboardPage'));
 const FranchiseRegisterPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseRegisterPage'));
 const FranchiseRegistrationPaymentPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseRegistrationPaymentPage'));
@@ -304,6 +305,7 @@ const AppRouter = () => {
                                 { path: 'withdrawals', element: <Navigate to="/mlm/payouts/withdrawals" replace /> },
                                 { path: 'home-shopping', element: <Navigate to="/mlm/franchise" replace /> },
                                 { path: 'manual-payment/:paymentId', element: <ManualPaymentPage /> },
+                                { path: 'upgrade-payment/:paymentId', element: <UpgradePaymentPage /> },
                                 {
                                     path: 'franchise',
                                     children: [

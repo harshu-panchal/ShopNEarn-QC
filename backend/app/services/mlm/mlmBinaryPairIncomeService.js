@@ -14,6 +14,7 @@ import { MLM_IDEMPOTENCY_PREFIX } from "../../constants/mlm.js";
 import { hasCreditedDirectReferralFirstPairIncome } from "./mlmFirstPairIncomeGuard.js";
 
 const IST_TZ_OFFSET_MIN = 330;
+const ACTIVE_BINARY_PLAN_TYPES = [MLM_PLAN_TYPE.A, MLM_PLAN_TYPE.B];
 
 function todayIstDateString(now = new Date()) {
   const local = new Date(now.getTime() + IST_TZ_OFFSET_MIN * 60 * 1000);
@@ -137,7 +138,7 @@ export async function countActivePlanAInBinarySubtree(rootUserId, { session } = 
                 {
                   $and: [
                     { $eq: ["$status", MLM_MEMBERSHIP_STATUS.ACTIVE] },
-                    { $eq: ["$planType", MLM_PLAN_TYPE.A] },
+                    { $in: ["$planType", ACTIVE_BINARY_PLAN_TYPES] },
                   ],
                 },
                 1,
@@ -152,7 +153,7 @@ export async function countActivePlanAInBinarySubtree(rootUserId, { session } = 
                   cond: {
                     $and: [
                       { $eq: ["$$d.status", MLM_MEMBERSHIP_STATUS.ACTIVE] },
-                      { $eq: ["$$d.planType", MLM_PLAN_TYPE.A] },
+                      { $in: ["$$d.planType", ACTIVE_BINARY_PLAN_TYPES] },
                     ],
                   },
                 },
@@ -211,7 +212,7 @@ export async function countActivePlanADirects(sponsorUserId, { session } = {}) {
     {
       sponsorId: sponsorUserId,
       status: MLM_MEMBERSHIP_STATUS.ACTIVE,
-      planType: MLM_PLAN_TYPE.A,
+      planType: { $in: ACTIVE_BINARY_PLAN_TYPES },
     },
     session ? { session } : {},
   );
@@ -241,7 +242,7 @@ async function loadActivePlanAMembersInSubtree(rootUserId, { session } = {}) {
                 {
                   $and: [
                     { $eq: ["$status", MLM_MEMBERSHIP_STATUS.ACTIVE] },
-                    { $eq: ["$planType", MLM_PLAN_TYPE.A] },
+                    { $in: ["$planType", ACTIVE_BINARY_PLAN_TYPES] },
                   ],
                 },
                 [
@@ -263,7 +264,7 @@ async function loadActivePlanAMembersInSubtree(rootUserId, { session } = {}) {
                     cond: {
                       $and: [
                         { $eq: ["$$d.status", MLM_MEMBERSHIP_STATUS.ACTIVE] },
-                        { $eq: ["$$d.planType", MLM_PLAN_TYPE.A] },
+                        { $in: ["$$d.planType", ACTIVE_BINARY_PLAN_TYPES] },
                       ],
                     },
                   },

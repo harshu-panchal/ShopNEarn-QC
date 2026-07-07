@@ -49,6 +49,13 @@ import {
   submitManualPaymentProof,
 } from "../services/mlm/mlmJoiningPaymentService.js";
 import {
+  computeUpgradeEligibility,
+  getLatestPendingUpgradePaymentForCustomer,
+  getUpgradePaymentForCustomer,
+  initiateUpgradePayment,
+  submitUpgradeManualProof,
+} from "../services/mlm/mlmUpgradePaymentService.js";
+import {
   createWithdrawalRequestSchema,
   validateMlmSchema,
 } from "../validation/mlmValidation.js";
@@ -374,6 +381,30 @@ export const getMyMembership = async (req, res) => {
       }
     }
 
+    const upgradeEligibility = computeUpgradeEligibility(membership, cfg, wallet);
+
+    let pendingUpgradePayment = null;
+    if (membership?.planType === "A") {
+      const pendingUpgrade = await getLatestPendingUpgradePaymentForCustomer(userId);
+      if (pendingUpgrade) {
+        pendingUpgradePayment = {
+          paymentId: String(pendingUpgrade._id),
+          status: pendingUpgrade.status,
+          paymentMode: pendingUpgrade.paymentMode,
+          amount: pendingUpgrade.payAmountSnapshot,
+          shoppingCredit: pendingUpgrade.shoppingCreditSnapshot,
+          createdAt: pendingUpgrade.createdAt,
+          submittedAt: pendingUpgrade.manualPaymentDetails?.submittedAt || null,
+          transactionId: pendingUpgrade.manualPaymentDetails?.transactionId || null,
+          rejectionReason:
+            pendingUpgrade.status === "FAILED"
+              ? pendingUpgrade.adminRemarks || pendingUpgrade.failureReason || null
+              : null,
+          redirectUrl: pendingUpgrade.rawGatewayResponse?.redirectUrl || null,
+        };
+      }
+    }
+
     return handleResponse(res, 200, "MLM membership fetched", {
       enabled: !!cfg.enabled,
       isMember: !!membership,
@@ -413,6 +444,10 @@ export const getMyMembership = async (req, res) => {
             sponsorId: membership.sponsorId || null,
             payoutBeneficiary: membership.payoutBeneficiary || null,
             dailyCapTracker: membership.dailyCapTracker || null,
+            upgradeEligible: upgradeEligibility.upgradeEligible,
+            upgradePayAmount: upgradeEligibility.upgradePayAmount,
+            upgradeShoppingCredit: upgradeEligibility.upgradeShoppingCredit,
+            canPayUpgradeViaWallet: upgradeEligibility.canPayViaWallet,
           }
         : null,
       wallet: {
@@ -422,6 +457,8 @@ export const getMyMembership = async (req, res) => {
         availableBalance: wallet?.availableBalance || 0,
       },
       pendingJoiningPayment,
+      pendingUpgradePayment,
+      upgrade: upgradeEligibility,
       config: {
         joiningPackagePrice: cfg.joiningPackagePrice,
         joiningPackageShoppingWalletCredit:
@@ -709,11 +746,11 @@ export const claimHomeShopping = async (req, res) => {
     const userId = req.user.id;
     const membership = await getMembershipByUserId(userId);
     if (!membership) return handleResponse(res, 404, "Not an MLM member");
-    if (membership.planType !== "B" || !membership.homeShoppingUnlocked) {
+    if (!membership.homeShoppingUnlocked) {
       return handleResponse(
         res,
         403,
-        "Home Shopping is reserved for Plan B members",
+        "Home Shopping is not unlocked for your account",
       );
     }
     if (membership.homeShoppingClaimed) {
@@ -803,15 +840,6 @@ export const submitJoiningProof = async (req, res) => {
   }
 };
 
-/**
- * GET /api/customer/mlm/join/payment/:paymentId
- *
- * Polled by `ManualPaymentPage` so it can swap from form mode to
- * status-card mode the moment proof is submitted (or the admin
- * approves/rejects). Returns the manual-QR config snapshot so the
- * page never reads admin settings directly — it always renders the
- * QR/instructions snapshotted at intent time.
- */
 export const getJoiningPayment = async (req, res) => {
   try {
     const customerId = req.user.id;
@@ -853,6 +881,106 @@ export const getJoiningPayment = async (req, res) => {
       res,
       error.statusCode || 500,
       error.message || "Failed to fetch payment",
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+/** POST /api/customer/mlm/upgrade/initiate */
+export const initiateUpgrade = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const paymentMethod = req.body?.paymentMethod;
+    const idempotencyKey =
+      req.headers["idempotency-key"] || req.body?.idempotencyKey || null;
+    const result = await initiateUpgradePayment({
+      userId,
+      paymentMethod,
+      idempotencyKey,
+    });
+    return handleResponse(res, 200, "Plan B upgrade initiated", result);
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to initiate Plan B upgrade",
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+/** POST /api/customer/mlm/upgrade/submit-proof */
+export const submitUpgradeProof = async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const {
+      paymentId,
+      transactionId,
+      screenshotUrl,
+      paidAmount = null,
+    } = req.body || {};
+
+    const updated = await submitUpgradeManualProof({
+      paymentId,
+      customerId,
+      transactionId,
+      screenshotUrl,
+      paidAmount,
+    });
+
+    return handleResponse(res, 200, "Upgrade payment proof submitted", {
+      paymentId: String(updated._id),
+      status: updated.status,
+      submittedAt: updated.manualPaymentDetails?.submittedAt || null,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to submit upgrade payment proof",
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+/** GET /api/customer/mlm/upgrade/payment/:paymentId */
+export const getUpgradePayment = async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const { paymentId } = req.params;
+    const payment = await getUpgradePaymentForCustomer({
+      paymentId,
+      customerId,
+    });
+
+    const manualQr =
+      payment.rawGatewayResponse?.manualQrSnapshot ||
+      (await getManualQrConfig());
+
+    return handleResponse(res, 200, "Upgrade payment", {
+      paymentId: String(payment._id),
+      status: payment.status,
+      paymentMode: payment.paymentMode,
+      amount: payment.payAmountSnapshot,
+      shoppingCredit: payment.shoppingCreditSnapshot,
+      createdAt: payment.createdAt,
+      submittedAt: payment.manualPaymentDetails?.submittedAt || null,
+      transactionId: payment.manualPaymentDetails?.transactionId || null,
+      screenshotUrl: payment.manualPaymentDetails?.screenshotUrl || null,
+      reviewedAt: payment.reviewedAt || null,
+      adminRemarks: payment.adminRemarks || null,
+      rejectionReason:
+        payment.status === "FAILED"
+          ? payment.adminRemarks || payment.failureReason || null
+          : null,
+      upgradeApplied: !!payment.upgradeApplied,
+      manualQr,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to fetch upgrade payment",
       error.code ? { code: error.code } : undefined,
     );
   }
@@ -1079,6 +1207,8 @@ export const getDashboardOverview = async (req, res) => {
       count: 0,
     };
 
+    const upgradeEligibility = computeUpgradeEligibility(membership, cfg, wallet);
+
     return handleResponse(res, 200, "Dashboard overview", {
       enabled: !!cfg.enabled,
       isMember: !!membership,
@@ -1097,6 +1227,10 @@ export const getDashboardOverview = async (req, res) => {
             sponsorId: membership.sponsorId || null,
             heldPairBonusForSponsor: membership.heldPairBonusForSponsor || 0,
             homeShoppingUnlocked: !!membership.homeShoppingUnlocked,
+            upgradeEligible: upgradeEligibility.upgradeEligible,
+            upgradePayAmount: upgradeEligibility.upgradePayAmount,
+            upgradeShoppingCredit: upgradeEligibility.upgradeShoppingCredit,
+            canPayUpgradeViaWallet: upgradeEligibility.canPayViaWallet,
           }
         : null,
       wallet: {
@@ -1170,9 +1304,9 @@ export const getDashboardOverview = async (req, res) => {
         repurchaseBonusLevels: cfg.repurchaseBonusLevels || [],
         planBAutoUpgradeAtPlanALifetimeEarnings:
           cfg.planBAutoUpgradeAtPlanALifetimeEarnings || 0,
-        premiumUpgradeShoppingWalletTopup:
-          cfg.premiumUpgradeShoppingWalletTopup || 0,
+        binaryTopupPairIncome: cfg.binaryTopupPairIncome || null,
       },
+      upgrade: upgradeEligibility,
     });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);

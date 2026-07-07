@@ -365,24 +365,6 @@ export async function creditBonusToEarningsWallet({
     session,
   });
 
-  // Phase 2: auto-upgrade check fires on every Plan A credit so the
-  // member is promoted as soon as their lifetime Plan A earnings hit
-  // the threshold (configurable; default ₹30,000). Dynamic import is
-  // used to break the import cycle with `mlmActivationService`.
-  if (planType === MLM_PLAN_TYPE.A) {
-    try {
-      const { upgradeToPlanBIfEligible } = await import("./mlmActivationService.js");
-      await upgradeToPlanBIfEligible(recipientUserId, { session });
-    } catch (error) {
-      if (typeof console !== "undefined" && console.warn) {
-        console.warn("[mlmBonusEngineService] upgradeToPlanBIfEligible failed; bonus already credited", {
-          userId: String(recipientUserId),
-          error: error.message,
-        });
-      }
-    }
-  }
-
   // Phase 5: customer-facing notification for every successful credit.
   // Fired regardless of bucket (pending counts because the customer can
   // already see it under "pending" in their wallet). Non-blocking;
@@ -430,33 +412,8 @@ export async function creditBonusToEarningsWallet({
     }
   }
 
-  // Phase 2: mentor-royalty cascade. Every commission credit pays a
-  // small share (default L1=10%, L2=5%) to the recipient's upline.
-  // Self-funded — comes out of the same notional pool, NOT additional
-  // platform money. The cascade is skipped when the source IS already
-  // a mentor royalty event to prevent infinite recursion.
-  if (
-    bonusType !== MLM_BONUS_TYPE.MENTOR_ROYALTY &&
-    creditable > 0
-  ) {
-    try {
-      await computeAndCreditMentorRoyaltyForCommission({
-        originalCommissionEventId: eventDoc._id,
-        recipientUserId,
-        bonusAmount: creditable,
-        sourceOrderId,
-        correlationId,
-        session,
-      });
-    } catch (error) {
-      if (typeof console !== "undefined" && console.warn) {
-        console.warn("[mlmBonusEngineService] mentor royalty cascade failed; primary credit succeeded", {
-          userId: String(recipientUserId),
-          error: error.message,
-        });
-      }
-    }
-  }
+  // Mentor royalty cascade removed — repurchase/home-shopping apply to all
+  // members; mentor royalty is no longer part of the compensation plan.
 
   return eventDoc;
 }
@@ -1001,7 +958,6 @@ export async function computeAndCreditRepurchaseBonusChain({
     if (!ratePercent || ratePercent <= 0) continue;
 
     const recipient = upline[i];
-    if (recipient.planType !== MLM_PLAN_TYPE.B) continue;
     if (recipient.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) continue;
 
     const bonusAmount = roundCurrency((grandTotal * Number(ratePercent)) / 100);
@@ -1012,7 +968,7 @@ export async function computeAndCreditRepurchaseBonusChain({
     const event = await creditBonusToEarningsWallet({
       recipientUserId: recipient.userId,
       bonusType: MLM_BONUS_TYPE.REPURCHASE_BONUS,
-      planType: MLM_PLAN_TYPE.B,
+      planType: recipient.planType || MLM_PLAN_TYPE.A,
       bonusAmount,
       level,
       baseAmount: grandTotal,
@@ -1215,7 +1171,6 @@ export async function computeAndCreditHomeShoppingCommissions({
   for (const { level, ratePercent, prefix, type } of levels) {
     const recipient = upline[level - 1];
     if (!recipient) continue;
-    if (recipient.planType !== MLM_PLAN_TYPE.B) continue;
     if (recipient.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) continue;
 
     const bonusAmount = roundCurrency((grandTotal * ratePercent) / 100);
@@ -1226,7 +1181,7 @@ export async function computeAndCreditHomeShoppingCommissions({
     const event = await creditBonusToEarningsWallet({
       recipientUserId: recipient.userId,
       bonusType: type,
-      planType: MLM_PLAN_TYPE.B,
+      planType: recipient.planType || MLM_PLAN_TYPE.A,
       bonusAmount,
       level,
       baseAmount: grandTotal,

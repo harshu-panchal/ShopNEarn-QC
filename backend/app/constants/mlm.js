@@ -180,6 +180,13 @@ export const MLM_PAYMENT_MODE = {
 };
 export const ALL_MLM_PAYMENT_MODES = Object.values(MLM_PAYMENT_MODE);
 
+/** Plan B upgrade payment methods (opt-in paid upgrade). */
+export const MLM_UPGRADE_PAYMENT_MODE = {
+  WALLET: "wallet",
+  MANUAL_QR: "manual_qr",
+};
+export const ALL_MLM_UPGRADE_PAYMENT_MODES = Object.values(MLM_UPGRADE_PAYMENT_MODE);
+
 /**
  * Default MLM rate sheet. Every value here is an admin-editable default.
  * Read these via `mlmConfigService.getMlmConfig()` — never import directly
@@ -259,7 +266,7 @@ export const MLM_DEFAULTS = Object.freeze({
     instructions: "",
   },
 
-  // Auto-upgrade trigger from Plan A to Plan B
+  // Threshold to unlock the opt-in Plan B upgrade option (not auto-upgrade).
   planBAutoUpgradeAtPlanALifetimeEarnings: 30000,
   premiumUpgradeShoppingWalletTopup: 10000,
 
@@ -386,6 +393,7 @@ export const MLM_IDEMPOTENCY_PREFIX = {
   GIFT_VOUCHER_MILESTONE: "MLM-GVM",
   JOINING_PACKAGE_CREDIT: "MLM-JPC",
   PREMIUM_UPGRADE_CREDIT: "MLM-PUC",
+  PLAN_B_UPGRADE_FEE: "MLM-UBF",
   BONUS_CLAWBACK: "MLM-CB",
   WITHDRAWAL_GROSS: "MLM-WG",
   WITHDRAWAL_ADMIN_CHARGE: "MLM-WAC",

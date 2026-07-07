@@ -32,8 +32,13 @@ import {
   approveManualJoiningPayment,
   rejectManualJoiningPayment,
 } from "../../services/mlm/mlmJoiningPaymentService.js";
+import {
+  approveUpgradePayment,
+  rejectUpgradePayment,
+} from "../../services/mlm/mlmUpgradePaymentService.js";
 import { adminActivateMembership } from "../../services/mlm/mlmActivationService.js";
 import MlmJoiningPayment from "../../models/mlmJoiningPayment.js";
+import MlmUpgradePayment from "../../models/mlmUpgradePayment.js";
 import Customer from "../../models/customer.js";
 import { PAYMENT_STATUS } from "../../constants/payment.js";
 import { creditWallet, debitWallet } from "../../services/finance/walletService.js";
@@ -1721,6 +1726,158 @@ export const rejectJoiningReview = async (req, res) => {
       reason,
     });
     return handleResponse(res, 200, "Payment rejected", {
+      paymentId: String(payment._id),
+      status: payment.status,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 400,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+/* ───────── Manual-QR Plan B upgrade payment review queue ───────── */
+
+const UPGRADE_REVIEW_STATUS_OPTIONS = Object.freeze([
+  PAYMENT_STATUS.CREATED,
+  PAYMENT_STATUS.PENDING_REVIEW,
+  PAYMENT_STATUS.CAPTURED,
+  PAYMENT_STATUS.FAILED,
+]);
+
+/** GET /api/admin/mlm/upgrade-reviews */
+export const listUpgradeReviews = async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 20, 1),
+      100,
+    );
+    const skip = (page - 1) * limit;
+
+    const requestedStatus = String(req.query.status || "").toUpperCase();
+    const filter = { paymentMode: "manual_qr" };
+    if (requestedStatus && requestedStatus !== "ALL") {
+      if (!UPGRADE_REVIEW_STATUS_OPTIONS.includes(requestedStatus)) {
+        return handleResponse(res, 400, "Invalid status filter");
+      }
+      filter.status = requestedStatus;
+    } else if (!requestedStatus) {
+      filter.status = PAYMENT_STATUS.PENDING_REVIEW;
+    }
+
+    let items = await MlmUpgradePayment.find(filter)
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const customerIds = [...new Set(items.map((p) => String(p.customer)))];
+    const customers = customerIds.length
+      ? await Customer.find(
+          { _id: { $in: customerIds } },
+          { name: 1, phone: 1, email: 1, createdAt: 1 },
+        ).lean()
+      : [];
+    const customerMap = new Map(customers.map((c) => [String(c._id), c]));
+
+    const total = await MlmUpgradePayment.countDocuments(filter);
+
+    if (req.query.q) {
+      const needle = String(req.query.q).trim().toLowerCase();
+      items = items.filter((row) => {
+        const c = customerMap.get(String(row.customer)) || {};
+        const txn = row.manualPaymentDetails?.transactionId || "";
+        return (
+          (c.name || "").toLowerCase().includes(needle) ||
+          (c.phone || "").toLowerCase().includes(needle) ||
+          (c.email || "").toLowerCase().includes(needle) ||
+          txn.toLowerCase().includes(needle)
+        );
+      });
+    }
+
+    const enriched = items.map((row) => {
+      const c = customerMap.get(String(row.customer)) || {};
+      return {
+        _id: row._id,
+        paymentId: String(row._id),
+        customer: {
+          id: String(row.customer),
+          name: c.name || null,
+          phone: c.phone || null,
+          email: c.email || null,
+          registeredAt: c.createdAt || null,
+        },
+        amount: row.payAmountSnapshot,
+        shoppingCredit: row.shoppingCreditSnapshot,
+        status: row.status,
+        paymentMode: row.paymentMode,
+        transactionId: row.manualPaymentDetails?.transactionId || null,
+        screenshotUrl: row.manualPaymentDetails?.screenshotUrl || null,
+        paidAmount: row.manualPaymentDetails?.paidAmount || null,
+        submittedAt: row.manualPaymentDetails?.submittedAt || null,
+        reviewedAt: row.reviewedAt || null,
+        reviewedBy: row.reviewedBy ? String(row.reviewedBy) : null,
+        adminRemarks: row.adminRemarks || null,
+        failureReason: row.failureReason || null,
+        upgradeApplied: !!row.upgradeApplied,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      };
+    });
+
+    return handleResponse(res, 200, "Upgrade reviews", {
+      items: enriched,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/** POST /api/admin/mlm/upgrade-reviews/:id/approve */
+export const approveUpgradeReview = async (req, res) => {
+  try {
+    const adminId = req.user?.id || null;
+    const { adminRemarks } = req.body || {};
+    const payment = await approveUpgradePayment({
+      paymentId: req.params.id,
+      adminId,
+      adminRemarks,
+    });
+    return handleResponse(res, 200, "Upgrade payment approved", {
+      paymentId: String(payment._id),
+      status: payment.status,
+      upgradeApplied: !!payment.upgradeApplied,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 400,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+/** POST /api/admin/mlm/upgrade-reviews/:id/reject */
+export const rejectUpgradeReview = async (req, res) => {
+  try {
+    const adminId = req.user?.id || null;
+    const { reason } = req.body || {};
+    const payment = await rejectUpgradePayment({
+      paymentId: req.params.id,
+      adminId,
+      reason,
+    });
+    return handleResponse(res, 200, "Upgrade payment rejected", {
       paymentId: String(payment._id),
       status: payment.status,
     });

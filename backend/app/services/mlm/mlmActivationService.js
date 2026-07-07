@@ -44,8 +44,8 @@ import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.co
  *   1. `activateMembershipFromJoiningPayment(paymentId)` — called from
  *      the joining-payment CAPTURED hook (webhook + client verify).
  *      Idempotent via `MlmJoiningPayment.activationApplied`.
- *   2. `upgradeToPlanBIfEligible(userId)` — called after every Plan A
- *      bonus credit to check the auto-upgrade trigger.
+ *   2. `applyPlanBUpgrade(userId)` — called after a successful paid
+ *      Plan B upgrade (earning-wallet debit or manual-QR approval).
  *
  * Both functions are session-aware: they open their own transaction
  * if none is supplied, or join the caller's transaction.
@@ -489,39 +489,33 @@ export async function adminActivateMembership({
 }
 
 /**
- * If the customer's lifetime Plan A earnings have crossed the
- * configured threshold AND they are still on Plan A, promote them to
- * Plan B atomically:
- *   - Set planType = "B", planBJoinedAt = now.
- *   - Apply Plan B upgrade benefits (Phase 4 will extend with
- *     home-shopping unlock and shopping top-up). Phase 1 only flips
- *     the planType so subsequent bonus computations route correctly.
+ * Apply a paid Plan B upgrade atomically:
+ *   - Set planType = "B", planBJoinedAt = now, binaryTopupMember = true.
+ *   - Credit shopping-wallet top-up (default ₹10,000 from config).
  *
+ * Eligibility (threshold, payment) is validated by the caller.
  * Idempotent: re-running on a Plan B member is a no-op.
  */
-export async function upgradeToPlanBIfEligible(userId, { session: externalSession } = {}) {
+export async function applyPlanBUpgrade(userId, { session: externalSession } = {}) {
   return runInSession(externalSession, async (session) => {
     const cfg = await getMlmConfig();
-    const threshold = Number(cfg.planBAutoUpgradeAtPlanALifetimeEarnings) || 0;
 
     const membership = await MlmMembership.findOne({ userId }, null, { session });
     if (!membership || membership.planType !== MLM_PLAN_TYPE.A) {
       return { upgraded: false, reason: "not_eligible" };
     }
-    if (threshold <= 0 || membership.lifetimePlanAEarnings < threshold) {
-      return { upgraded: false, reason: "threshold_not_reached" };
-    }
 
     membership.planType = MLM_PLAN_TYPE.B;
     membership.planBJoinedAt = new Date();
+    membership.binaryTopupMember = true;
     membership.homeShoppingUnlocked = true;
     await membership.save({ session });
 
-    // Phase 2: apply Plan B upgrade benefits — shopping-wallet top-up
-    // (default ₹10,000) credited atomically inside the same session.
-    // Home shopping unlock is just a flag flip above (Phase 4 wires
-    // the claim flow). Idempotent via stable ledger key.
-    const topupAmount = Number(cfg.premiumUpgradeShoppingWalletTopup) || 0;
+    const topupCfg = cfg.binaryTopupPairIncome || {};
+    const topupAmount =
+      Number(topupCfg.shoppingWalletCredit)
+      || Number(cfg.premiumUpgradeShoppingWalletTopup)
+      || 0;
     if (topupAmount > 0) {
       try {
         await creditWallet({

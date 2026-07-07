@@ -105,6 +105,9 @@ const MlmWithdrawals = React.lazy(() => import("../pages/mlm/MlmWithdrawals"));
 const MlmJoiningReviews = React.lazy(() =>
   import("../pages/mlm/MlmJoiningReviews"),
 );
+const MlmUpgradeReviews = React.lazy(() =>
+  import("../pages/mlm/MlmUpgradeReviews"),
+);
 const MlmSettings = React.lazy(() => import("../pages/mlm/MlmSettings"));
 const MlmMilestoneRules = React.lazy(() => import("../pages/mlm/MlmMilestoneRules"));
 const MlmPayoutReports = React.lazy(() => import("../pages/mlm/MlmPayoutReports"));
@@ -207,6 +210,7 @@ const navItems = [
       { label: "Dashboard", path: "/admin/mlm" },
       { label: "Members", path: "/admin/mlm/members" },
       { label: "Joining Reviews", path: "/admin/mlm/joining-reviews" },
+      { label: "Upgrade Reviews", path: "/admin/mlm/upgrade-reviews" },
       { label: "Withdrawals", path: "/admin/mlm/withdrawals" },
       { label: "Payout Reports", path: "/admin/mlm/payout-reports" },
       { label: "Milestones", path: "/admin/mlm/milestones" },
@@ -341,6 +345,10 @@ const AdminRoutes = () => {
         <Route
           path="/mlm/joining-reviews"
           element={<MlmJoiningReviews />}
+        />
+        <Route
+          path="/mlm/upgrade-reviews"
+          element={<MlmUpgradeReviews />}
         />
         <Route path="/mlm/milestones" element={<MlmMilestoneRules />} />
         <Route path="/mlm/settings" element={<MlmSettings />} />

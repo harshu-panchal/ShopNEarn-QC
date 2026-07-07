@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { mlmApi } from "../../services/mlmApi";
 import { buildBinaryPairHint, isTeamLegWeaker } from "@shared/utils/mlmBinaryDisplay";
+import UpgradePlanBModal from "./UpgradePlanBModal";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -76,11 +77,17 @@ const MlmDashboardPage = () => {
     );
   }
 
+  const refreshData = async () => {
+    const res = await mlmApi.getMembership();
+    const payload = res.data?.result ?? res.data?.data ?? res.data;
+    setData(payload);
+  };
+
   if (!data.isMember) {
     return <NotMemberView data={data} navigate={navigate} />;
   }
 
-  return <MemberDashboardView data={data} navigate={navigate} />;
+  return <MemberDashboardView data={data} navigate={navigate} onRefresh={refreshData} />;
 };
 
 const Header = ({ title, navigate, right = null }) => (
@@ -341,10 +348,10 @@ const BenefitsCard = ({ cfg }) => (
       <li className="flex items-start gap-2">
         <Award size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
         <span>
-          Auto-upgrade to Plan B at{" "}
-          {formatINR(cfg.planBAutoUpgradeAtPlanALifetimeEarnings)} lifetime
-          earnings — unlocks repurchase + mentor royalty bonuses on every paid
-          downline order
+          Optional Plan B upgrade at{" "}
+          {formatINR(cfg.planBAutoUpgradeAtPlanALifetimeEarnings)} lifetime Plan A
+          earnings — pay {formatINR(cfg.binaryTopupPairIncome?.payAmount || 5900)} for
+          ₹550/pair income + shopping credit
         </span>
       </li>
       <li className="flex items-start gap-2">
@@ -358,9 +365,18 @@ const BenefitsCard = ({ cfg }) => (
   </div>
 );
 
-const MemberDashboardView = ({ data, navigate }) => {
+const MemberDashboardView = ({ data, navigate, onRefresh }) => {
   const { membership, wallet, config } = data;
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const plan = membership.planType === "B" ? "Plan B" : "Plan A";
+  const payAmount =
+    Number(membership.upgradePayAmount)
+    || Number(config.binaryTopupPairIncome?.payAmount)
+    || 5900;
+  const shoppingCredit =
+    Number(membership.upgradeShoppingCredit)
+    || Number(config.binaryTopupPairIncome?.shoppingWalletCredit)
+    || 10000;
   const planColor =
     membership.planType === "B"
       ? "from-amber-500 to-orange-600"
@@ -393,7 +409,7 @@ const MemberDashboardView = ({ data, navigate }) => {
           {membership.planType === "A" && (
             <div className="mt-4 bg-white/15 rounded-lg p-3 text-xs">
               <div className="flex items-center justify-between mb-1">
-                <span className="opacity-90">Progress to Plan B</span>
+                <span className="opacity-90">Plan B eligibility</span>
                 <span className="font-bold">
                   {formatINR(membership.lifetimePlanAEarnings || 0)} /{" "}
                   {formatINR(config.planBAutoUpgradeAtPlanALifetimeEarnings)}
@@ -407,9 +423,28 @@ const MemberDashboardView = ({ data, navigate }) => {
                   }}
                 />
               </div>
+              {membership.upgradeEligible && (
+                <button
+                  type="button"
+                  onClick={() => setUpgradeOpen(true)}
+                  className="mt-3 w-full py-2 rounded-lg bg-white text-amber-700 text-xs font-black uppercase tracking-wide">
+                  Upgrade to Plan B · {formatINR(payAmount)}
+                </button>
+              )}
             </div>
           )}
         </div>
+
+        <UpgradePlanBModal
+          open={upgradeOpen}
+          onClose={() => setUpgradeOpen(false)}
+          payAmount={payAmount}
+          shoppingCredit={shoppingCredit}
+          canPayViaWallet={membership.canPayUpgradeViaWallet}
+          earningsBalance={wallet?.earningsBalance || 0}
+          navigate={navigate}
+          onSuccess={onRefresh}
+        />
 
         {/* Wallet split */}
         <div className="grid grid-cols-2 gap-3">

@@ -44,6 +44,7 @@ import { customerApi } from "../../services/customerApi";
 import { useAuth } from "@core/context/AuthContext";
 import { useMlmDrawer } from "./MlmLayout";
 import { buildBinaryPairHint, isTeamLegWeaker } from "@shared/utils/mlmBinaryDisplay";
+import UpgradePlanBModal from "./UpgradePlanBModal";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -118,6 +119,13 @@ const MainDashboardPage = () => {
     );
   }
 
+  const refreshOverview = async () => {
+    const overviewRes = await mlmApi.getDashboardOverview();
+    const overviewPayload =
+      overviewRes.data?.result ?? overviewRes.data?.data ?? overviewRes.data;
+    setOverview(overviewPayload);
+  };
+
   if (!overview.isMember) {
     return (
       <NotMemberView
@@ -127,7 +135,15 @@ const MainDashboardPage = () => {
       />
     );
   }
-  return <MemberDashboard overview={overview} navigate={navigate} user={user} login={login} />;
+  return (
+    <MemberDashboard
+      overview={overview}
+      navigate={navigate}
+      user={user}
+      login={login}
+      onRefresh={refreshOverview}
+    />
+  );
 };
 
 // Page-level mobile header. Hidden on desktop (`md:hidden`) because
@@ -369,7 +385,7 @@ const PendingPaymentBanner = ({ pending, onResume, onRetry, retrying }) => {
      wallet balance, left/right leg counts, pending payout, today's
      earnings, next-pair preview.
    ================================================================ */
-const MemberDashboard = ({ overview, navigate, user, login }) => {
+const MemberDashboard = ({ overview, navigate, user, login, onRefresh }) => {
   const { membership, wallet, earnings, referrals, binary, payout, dailyCap, config } = overview;
   const isUnpaid = !!membership.isRegisteredUnpaid;
 
@@ -407,6 +423,9 @@ const MemberDashboard = ({ overview, navigate, user, login }) => {
               membership={membership}
               earnings={earnings}
               config={config}
+              wallet={wallet}
+              navigate={navigate}
+              onRefresh={onRefresh}
             />
           </div>
           <div className="md:col-span-5 lg:col-span-4">
@@ -662,12 +681,24 @@ const ActivationCta = ({ membership, joiningPrice, navigate }) => (
  *                   above the plan card already drives the actual
  *                   activation CTA, so this card only sets context.
  */
-const MyPlanCard = ({ membership, earnings, config }) => {
+const MyPlanCard = ({ membership, earnings, config, wallet, navigate, onRefresh }) => {
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const isUnpaid = !!membership.isRegisteredUnpaid;
   const isPlanB = membership.planType === "B";
 
-  // Plan A → Plan B upgrade progress
   const upgradeThreshold = Number(config?.planBAutoUpgradeAtPlanALifetimeEarnings) || 0;
+  const payAmount =
+    Number(membership.upgradePayAmount)
+    || Number(config?.binaryTopupPairIncome?.payAmount)
+    || 5900;
+  const shoppingCredit =
+    Number(membership.upgradeShoppingCredit)
+    || Number(config?.binaryTopupPairIncome?.shoppingWalletCredit)
+    || 10000;
+  const upgradeEligible = !!membership.upgradeEligible;
+  const canPayViaWallet =
+    membership.canPayUpgradeViaWallet
+    ?? (Number(wallet?.earningsBalance) || 0) >= payAmount;
   const planAEarnings = Number(earnings?.planA) || 0;
   const upgradePct = upgradeThreshold > 0
     ? Math.min(100, (planAEarnings / upgradeThreshold) * 100)
@@ -704,16 +735,14 @@ const MyPlanCard = ({ membership, earnings, config }) => {
     ];
   } else if (isPlanB) {
     planName = "Plan B · Premium";
-    planTagline = "You're on the highest tier. Enjoy royalty earnings & Home Shoppy franchise.";
+    planTagline = "You earn ₹550 per pair matching income (up to 20 pairs/day).";
     bgClass = "from-amber-500 via-orange-500 to-pink-600";
     statusBadge = { label: "Premium", className: "bg-white/25" };
     Icon = Crown;
     perks = [
-      `Repurchase bonus on downline purchases (L1–L${membership.config?.repurchaseBonusLevels?.length || 6}).`,
-      "Mentor royalties on each direct's commissions.",
-      membership.homeShoppingUnlocked
-        ? "Legacy Plan B home shopping benefit — see Home Shoppy franchise for the new program."
-        : "Home Shoppy franchise available from the franchise section.",
+      "₹550 matching income per binary pair (daily cap 20).",
+      "Repurchase bonus on downline orders (all members).",
+      "Home shopping commissions on qualifying orders.",
     ];
   } else {
     planName = "Plan A";
@@ -722,11 +751,11 @@ const MyPlanCard = ({ membership, earnings, config }) => {
     statusBadge = { label: "Active", className: "bg-emerald-400/30" };
     Icon = ShieldCheck;
     perks = [
-      "Pair-match bonus when active Plan A team volume balances (2:1 opener, then 1:1).",
-      "Daily pair cap and earning cap — unpaid amounts roll to the next day.",
+      "Pair-match bonus when team volume balances (2:1 opener, then 1:1).",
+      "Repurchase bonus on downline orders.",
       upgradeThreshold > 0
-        ? `Auto-upgrade to Plan B at ${formatINR(upgradeThreshold)} lifetime earnings.`
-        : "Stay tuned for Plan B (Premium) auto-upgrade benefits.",
+        ? `Optional Plan B upgrade at ${formatINR(upgradeThreshold)} lifetime Plan A earnings (${formatINR(payAmount)}).`
+        : "Optional Plan B upgrade for higher pair income.",
     ];
   }
 
@@ -763,7 +792,7 @@ const MyPlanCard = ({ membership, earnings, config }) => {
         <div className="mt-4 bg-white/10 rounded-xl p-3">
           <div className="flex items-center justify-between text-[11px] opacity-90 mb-1.5">
             <span className="font-bold uppercase tracking-wider">
-              Progress to Plan B
+              Plan B eligibility
             </span>
             <span className="font-bold">
               {formatINR(planAEarnings)} / {formatINR(upgradeThreshold)}
@@ -776,17 +805,39 @@ const MyPlanCard = ({ membership, earnings, config }) => {
             />
           </div>
           <p className="text-[11px] opacity-90 mt-2 leading-relaxed">
-            {remainingForUpgrade > 0 ? (
+            {upgradeEligible ? (
               <>
-                Earn <strong>{formatINR(remainingForUpgrade)}</strong> more from
-                pair-match bonuses to auto-upgrade.
+                You qualify to upgrade — pay {formatINR(payAmount)} for ₹550/pair
+                income + {formatINR(shoppingCredit)} shopping credit.
               </>
             ) : (
-              <>You qualify for Plan B — your upgrade will land shortly.</>
+              <>
+                Earn <strong>{formatINR(remainingForUpgrade)}</strong> more from
+                Plan A earnings to unlock the upgrade option.
+              </>
             )}
           </p>
+          {upgradeEligible && (
+            <button
+              type="button"
+              onClick={() => setUpgradeOpen(true)}
+              className="mt-3 w-full py-2.5 rounded-lg bg-white text-amber-700 text-xs font-black uppercase tracking-wide hover:bg-white/90 transition-colors">
+              Upgrade to Plan B
+            </button>
+          )}
         </div>
       )}
+
+      <UpgradePlanBModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        payAmount={payAmount}
+        shoppingCredit={shoppingCredit}
+        canPayViaWallet={canPayViaWallet}
+        earningsBalance={wallet?.earningsBalance || 0}
+        navigate={navigate}
+        onSuccess={onRefresh}
+      />
 
       {/* Perks / benefit bullets — kept compact so the card never
           dominates the dashboard on PC widths. */}

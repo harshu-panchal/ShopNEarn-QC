@@ -215,23 +215,50 @@ const MlmSettings = () => {
         <JoiningPaymentModePanel cfg={cfg} setCfg={setCfg} />
       </Section>
 
-      <Section title="Plan A → Plan B Auto-Upgrade">
+      <Section title="Plan B Opt-In Upgrade">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <NumField
-            label="Auto-upgrade at lifetime Plan A earnings (₹)"
+            label="Unlock upgrade option at lifetime Plan A earnings (₹)"
             value={cfg.planBAutoUpgradeAtPlanALifetimeEarnings}
             onChange={(v) =>
               setCfg({ ...cfg, planBAutoUpgradeAtPlanALifetimeEarnings: v })
             }
           />
           <NumField
-            label="Plan B upgrade shopping wallet top-up (₹)"
-            value={cfg.premiumUpgradeShoppingWalletTopup}
+            label="Plan B upgrade fee (₹) — binaryTopupPairIncome.payAmount"
+            value={cfg.binaryTopupPairIncome?.payAmount}
             onChange={(v) =>
-              setCfg({ ...cfg, premiumUpgradeShoppingWalletTopup: v })
+              setCfg({
+                ...cfg,
+                binaryTopupPairIncome: {
+                  ...(cfg.binaryTopupPairIncome || {}),
+                  payAmount: v,
+                },
+              })
+            }
+          />
+          <NumField
+            label="Plan B upgrade shopping credit (₹)"
+            value={
+              cfg.binaryTopupPairIncome?.shoppingWalletCredit
+              ?? cfg.premiumUpgradeShoppingWalletTopup
+            }
+            onChange={(v) =>
+              setCfg({
+                ...cfg,
+                binaryTopupPairIncome: {
+                  ...(cfg.binaryTopupPairIncome || {}),
+                  shoppingWalletCredit: v,
+                },
+                premiumUpgradeShoppingWalletTopup: v,
+              })
             }
           />
         </div>
+        <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+          Members who reach the earnings threshold see an optional upgrade button.
+          They pay the upgrade fee via earning wallet or manual QR — no automatic upgrade.
+        </p>
       </Section>
 
       <Section title="Direct Referral Activation Income (earnings)">
