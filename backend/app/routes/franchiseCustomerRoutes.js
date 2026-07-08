@@ -21,6 +21,10 @@ import {
   fulfillOrder,
   createShipment,
 } from "../controller/franchiseCustomerController.js";
+import {
+  exportFranchiseInventoryReports,
+  getFranchiseInventoryReports,
+} from "../controller/inventoryReportController.js";
 
 const router = express.Router();
 
@@ -37,6 +41,8 @@ router.post("/stock/purchase", verifyToken, purchaseStock);
 router.get("/stock", verifyToken, getStock);
 router.get("/inventory/summary", verifyToken, getInventorySummary);
 router.get("/inventory/movements", verifyToken, getInventoryMovements);
+router.get("/inventory/reports", verifyToken, getFranchiseInventoryReports);
+router.get("/inventory/reports/export", verifyToken, exportFranchiseInventoryReports);
 router.post("/inventory/adjust", verifyToken, adjustInventory);
 router.get("/orders", verifyToken, listOrders);
 router.patch("/orders/:orderId/accept", verifyToken, acceptOrder);

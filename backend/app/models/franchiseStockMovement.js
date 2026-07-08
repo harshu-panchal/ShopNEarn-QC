@@ -66,6 +66,7 @@ franchiseStockMovementSchema.index(
   { franchisePartnerId: 1, productId: 1, createdAt: -1 },
 );
 franchiseStockMovementSchema.index({ franchisePartnerId: 1, createdAt: -1 });
+franchiseStockMovementSchema.index({ franchisePartnerId: 1, type: 1, createdAt: -1 });
 
 export default mongoose.model(
   "FranchiseStockMovement",

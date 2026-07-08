@@ -137,6 +137,12 @@ const OrdersPage = () => {
                     <ChevronLeft size={22} className="text-slate-800" />
                 </button>
                 <h1 className="text-xl font-semibold text-slate-900 tracking-tight">My Orders</h1>
+                <Link
+                    to="/reports/purchases"
+                    className="ml-auto text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-3 py-1.5"
+                >
+                    Purchase reports
+                </Link>
             </div>
 
             <div className="space-y-4 px-4 pb-2">

@@ -91,6 +91,13 @@ export const customerApi = {
   placeOrder: (data) =>
     axiosInstance.post("/orders/place", data, { timeout: 120000 }),
   getMyOrders: () => getWithDedupe("/orders/my-orders"),
+  getPurchaseReports: (params) =>
+    axiosInstance.get("/orders/purchase-reports", { params }),
+  exportPurchaseReports: (params) =>
+    axiosInstance.get("/orders/purchase-reports/export", {
+      params,
+      responseType: "blob",
+    }),
   /**
    * Order details must reflect live workflow, but we still dedupe in-flight requests to avoid
    * network spam when multiple effects/events trigger refresh simultaneously.

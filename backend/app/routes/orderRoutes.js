@@ -46,6 +46,10 @@ import {
   allowRoles,
   requireApprovedSeller,
 } from "../middleware/authMiddleware.js";
+import {
+  exportCustomerPurchaseReports,
+  getCustomerPurchaseReports,
+} from "../controller/inventoryReportController.js";
 
 const router = express.Router();
 
@@ -96,6 +100,18 @@ router.post(
   placeOrder,
 );
 router.get("/my-orders", verifyToken, getMyOrders);
+router.get(
+  "/purchase-reports",
+  verifyToken,
+  allowRoles("customer", "user", "admin"),
+  getCustomerPurchaseReports,
+);
+router.get(
+  "/purchase-reports/export",
+  verifyToken,
+  allowRoles("customer", "user", "admin"),
+  exportCustomerPurchaseReports,
+);
 router.get("/details/:orderId", verifyToken, getOrderDetails);
 router.put("/cancel/:orderId", verifyToken, cancelOrder);
 router.post("/:orderId/returns", verifyToken, requestReturn);

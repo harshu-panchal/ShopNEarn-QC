@@ -67,6 +67,8 @@ const FranchiseStockPage = lazy(() => import('../../modules/customer/pages/franc
 const FranchiseInventoryPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseInventoryPage'));
 const FranchiseOrdersPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseOrdersPage'));
 const FranchiseTransactionHistoryPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseTransactionHistoryPage'));
+const FranchiseReportsPage = lazy(() => import('../../modules/customer/pages/franchise/FranchiseReportsPage'));
+const PurchaseReportsPage = lazy(() => import('../../modules/customer/pages/PurchaseReportsPage'));
 // Customer-MLM-rebuild Phase 8 — new dashboard + Genealogy + Payouts sections.
 const MainDashboardPage = lazy(() => import('../../modules/customer/pages/mlm/MainDashboardPage'));
 // Desktop-only sidebar chrome that wraps every `/mlm/*` URL on
@@ -229,6 +231,7 @@ const AppRouter = () => {
                         { path: 'shop-by-store', element: <ShopByStorePage /> },
                         { path: 'wishlist', element: <ProtectedRoute><WishlistPage /></ProtectedRoute> },
                         { path: 'orders', element: <ProtectedRoute><OrdersPage /></ProtectedRoute> },
+                        { path: 'reports/purchases', element: <ProtectedRoute><PurchaseReportsPage /></ProtectedRoute> },
                         { path: 'orders/:orderId', element: <ProtectedRoute><OrderDetailPage /></ProtectedRoute> },
                         { path: 'transactions', element: <ProtectedRoute><OrderTransactionsPage /></ProtectedRoute> },
                         { path: 'addresses', element: <ProtectedRoute><AddressesPage /></ProtectedRoute> },
@@ -318,6 +321,7 @@ const AppRouter = () => {
                                         { path: 'inventory', element: <FranchiseInventoryPage /> },
                                         { path: 'orders', element: <FranchiseOrdersPage /> },
                                         { path: 'transactions', element: <FranchiseTransactionHistoryPage /> },
+                                        { path: 'reports', element: <FranchiseReportsPage /> },
                                     ],
                                 },
                             ],

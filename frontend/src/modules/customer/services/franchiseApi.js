@@ -19,6 +19,13 @@ export const franchiseApi = {
   getInventorySummary: () => axiosInstance.get("/customer/franchise/inventory/summary"),
   getInventoryMovements: (params) =>
     axiosInstance.get("/customer/franchise/inventory/movements", { params }),
+  getInventoryReports: (params) =>
+    axiosInstance.get("/customer/franchise/inventory/reports", { params }),
+  exportInventoryReports: (params) =>
+    axiosInstance.get("/customer/franchise/inventory/reports/export", {
+      params,
+      responseType: "blob",
+    }),
   adjustInventory: (data) => axiosInstance.post("/customer/franchise/inventory/adjust", data),
   listOrders: (params) => axiosInstance.get("/customer/franchise/orders", { params }),
   acceptOrder: (orderId) => axiosInstance.patch(`/customer/franchise/orders/${orderId}/accept`),

@@ -47,6 +47,16 @@ export const sellerApi = {
   adjustStock: (data) => axiosInstance.post("/products/adjust-stock", data),
   getStockHistory: (params) => axiosInstance.get("/products/stock-history", { params }),
   getInventorySummary: () => axiosInstance.get("/products/inventory/summary"),
+  getInventoryReports: (params) => axiosInstance.get("/products/inventory/reports", { params }),
+  getHubTransferReports: (params) =>
+    axiosInstance.get("/products/inventory/reports/hub-transfers", { params }),
+  getTransferReconciliation: (params) =>
+    axiosInstance.get("/products/inventory/reports/transfers/reconciliation", { params }),
+  exportInventoryReports: (params) =>
+    axiosInstance.get("/products/inventory/reports/export", {
+      params,
+      responseType: "blob",
+    }),
 
   // Notifications
   getNotifications: () => axiosInstance.get("/notifications"),

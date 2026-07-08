@@ -30,6 +30,7 @@ import mlmCustomerRoute from "./mlmCustomerRoutes.js";
 import mlmAdminRoute from "./mlmAdminRoutes.js";
 import franchiseCustomerRoute from "./franchiseCustomerRoutes.js";
 import franchiseAdminRoute from "./franchiseAdminRoutes.js";
+import inventoryReportAdminRoute from "./inventoryReportAdminRoutes.js";
 
 import express from "express";
 
@@ -56,6 +57,7 @@ const setupRoutes = (app) => {
     // hits the dedicated MLM admin router.
     router.use("/admin/mlm", mlmAdminRoute);
     router.use("/admin/franchise", franchiseAdminRoute);
+    router.use("/admin/inventory-reports", inventoryReportAdminRoute);
     router.use("/admin", adminRoute);
     router.use("/seller", sellerRoute);
     router.use("/settings", settingsRoute);

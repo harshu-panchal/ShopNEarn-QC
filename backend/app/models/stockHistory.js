@@ -48,5 +48,6 @@ const stockHistorySchema = new mongoose.Schema(
 stockHistorySchema.index({ product: 1, seller: 1, createdAt: -1 });
 stockHistorySchema.index({ order: 1 });
 stockHistorySchema.index({ type: 1 });
+stockHistorySchema.index({ seller: 1, type: 1, createdAt: -1 });
 
 export default mongoose.model("StockHistory", stockHistorySchema);

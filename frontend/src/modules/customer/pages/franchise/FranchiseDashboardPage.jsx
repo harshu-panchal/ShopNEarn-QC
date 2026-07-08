@@ -362,6 +362,12 @@ const PartnerDashboard = ({ data, navigate, onRefresh, refreshing }) => {
           description="View wallet top-ups, stock purchases, customer orders, and all franchise activity"
           onClick={() => navigate("/mlm/franchise/transactions")}
         />
+        <ActionCard
+          icon={TrendingUp}
+          title="Reports"
+          description="Track stock purchases, fulfillment trends, and inventory analytics"
+          onClick={() => navigate("/mlm/franchise/reports")}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

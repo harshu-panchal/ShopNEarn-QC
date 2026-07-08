@@ -119,6 +119,7 @@ const FranchisePartners = React.lazy(() => import("../pages/franchise/FranchiseP
 const FranchisePartnerDetail = React.lazy(() => import("../pages/franchise/FranchisePartnerDetail"));
 const FranchiseSettings = React.lazy(() => import("../pages/franchise/FranchiseSettings"));
 const FranchiseDispatch = React.lazy(() => import("../pages/franchise/FranchiseDispatch"));
+const InventoryReportsHub = React.lazy(() => import("../pages/inventory/InventoryReportsHub"));
 
 const navItems = [
   {
@@ -202,6 +203,12 @@ const navItems = [
     color: "green",
   },
   { label: "Customers", path: "/admin/customers", icon: Users, color: "sky" },
+  {
+    label: "Inventory Reports",
+    path: "/admin/inventory-reports",
+    icon: ClipboardList,
+    color: "indigo",
+  },
   {
     label: "MLM Program",
     icon: Network,
@@ -327,6 +334,7 @@ const AdminRoutes = () => {
         <Route path="/cash-collection" element={<CashCollection />} />
         <Route path="/customers" element={<CustomerManagement />} />
         <Route path="/customers/:id" element={<CustomerDetail />} />
+        <Route path="/inventory-reports" element={<InventoryReportsHub />} />
         <Route path="/faqs" element={<FAQManagement />} />
         <Route path="/legal-pages" element={<LegalPagesManagement />} />
         <Route path="/orders/:status" element={<OrdersList />} />

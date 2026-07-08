@@ -646,6 +646,8 @@ orderSchema.index(
 orderSchema.index({ "stockReservation.status": 1, "stockReservation.expiresAt": 1 });
 orderSchema.index({ checkoutGroupId: 1, createdAt: -1 });
 orderSchema.index({ checkoutGroupId: 1, checkoutGroupIndex: 1 });
+orderSchema.index({ isFranchiseStockOrder: 1, createdAt: -1 });
+orderSchema.index({ customer: 1, createdAt: -1, isFranchiseStockOrder: 1 });
 orderSchema.index(
   { "placement.idempotencyKeyExpiry": 1 },
   { 
