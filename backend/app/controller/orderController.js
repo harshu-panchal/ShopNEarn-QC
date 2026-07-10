@@ -27,6 +27,7 @@ import {
 } from "../services/orderWorkflowService.js";
 import { applyDeliveredSettlement } from "../services/orderSettlement.js";
 import { markFranchiseOrderDeliveredFromWorkflow } from "../services/franchise/franchiseOrderService.js";
+import { compensateOrderCancellation } from "../services/orderCompensation.js";
 import {
   freezeFinancialSnapshot,
   reverseOrderFinanceOnCancellation,
@@ -505,29 +506,28 @@ export const updateOrderStatus = async (req, res) => {
       else if (status === "out_for_delivery") order.deliveryRiderStep = 3;
     }
 
-    // Handle Cancellation (Stock Reversal & Transaction Update)
+    // Handle Cancellation (stock release, wallet refund, transaction update)
     if (status === "cancelled" && oldStatus !== "cancelled") {
-      // 1. Reverse Stock
-      for (const item of order.items) {
-        await Product.findByIdAndUpdate(item.product, {
-          $inc: { stock: item.quantity },
-        });
-
-        await StockHistory.create({
-          product: item.product,
-          seller: order.seller,
-          type: "Correction",
-          quantity: item.quantity,
-          note: `Order #${canonicalOrderId} Cancelled`,
-          order: order._id,
-        });
+      if (!order.cancelledBy) {
+        order.cancelledBy = isAdmin ? "admin" : role;
       }
+      if (!order.cancelReason) {
+        order.cancelReason = req.body.reason || "Cancelled manually";
+      }
+      await order.save();
 
-      // 2. Update Transaction
-      await Transaction.findOneAndUpdate(
-        { reference: canonicalOrderId },
-        { status: "Failed" },
-      );
+      await compensateOrderCancellation(order, canonicalOrderId, {
+        actorId: userId,
+        reason: order.cancelReason,
+      });
+
+      const refreshedCancel = await Order.findById(order._id);
+      if (refreshedCancel) {
+        order.stockReservation = refreshedCancel.stockReservation;
+        order.financeFlags = refreshedCancel.financeFlags;
+        order.paymentStatus = refreshedCancel.paymentStatus;
+        order.settlementStatus = refreshedCancel.settlementStatus;
+      }
 
       emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
         orderId: canonicalOrderId,

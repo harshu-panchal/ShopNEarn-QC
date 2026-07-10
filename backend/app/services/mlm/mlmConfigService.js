@@ -257,3 +257,15 @@ export async function getDirectReferralActivationConfig(opts) {
     },
   };
 }
+
+/**
+ * Resolve the shopping-wallet credit for a joining payment. Prefer the
+ * snapshot taken at intent time; fall back to live config when legacy
+ * rows have a missing/zero snapshot.
+ */
+export async function resolveJoiningPackageShoppingCredit(payment, opts = {}) {
+  const snapshot = Number(payment?.shoppingCreditSnapshot) || 0;
+  if (snapshot > 0) return snapshot;
+  const cfg = await getMlmConfig(opts);
+  return Number(cfg.joiningPackageShoppingWalletCredit) || 0;
+}

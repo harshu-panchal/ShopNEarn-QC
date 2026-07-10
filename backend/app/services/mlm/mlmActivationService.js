@@ -30,7 +30,7 @@ import {
   restoreClawedSignupBonusesForActivatedSponsors,
   applyDirectReferralActivationBonusInSession,
 } from "./mlmSignupBonusService.js";
-import { getMlmConfig } from "./mlmConfigService.js";
+import { getMlmConfig, resolveJoiningPackageShoppingCredit } from "./mlmConfigService.js";
 import { emitNotificationEvent } from "../../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.constants.js";
 
@@ -203,7 +203,9 @@ export async function activateMembershipFromJoiningPayment(
       );
     }
 
-    const shoppingCreditAmount = Number(payment.shoppingCreditSnapshot) || 0;
+    const shoppingCreditAmount = await resolveJoiningPackageShoppingCredit(payment, {
+      session,
+    });
     let shoppingCreditResult = null;
     if (shoppingCreditAmount > 0) {
       shoppingCreditResult = await creditWallet({

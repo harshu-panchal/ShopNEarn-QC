@@ -190,7 +190,16 @@ const MlmMemberDetail = () => {
 
     const handleApprove = async () => {
         const memberName = data?.membership?.userId?.name || 'this member';
-        if (!window.confirm(`Approve ${memberName} for Plan A without payment? This will activate their membership immediately and release any held bonuses to their sponsor.`)) {
+        const pendingPayment = data?.pendingJoiningPayment;
+        const shoppingCredit =
+            pendingPayment?.shoppingCredit > 0 ? pendingPayment.shoppingCredit : 5000;
+        const joiningPrice = pendingPayment?.joiningPrice || 2999;
+
+        const confirmMessage = pendingPayment?.status === 'PENDING_REVIEW'
+            ? `Approve ${memberName}'s ₹${joiningPrice.toLocaleString('en-IN')} joining payment? Plan A will activate immediately and ${formatINR(shoppingCredit)} shopping credit will be added to their wallet.`
+            : `Approve ${memberName} for Plan A without payment? This will activate their membership immediately, credit ${formatINR(shoppingCredit)} shopping wallet, and release any held bonuses to their sponsor.`;
+
+        if (!window.confirm(confirmMessage)) {
             return;
         }
         setApproving(true);
@@ -200,10 +209,13 @@ const MlmMemberDetail = () => {
             if (result.skipped) {
                 toast.info('Already active — no change made.');
             } else {
+                const creditMsg = result.shoppingCreditAmount
+                    ? ` ${formatINR(result.shoppingCreditAmount)} shopping credit applied.`
+                    : '';
                 const heldMsg = result.releasedHeldBonusCount > 0
                     ? ` ${result.releasedHeldBonusCount} held bonus${result.releasedHeldBonusCount === 1 ? '' : 'es'} released to sponsor.`
                     : '';
-                toast.success(`${memberName} activated for Plan A.${heldMsg}`);
+                toast.success(`${memberName} activated for Plan A.${creditMsg}${heldMsg}`);
             }
             await load();
         } catch (err) {
@@ -427,6 +439,19 @@ const MlmMemberDetail = () => {
                         } cancelled`,
                     );
                 }
+                if (summary.uplineClawback?.processed) {
+                    parts.push(
+                        `₹${summary.uplineClawback.totalAmount} upline income reversed (${summary.uplineClawback.processed} bonus${
+                            summary.uplineClawback.processed === 1 ? '' : 'es'
+                        })`,
+                    );
+                } else if (summary.uplineClawback?.voided) {
+                    parts.push(
+                        `${summary.uplineClawback.voided} held bonus${
+                            summary.uplineClawback.voided === 1 ? '' : 'es'
+                        } voided`,
+                    );
+                }
                 toast.success(
                     `${memberName} soft-deleted.${
                         parts.length ? ` ${parts.join('; ')}.` : ''
@@ -634,14 +659,22 @@ const MlmMemberDetail = () => {
                             onClick={handleApprove}
                             disabled={approving}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white transition-colors shadow-sm"
-                            title="Activate Plan A without payment"
+                            title={
+                                data?.pendingJoiningPayment?.status === 'PENDING_REVIEW'
+                                    ? 'Approve joining payment and credit shopping wallet'
+                                    : 'Activate Plan A without payment'
+                            }
                         >
                             {approving ? (
                                 <Loader2 size={14} className="animate-spin" />
                             ) : (
                                 <Check size={14} />
                             )}
-                            {approving ? 'Approving…' : 'Approve Plan A'}
+                            {approving
+                                ? 'Approving…'
+                                : data?.pendingJoiningPayment?.status === 'PENDING_REVIEW'
+                                  ? 'Approve payment'
+                                  : 'Approve Plan A'}
                         </button>
                     )}
                     {m.status === 'active' && (
@@ -718,11 +751,31 @@ const MlmMemberDetail = () => {
                     <Hourglass size={20} className="text-amber-600 mt-0.5 shrink-0" />
                     <div className="flex-1">
                         <p className="font-bold text-amber-900 text-sm">Registered but not activated</p>
-                        <p className="text-xs text-amber-800 mt-0.5">
-                            This member has signed up and received their referral code, but hasn't paid the joining fee yet.
-                            All pair-match bonuses earned via this member's leg are <strong>held</strong> for the sponsor and
-                            will release automatically once activation is confirmed.
-                        </p>
+                        {data?.pendingJoiningPayment?.status === 'PENDING_REVIEW' ? (
+                            <p className="text-xs text-amber-800 mt-0.5">
+                                Joining payment of{' '}
+                                <strong>{formatINR(data.pendingJoiningPayment.joiningPrice || 2999)}</strong>{' '}
+                                submitted
+                                {data.pendingJoiningPayment.transactionId
+                                    ? ` (Txn ${data.pendingJoiningPayment.transactionId})`
+                                    : ''}
+                                . Approving will activate Plan A and credit{' '}
+                                <strong>
+                                    {formatINR(
+                                        data.pendingJoiningPayment.shoppingCredit > 0
+                                            ? data.pendingJoiningPayment.shoppingCredit
+                                            : 5000,
+                                    )}
+                                </strong>{' '}
+                                shopping wallet immediately.
+                            </p>
+                        ) : (
+                            <p className="text-xs text-amber-800 mt-0.5">
+                                This member has signed up and received their referral code, but hasn't paid the joining fee yet.
+                                All pair-match bonuses earned via this member's leg are <strong>held</strong> for the sponsor and
+                                will release automatically once activation is confirmed.
+                            </p>
+                        )}
                     </div>
                 </div>
             )}
@@ -1338,6 +1391,11 @@ const MlmMemberDetail = () => {
                                 <li>
                                     Direct referrals are <strong>re-parented</strong> to{' '}
                                     {u.name || 'this member'}'s own sponsor; their sponsorChain stays gap-free.
+                                </li>
+                                <li>
+                                    Upline bonuses earned <strong>because of this member</strong> (pair
+                                    match, signup sponsor, repurchase, mentor royalty, etc.) are{' '}
+                                    <strong>reversed</strong> from their sponsors' wallets.
                                 </li>
                                 <li>
                                     Pending withdrawals are <strong>auto-cancelled</strong> (wallet stays in

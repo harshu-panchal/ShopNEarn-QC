@@ -15,6 +15,7 @@ import {
   MLM_BONUS_TYPE,
   MLM_IDEMPOTENCY_PREFIX,
   MLM_MEMBERSHIP_STATUS,
+  MLM_PAYMENT_MODE,
   MLM_PLAN_TYPE,
   normalizeMilestoneType,
 } from "../../constants/mlm.js";
@@ -37,23 +38,7 @@ import {
   rejectUpgradePayment,
 } from "../../services/mlm/mlmUpgradePaymentService.js";
 import { adminActivateMembership } from "../../services/mlm/mlmActivationService.js";
-import MlmJoiningPayment from "../../models/mlmJoiningPayment.js";
-import MlmUpgradePayment from "../../models/mlmUpgradePayment.js";
-import Customer from "../../models/customer.js";
-import { PAYMENT_STATUS } from "../../constants/payment.js";
-import { creditWallet, debitWallet } from "../../services/finance/walletService.js";
-import { invalidate } from "../../services/cacheService.js";
-import {
-  updateMlmSettingsSchema,
-  validateMlmSchema,
-} from "../../validation/mlmValidation.js";
-import {
-  getMembershipByUserId,
-  syncCustomerMlmProjection,
-} from "../../services/mlm/mlmMembershipService.js";
-import { createMemberInBinarySlot } from "../../services/mlm/mlmManualSlotPlacementService.js";
-import { buildBinaryTreeBottomUp } from "../../services/mlm/mlmBinaryTreeBuilder.js";
-import { getMlmConfig } from "../../services/mlm/mlmConfigService.js";
+import { getMlmConfig, resolveJoiningPackageShoppingCredit } from "../../services/mlm/mlmConfigService.js";
 import { drainAllPendingPlanABonuses } from "../../services/mlm/mlmPairBonusCooldownReleaseService.js";
 import { softDeleteMlmMember } from "../../services/mlm/mlmMemberSoftDeleteService.js";
 import { verifyMlmMemberWallet } from "../../jobs/mlmWalletLedgerVerifierJob.js";
@@ -358,6 +343,7 @@ export const getMlmMemberDetail = async (req, res) => {
       withdrawals,
       sponsorMembership,
       heldBonusEvents,
+      pendingJoiningPayment,
     ] = await Promise.all([
       MlmMembership.find({ sponsorId: memberUserId })
         .populate("userId", "name phone email userId createdAt")
@@ -391,6 +377,22 @@ export const getMlmMemberDetail = async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(25)
         .lean(),
+      MlmJoiningPayment.findOne({
+        customer: memberUserId,
+        paymentMode: MLM_PAYMENT_MODE.MANUAL_QR,
+        status: { $in: [PAYMENT_STATUS.CREATED, PAYMENT_STATUS.PENDING_REVIEW] },
+      })
+        .sort({ createdAt: -1 })
+        .select({
+          _id: 1,
+          status: 1,
+          amountPaise: 1,
+          joiningPriceSnapshot: 1,
+          shoppingCreditSnapshot: 1,
+          manualPaymentDetails: 1,
+          createdAt: 1,
+        })
+        .lean(),
     ]);
 
     return handleResponse(res, 200, "Member detail", {
@@ -419,6 +421,20 @@ export const getMlmMemberDetail = async (req, res) => {
           }
         : null,
       heldBonusEvents,
+      pendingJoiningPayment: pendingJoiningPayment
+        ? {
+            paymentId: String(pendingJoiningPayment._id),
+            status: pendingJoiningPayment.status,
+            joiningPrice: Number(pendingJoiningPayment.joiningPriceSnapshot) || 0,
+            shoppingCredit:
+              Number(pendingJoiningPayment.shoppingCreditSnapshot) || 0,
+            transactionId:
+              pendingJoiningPayment.manualPaymentDetails?.transactionId || null,
+            submittedAt:
+              pendingJoiningPayment.manualPaymentDetails?.submittedAt
+              || pendingJoiningPayment.createdAt,
+          }
+        : null,
     });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
@@ -442,6 +458,42 @@ export const getMlmMemberDetail = async (req, res) => {
 export const approveMlmMember = async (req, res) => {
   try {
     const reason = String(req.body?.reason || "").trim();
+    const membership = await MlmMembership.findById(req.params.id);
+    if (!membership) {
+      return handleResponse(res, 404, "Member not found");
+    }
+
+    const pendingPayment = await MlmJoiningPayment.findOne({
+      customer: membership.userId,
+      paymentMode: MLM_PAYMENT_MODE.MANUAL_QR,
+      status: PAYMENT_STATUS.PENDING_REVIEW,
+    }).sort({ createdAt: -1 });
+
+    if (pendingPayment) {
+      const payment = await approveManualJoiningPayment({
+        paymentId: pendingPayment._id,
+        adminId: req.user?.id,
+        adminRemarks: reason || "Approved from member detail",
+      });
+      const shoppingCreditAmount =
+        payment._activationSummary?.shoppingCreditAmount
+        || (await resolveJoiningPackageShoppingCredit(payment));
+
+      try {
+        await invalidate(`/admin/mlm/members`);
+        await invalidate(`/admin/mlm/members/${req.params.id}`);
+      } catch (_) {
+        /* non-fatal */
+      }
+
+      return handleResponse(res, 200, "Joining payment approved — Plan A activated", {
+        activated: true,
+        source: "joining_payment_approval",
+        paymentId: String(payment._id),
+        shoppingCreditAmount,
+      });
+    }
+
     const result = await adminActivateMembership({
       membershipId: req.params.id,
       adminId: req.user?.id,
@@ -1701,9 +1753,14 @@ export const approveJoiningReview = async (req, res) => {
       adminId,
       adminRemarks,
     });
+    const shoppingCreditAmount =
+      payment._activationSummary?.shoppingCreditAmount
+      || (await resolveJoiningPackageShoppingCredit(payment));
     return handleResponse(res, 200, "Payment approved", {
       paymentId: String(payment._id),
       status: payment.status,
+      shoppingCreditAmount,
+      activated: payment.activationApplied !== false,
     });
   } catch (error) {
     return handleResponse(

@@ -97,6 +97,13 @@ jest.unstable_mockModule("../app/services/finance/payoutService.js", () => ({
   createPendingPayoutForOrder: mockCreatePendingPayoutForOrder,
 }));
 
+const mockLedgerFind = jest.fn();
+jest.unstable_mockModule("../app/models/ledgerEntry.js", () => ({
+  default: {
+    find: mockLedgerFind,
+  },
+}));
+
 const {
   handleOnlineOrderFinance,
   handleCodOrderFinance,
@@ -344,6 +351,34 @@ describe("finance order flow", () => {
         amount: 180,
       }),
       expect.any(Object),
+    );
+  });
+
+  it("refunds shopping-wallet redemption back to shopping bucket on cancellation", async () => {
+    currentOrder.paymentMode = "ONLINE";
+    currentOrder.payment = { method: "wallet", status: "completed" };
+    currentOrder.financeFlags = { onlinePaymentCaptured: true };
+    currentOrder.paymentBreakdown.grandTotal = 500;
+    currentOrder.paymentBreakdown.walletAmount = 500;
+    currentOrder.paymentBreakdown.walletSplit = {
+      shopping: 500,
+      earnings: 0,
+      available: 0,
+    };
+    currentOrder.pricing = { walletAmount: 500 };
+
+    await reverseOrderFinanceOnCancellation(
+      { _id: "order-1" },
+      { actorId: "admin-1", reason: "Cancelled manually" },
+    );
+
+    expect(mockCreditWallet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerType: "CUSTOMER",
+        amount: 500,
+        bucket: "shopping",
+        ledgerType: LEDGER_TRANSACTION_TYPE.WALLET_REFUND,
+      }),
     );
   });
 });

@@ -32,10 +32,15 @@
  *      (`deletedAt`, `deletedBy`) and `isActive` flipped to false so
  *      the account can no longer authenticate.
  *
- *   5. WALLET / WITHDRAWALS — the wallet is FROZEN IN PLACE (no
- *      transfer-out). Pending withdrawal requests are auto-rejected
- *      via the canonical `rejectWithdrawalRequest` flow so the
- *      ledger reversal happens inside the same session.
+ *   5. UPLINE CLAWBACK — every upline bonus whose `sourceUserId` is
+ *      the deleted member is reversed (wallet debit + `clawed_back`
+ *      status). HELD-but-never-paid bonuses are voided. Mentor
+ *      royalties cascaded from those events are clawed back too.
+ *
+ *   6. WALLET / WITHDRAWALS — the deleted member's wallet is FROZEN
+ *      IN PLACE (no transfer-out). Pending withdrawal requests are
+ *      auto-rejected via the canonical `rejectWithdrawalRequest`
+ *      flow so the ledger reversal happens inside the same session.
  *
  * The service is purely admin-initiated: it expects an `adminId` and
  * stamps `deletedBy` / `updatedBy` on every touched row.
@@ -402,7 +407,18 @@ export async function softDeleteMlmMember({
         );
       }
 
-      // ---------- STEP 7 — auto-cancel pending withdrawals ----------
+      // ---------- STEP 7 — reverse upline income tied to this member ----------
+      const { clawbackUplineBonusesOnMemberSoftDelete } = await import(
+        "./mlmBonusEngineService.js"
+      );
+      const uplineClawback = await clawbackUplineBonusesOnMemberSoftDelete({
+        sourceMemberUserId: targetUserId,
+        session,
+        correlationId: `mlm-soft-delete-${membershipId}`,
+        reason,
+      });
+
+      // ---------- STEP 8 — auto-cancel pending withdrawals ----------
       const pendingWithdrawals = await MlmWithdrawalRequest.find(
         { userId: targetUserId, status: MLM_WITHDRAWAL_STATUS.PENDING },
         null,
@@ -419,7 +435,7 @@ export async function softDeleteMlmMember({
         withdrawalsCancelled.push(String(w._id));
       }
 
-      // ---------- STEP 8 — tombstone the membership and customer ----------
+      // ---------- STEP 9 — tombstone the membership and customer ----------
       const now = new Date();
       target.deletedAt = now;
       target.deletedBy = adminId;
@@ -481,6 +497,7 @@ export async function softDeleteMlmMember({
         directReferralsRemapped: directReferrals.length,
         sponsorChainEntriesPulled: downline.length,
         withdrawalsCancelled,
+        uplineClawback,
       };
     });
   } finally {

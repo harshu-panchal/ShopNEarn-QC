@@ -15,7 +15,7 @@ import {
 } from "../../constants/mlm.js";
 import { roundCurrency } from "../../utils/money.js";
 import { createLedgerEntry } from "../finance/ledgerService.js";
-import { creditWallet, getOrCreateWallet } from "../finance/walletService.js";
+import { creditWallet, debitWallet, getOrCreateWallet } from "../finance/walletService.js";
 import {
   getDirectReferralMilestoneBonus,
   getMentorRoyaltyRate,
@@ -1123,6 +1123,207 @@ export async function clawbackBonusesOnReturn({
   }
 
   return { processed, skipped, ratio, totalEvents: events.length };
+}
+
+const MEMBER_SOFT_DELETE_REVERSIBLE_STATUSES = [
+  MLM_COMMISSION_EVENT_STATUS.CREDITED,
+  MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_DOWNLINE_ACTIVATION,
+  MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
+];
+
+const MEMBER_SOFT_DELETE_HELD_STATUSES = new Set([
+  MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_DOWNLINE_ACTIVATION,
+  MLM_COMMISSION_EVENT_STATUS.HELD_AWAITING_SPONSOR_ACTIVATION,
+]);
+
+async function clawbackOneUplineCommissionEvent(
+  event,
+  { session, sourceMemberUserId, correlationId, reason },
+) {
+  const credited = roundCurrency(event.cappedAmount || event.bonusAmount || 0);
+  const isHeld = MEMBER_SOFT_DELETE_HELD_STATUSES.has(event.status);
+
+  if (isHeld) {
+    event.status = MLM_COMMISSION_EVENT_STATUS.CLAWED_BACK;
+    event.clawbackAt = new Date();
+    event.clawbackAmount = 0;
+    event.meta = {
+      ...(event.meta || {}),
+      clawbackReason: "member_soft_delete",
+      sourceMemberUserId: String(sourceMemberUserId),
+      adminReason: reason || null,
+    };
+    await event.save({ session });
+    return { action: "voided_held", amount: 0, eventId: event._id };
+  }
+
+  if (credited <= 0) {
+    event.status = MLM_COMMISSION_EVENT_STATUS.CLAWED_BACK;
+    event.clawbackAt = new Date();
+    event.clawbackAmount = 0;
+    await event.save({ session });
+    return { action: "skipped_zero", amount: 0, eventId: event._id };
+  }
+
+  const bucket = event.releasedAt ? "earnings" : event.walletBucket || "pending";
+  const idempotencyKey = `${MLM_IDEMPOTENCY_PREFIX.BONUS_CLAWBACK}-SD-${event._id}`;
+
+  await debitWallet({
+    ownerType: OWNER_TYPE.CUSTOMER,
+    ownerId: event.recipientId,
+    amount: credited,
+    bucket,
+    session,
+    ledgerType: LEDGER_TRANSACTION_TYPE.MLM_BONUS_CLAWBACK_ON_MEMBER_DELETE,
+    ledgerReference: idempotencyKey,
+    ledgerDescription: `MLM upline bonus reversed — source member soft-deleted (${sourceMemberUserId})`,
+    idempotencyKey,
+    correlationId,
+    orderId: event.sourceOrderId || null,
+    syncUserWalletBalance: bucket === "available",
+    metadata: {
+      mlmEventId: String(event._id),
+      sourceMemberUserId: String(sourceMemberUserId),
+      originalCredited: credited,
+      clawbackReason: "member_soft_delete",
+    },
+  });
+
+  event.status = MLM_COMMISSION_EVENT_STATUS.CLAWED_BACK;
+  event.clawbackAt = new Date();
+  event.clawbackAmount = credited;
+  event.meta = {
+    ...(event.meta || {}),
+    clawbackReason: "member_soft_delete",
+    clawbackBucket: bucket,
+    sourceMemberUserId: String(sourceMemberUserId),
+    adminReason: reason || null,
+  };
+  await event.save({ session });
+
+  const incField =
+    event.planType === MLM_PLAN_TYPE.B
+      ? "lifetimePlanBEarnings"
+      : "lifetimePlanAEarnings";
+  await MlmMembership.updateOne(
+    { userId: event.recipientId },
+    { $inc: { [incField]: -credited } },
+    { session },
+  );
+
+  return { action: "clawed_back", amount: credited, eventId: event._id };
+}
+
+/**
+ * Reverse upline income credited because of a member who is being
+ * soft-deleted by an admin.
+ *
+ * Walks every `MlmCommissionEvent` whose `sourceUserId` is the deleted
+ * member and whose `recipientId` is someone else (upline). For each
+ * CREDITED event we debit the recipient's wallet and stamp
+ * `status = clawed_back`. HELD events (never paid) are voided without a
+ * wallet movement.
+ *
+ * A second pass claws back mentor-royalty rows whose
+ * `sourceCommissionEventId` points at a primary event reversed above.
+ *
+ * Idempotent via `MLM-CB-SD-<eventId>` ledger keys and the
+ * `clawbackAt` guard on commission events.
+ */
+export async function clawbackUplineBonusesOnMemberSoftDelete({
+  sourceMemberUserId,
+  session,
+  correlationId = null,
+  reason = null,
+}) {
+  if (!sourceMemberUserId) {
+    return { processed: 0, voided: 0, skipped: 0, totalAmount: 0, primaryEvents: 0 };
+  }
+
+  let processed = 0;
+  let voided = 0;
+  let skipped = 0;
+  let totalAmount = 0;
+  const clawedEventIds = [];
+
+  const primaryEvents = await MlmCommissionEvent.find({
+    sourceUserId: sourceMemberUserId,
+    recipientId: { $ne: sourceMemberUserId },
+    status: { $in: MEMBER_SOFT_DELETE_REVERSIBLE_STATUSES },
+    clawbackAt: { $exists: false },
+  }).session(session);
+
+  for (const event of primaryEvents) {
+    try {
+      const result = await clawbackOneUplineCommissionEvent(event, {
+        session,
+        sourceMemberUserId,
+        correlationId,
+        reason,
+      });
+      if (result.action === "clawed_back") {
+        processed += 1;
+        totalAmount = roundCurrency(totalAmount + result.amount);
+        clawedEventIds.push(result.eventId);
+      } else if (result.action === "voided_held") {
+        voided += 1;
+        clawedEventIds.push(result.eventId);
+      } else {
+        skipped += 1;
+        if (result.eventId) clawedEventIds.push(result.eventId);
+      }
+    } catch (error) {
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn(
+          "[mlmBonusEngineService] member soft-delete clawback failed for event; continuing",
+          { mlmEventId: String(event._id), error: error.message },
+        );
+      }
+      skipped += 1;
+    }
+  }
+
+  if (clawedEventIds.length > 0) {
+    const cascadedEvents = await MlmCommissionEvent.find({
+      sourceCommissionEventId: { $in: clawedEventIds },
+      recipientId: { $ne: sourceMemberUserId },
+      status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+      clawbackAt: { $exists: false },
+    }).session(session);
+
+    for (const event of cascadedEvents) {
+      try {
+        const result = await clawbackOneUplineCommissionEvent(event, {
+          session,
+          sourceMemberUserId,
+          correlationId,
+          reason,
+        });
+        if (result.action === "clawed_back") {
+          processed += 1;
+          totalAmount = roundCurrency(totalAmount + result.amount);
+        } else {
+          skipped += 1;
+        }
+      } catch (error) {
+        if (typeof console !== "undefined" && console.warn) {
+          console.warn(
+            "[mlmBonusEngineService] member soft-delete cascaded clawback failed; continuing",
+            { mlmEventId: String(event._id), error: error.message },
+          );
+        }
+        skipped += 1;
+      }
+    }
+  }
+
+  return {
+    processed,
+    voided,
+    skipped,
+    totalAmount,
+    primaryEvents: primaryEvents.length,
+  };
 }
 
 /**

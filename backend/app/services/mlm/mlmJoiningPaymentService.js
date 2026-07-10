@@ -148,9 +148,18 @@ async function transitionStatus(payment, {
 async function handleStatusSideEffects(payment, nextStatus) {
   if (nextStatus === PAYMENT_STATUS.CAPTURED) {
     try {
-      await activateMembershipFromJoiningPayment(payment._id, {
+      const activation = await activateMembershipFromJoiningPayment(payment._id, {
         correlationId: payment._id?.toString() || null,
       });
+      try {
+        emitNotificationEvent(NOTIFICATION_EVENTS.PAYMENT_SUCCESS, {
+          customerId: payment.customer,
+          userId: payment.customer,
+        });
+      } catch (_) {
+        /* non-fatal */
+      }
+      return { activation };
     } catch (mlmError) {
       // Non-fatal: surface as audit + flag on the payment row so an
       // admin compensation tool can re-run. The wallet+ledger pair is
@@ -162,17 +171,10 @@ async function handleStatusSideEffects(payment, nextStatus) {
         paymentId: String(payment._id),
         error: mlmError.message,
       });
-      return;
-    }
-    try {
-      emitNotificationEvent(NOTIFICATION_EVENTS.PAYMENT_SUCCESS, {
-        customerId: payment.customer,
-        userId: payment.customer,
-      });
-    } catch (_) {
-      /* non-fatal */
+      return { activationError: mlmError.message };
     }
   }
+  return {};
 }
 
 function buildClickIdempotencyKey(userId) {
@@ -712,7 +714,15 @@ export async function approveManualJoiningPayment({
     reason: `Admin approved manual payment${adminRemarks ? `: ${adminRemarks}` : ""}`,
   });
 
-  await handleStatusSideEffects(payment, PAYMENT_STATUS.CAPTURED);
+  const sideEffects = await handleStatusSideEffects(payment, PAYMENT_STATUS.CAPTURED);
+  if (sideEffects.activationError) {
+    const err = new Error(
+      `Payment approved but Plan A activation failed: ${sideEffects.activationError}`,
+    );
+    err.statusCode = 500;
+    err.code = "ACTIVATION_FAILED";
+    throw err;
+  }
 
   try {
     emitNotificationEvent(NOTIFICATION_EVENTS.MLM_JOINING_PROOF_APPROVED, {
@@ -727,8 +737,10 @@ export async function approveManualJoiningPayment({
   logger.info("mlm_joining_payment_approved", {
     paymentId: payment._id.toString(),
     adminId: String(adminId),
+    shoppingCreditAmount: sideEffects.activation?.shoppingCreditAmount || 0,
   });
 
+  payment._activationSummary = sideEffects.activation || null;
   return payment;
 }
 

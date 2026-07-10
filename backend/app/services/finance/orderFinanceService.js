@@ -19,6 +19,7 @@ import {
   updateCashInHand,
 } from "./walletService.js";
 import { createPendingPayoutForOrder } from "./payoutService.js";
+import LedgerEntry from "../../models/ledgerEntry.js";
 
 function toOrderIdQuery(orderOrId) {
   if (!orderOrId) return null;
@@ -29,6 +30,55 @@ function toOrderIdQuery(orderOrId) {
     return { _id: new mongoose.Types.ObjectId(orderOrId) };
   }
   return { orderId: String(orderOrId) };
+}
+
+async function resolveWalletRefundSplit(order, walletUsed, { session }) {
+  const split = order.paymentBreakdown?.walletSplit || null;
+  const splitSum = split
+    ? roundCurrency(
+        (split.shopping || 0) + (split.earnings || 0) + (split.available || 0),
+      )
+    : 0;
+  if (split && splitSum > 0) {
+    return {
+      shopping: roundCurrency(split.shopping || 0),
+      earnings: roundCurrency(split.earnings || 0),
+      available: roundCurrency(split.available || 0),
+    };
+  }
+
+  const debits = await LedgerEntry.find({
+    orderId: order._id,
+    type: LEDGER_TRANSACTION_TYPE.WALLET_PAYMENT,
+    direction: LEDGER_DIRECTION.DEBIT,
+  }).session(session);
+
+  if (debits.length > 0) {
+    const inferred = { shopping: 0, earnings: 0, available: 0 };
+    for (const row of debits) {
+      const meta = row.metadata || {};
+      let bucket = meta.bucketDrained || meta.bucket || null;
+      if (!bucket) {
+        const desc = String(row.description || "").toLowerCase();
+        if (desc.includes("shopping")) bucket = "shopping";
+        else if (desc.includes("earning")) bucket = "earnings";
+        else bucket = "available";
+      }
+      if (bucket in inferred) {
+        inferred[bucket] = roundCurrency(inferred[bucket] + (row.amount || 0));
+      }
+    }
+    const inferredSum = roundCurrency(
+      inferred.shopping + inferred.earnings + inferred.available,
+    );
+    if (inferredSum > 0) return inferred;
+  }
+
+  if (order.payment?.method === "wallet") {
+    return { shopping: walletUsed, earnings: 0, available: 0 };
+  }
+
+  return { shopping: 0, earnings: 0, available: walletUsed };
 }
 
 async function findOrderForUpdate(orderOrId, session) {
@@ -870,22 +920,8 @@ export async function reverseOrderFinanceOnCancellation(
     // legacy single `available` refund when no split is present.
     const walletUsed = roundCurrency(order.pricing?.walletAmount || order.paymentBreakdown?.walletAmount || 0);
     if (walletUsed > 0) {
-      const split = order.paymentBreakdown?.walletSplit || null;
-      const splitSum = split
-        ? roundCurrency(
-            (split.shopping || 0) + (split.earnings || 0) + (split.available || 0),
-          )
-        : 0;
-      const refundByBucket =
-        split && splitSum > 0
-          ? {
-              shopping: roundCurrency(split.shopping || 0),
-              earnings: roundCurrency(split.earnings || 0),
-              available: roundCurrency(split.available || 0),
-            }
-          : { shopping: 0, earnings: 0, available: walletUsed };
+      const refundByBucket = await resolveWalletRefundSplit(order, walletUsed, { session });
 
-      const customerWallet = await getOrCreateWallet(OWNER_TYPE.CUSTOMER, order.customer, { session });
       for (const bucket of ["shopping", "earnings", "available"]) {
         const amount = roundCurrency(refundByBucket[bucket] || 0);
         if (amount <= 0) continue;
@@ -895,24 +931,14 @@ export async function reverseOrderFinanceOnCancellation(
           amount,
           bucket,
           session,
-          // Only the `available` bucket mirrors to User.walletBalance;
-          // creditWallet already guards this by bucket.
+          ledgerType: LEDGER_TRANSACTION_TYPE.WALLET_REFUND,
+          ledgerReference: `${order.orderId}-${bucket}`,
+          ledgerDescription: `Refund for wallet payment (${bucket}): ${reason}`,
+          orderId: order._id,
+          idempotencyKey: `CANCEL-REFUND-${order._id}-${bucket}`,
+          metadata: { bucket, cancellationRefund: true },
+          syncUserWalletBalance: bucket === "available",
         });
-        await createLedgerEntry(
-          {
-            orderId: order._id,
-            walletId: customerWallet._id,
-            actorType: OWNER_TYPE.CUSTOMER,
-            actorId: order.customer,
-            type: LEDGER_TRANSACTION_TYPE.WALLET_REFUND,
-            direction: LEDGER_DIRECTION.CREDIT,
-            amount,
-            paymentMode: "WALLET",
-            description: `Refund for wallet payment (${bucket}): ${reason}`,
-            reference: order.orderId,
-          },
-          { session },
-        );
       }
     }
 
