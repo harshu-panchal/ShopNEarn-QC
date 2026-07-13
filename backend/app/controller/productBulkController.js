@@ -246,8 +246,7 @@ export const getBulkUploadTemplate = async (req, res) => {
     titleCell.font = { name: "Segoe UI", size: 14, bold: true, color: { argb: "FFFFFFFF" } };
     titleCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F2937" } };
     titleCell.alignment = { vertical: "middle", horizontal: "center" };
-    productsSheet.getRow(1).height = 35;
-    productsSheet.mergeCells("A1:AK1");
+    productsSheet.mergeCells("A1:AE1");
 
     // Instructions Block
     const instructions = [
@@ -265,19 +264,19 @@ export const getBulkUploadTemplate = async (req, res) => {
       cell.value = instructions[i];
       cell.font = { name: "Segoe UI", size: 9, italic: i > 0, bold: i === 0, color: { argb: i === 0 ? "FF111827" : "FF4B5563" } };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF9FAFB" } };
-      productsSheet.mergeCells(`A${rowNum}:AK${rowNum}`);
+      productsSheet.mergeCells(`A${rowNum}:AE${rowNum}`);
       productsSheet.getRow(rowNum).height = 18;
     }
 
     // Headers
     const headers = [
-      "Product Title *", "Description", "Brand Name", "Product Code (SKU)", "Weight", "Tags (comma-separated)",
+      "Product Title *", "Description", "Brand Name", "Weight", "Tags (comma-separated)",
       "Main Group *", "Specific Category *", "Sub-Category *", "Status (Active/Draft)", "Main Image URL", "Gallery Image URLs (comma-separated)",
-      "Variant 1 Name *", "Variant 1 Price *", "Variant 1 Sale Price", "Variant 1 Stock *", "Variant 1 SKU",
-      "Variant 2 Name", "Variant 2 Price", "Variant 2 Sale Price", "Variant 2 Stock", "Variant 2 SKU",
-      "Variant 3 Name", "Variant 3 Price", "Variant 3 Sale Price", "Variant 3 Stock", "Variant 3 SKU",
-      "Variant 4 Name", "Variant 4 Price", "Variant 4 Sale Price", "Variant 4 Stock", "Variant 4 SKU",
-      "Variant 5 Name", "Variant 5 Price", "Variant 5 Sale Price", "Variant 5 Stock", "Variant 5 SKU"
+      "Variant 1 Name *", "Variant 1 Price *", "Variant 1 Sale Price", "Variant 1 Stock *",
+      "Variant 2 Name", "Variant 2 Price", "Variant 2 Sale Price", "Variant 2 Stock",
+      "Variant 3 Name", "Variant 3 Price", "Variant 3 Sale Price", "Variant 3 Stock",
+      "Variant 4 Name", "Variant 4 Price", "Variant 4 Sale Price", "Variant 4 Stock",
+      "Variant 5 Name", "Variant 5 Price", "Variant 5 Sale Price", "Variant 5 Stock"
     ];
 
     const headerRow = productsSheet.getRow(6);
@@ -285,11 +284,11 @@ export const getBulkUploadTemplate = async (req, res) => {
     headerRow.height = 25;
 
     const headerStyles = [
-      { start: 1, end: 6, bg: "FFDBEAFE", fg: "FF1E3A8A" }, // Product Info - Pastel Blue
-      { start: 7, end: 10, bg: "FFD1FAE5", fg: "FF064E3B" }, // Category & Status - Pastel Green
-      { start: 11, end: 12, bg: "FFE0E7FF", fg: "FF312E81" }, // Images - Pastel Indigo
-      { start: 13, end: 17, bg: "FFFFEDD5", fg: "FF7C2D12" }, // Variant 1 - Pastel Orange
-      { start: 18, end: 37, bg: "FFF3F4F6", fg: "FF374151" }  // Variants 2-5 - Pastel Gray
+      { start: 1, end: 5, bg: "FFDBEAFE", fg: "FF1E3A8A" }, // Product Info - Pastel Blue
+      { start: 6, end: 9, bg: "FFD1FAE5", fg: "FF064E3B" }, // Category & Status - Pastel Green
+      { start: 10, end: 11, bg: "FFE0E7FF", fg: "FF312E81" }, // Images - Pastel Indigo
+      { start: 12, end: 15, bg: "FFFFEDD5", fg: "FF7C2D12" }, // Variant 1 - Pastel Orange
+      { start: 16, end: 31, bg: "FFF3F4F6", fg: "FF374151" }  // Variants 2-5 - Pastel Gray
     ];
 
     headerStyles.forEach((style) => {
@@ -328,7 +327,6 @@ export const getBulkUploadTemplate = async (req, res) => {
       "Sample Premium Basmati Rice",
       "Aromatic premium basmati rice, aged to perfection.",
       "Deccan",
-      "DECCAN-RICE-001",
       "1kg",
       "rice, grain, organic",
       sampleMainGroup,
@@ -341,12 +339,10 @@ export const getBulkUploadTemplate = async (req, res) => {
       250,
       220,
       100,
-      "DECCAN-RICE-1KG",
       "5kg Pack",
       1100,
       999,
-      50,
-      "DECCAN-RICE-5KG"
+      50
     ];
 
     const sampleRowObj = productsSheet.getRow(7);
@@ -367,8 +363,8 @@ export const getBulkUploadTemplate = async (req, res) => {
     productsSheet.columns.forEach((col, idx) => {
       if (idx === 0) col.width = 28; // Title
       else if (idx === 1) col.width = 35; // Description
-      else if (idx === 6 || idx === 7 || idx === 8) col.width = 22; // Categories
-      else if (idx === 10 || idx === 11) col.width = 25; // Image URLs
+      else if (idx === 5 || idx === 6 || idx === 7) col.width = 22; // Categories
+      else if (idx === 9 || idx === 10) col.width = 25; // Image URLs
       else col.width = 15; // standard
     });
 
@@ -376,7 +372,7 @@ export const getBulkUploadTemplate = async (req, res) => {
     for (let r = 8; r <= 300; r++) {
       // Main Group dropdown
       if (mainGroups.length > 0) {
-        productsSheet.getCell(`G${r}`).dataValidation = {
+        productsSheet.getCell(`F${r}`).dataValidation = {
           type: "list",
           allowBlank: true,
           formulae: ["MainGroupsList"],
@@ -384,25 +380,25 @@ export const getBulkUploadTemplate = async (req, res) => {
       }
 
       // Cascading Specific Category dropdown using INDIRECT + SUBSTITUTE
-      productsSheet.getCell(`H${r}`).dataValidation = {
+      productsSheet.getCell(`G${r}`).dataValidation = {
         type: "list",
         allowBlank: true,
         formulae: [
-          `INDIRECT(CONCATENATE("MG_", SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(G${r}," ","_"),"&","_"),"-","_"),"/","_"),"(","_"),")","_"),",","_")))`,
+          `INDIRECT(CONCATENATE("MG_", SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(F${r}," ","_"),"&","_"),"-","_"),"/","_"),"(","_"),")","_"),",","_")))`,
         ],
       };
 
       // Cascading Sub-Category dropdown
-      productsSheet.getCell(`I${r}`).dataValidation = {
+      productsSheet.getCell(`H${r}`).dataValidation = {
         type: "list",
         allowBlank: true,
         formulae: [
-          `INDIRECT(CONCATENATE("SC_", SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(H${r}," ","_"),"&","_"),"-","_"),"/","_"),"(","_"),")","_"),",","_")))`,
+          `INDIRECT(CONCATENATE("SC_", SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(G${r}," ","_"),"&","_"),"-","_"),"/","_"),"(","_"),")","_"),",","_")))`,
         ],
       };
 
       // Status dropdown
-      productsSheet.getCell(`J${r}`).dataValidation = {
+      productsSheet.getCell(`I${r}`).dataValidation = {
         type: "list",
         allowBlank: true,
         formulae: ['"Active,Draft"'],
@@ -486,10 +482,10 @@ export const bulkUploadProducts = async (req, res) => {
     const rowCount = worksheet.rowCount;
     const isSampleRow = (row) => {
       const title = row.getCell(1).value;
-      const sku = row.getCell(4).value;
+      const weight = row.getCell(4).value;
       return (
         String(title || "").trim() === "Sample Premium Basmati Rice" ||
-        String(sku || "").trim() === "DECCAN-RICE-001"
+        String(weight || "").trim() === "1kg"
       );
     };
 
@@ -505,15 +501,14 @@ export const bulkUploadProducts = async (req, res) => {
         const name = String(titleVal).trim();
         const description = row.getCell(2).value ? String(row.getCell(2).value).trim() : "";
         const brand = row.getCell(3).value ? String(row.getCell(3).value).trim() : "";
-        const sku = row.getCell(4).value ? String(row.getCell(4).value).trim() : "";
-        const weight = row.getCell(5).value ? String(row.getCell(5).value).trim() : "";
-        const rawTags = row.getCell(6).value ? String(row.getCell(6).value).trim() : "";
-        const mainGroup = row.getCell(7).value ? String(row.getCell(7).value).trim() : "";
-        const categoryName = row.getCell(8).value ? String(row.getCell(8).value).trim() : "";
-        const subcategoryName = row.getCell(9).value ? String(row.getCell(9).value).trim() : "";
-        const statusVal = row.getCell(10).value ? String(row.getCell(10).value).trim().toLowerCase() : "active";
-        const mainImageUrl = getCellStringValue(row.getCell(11));
-        const galleryUrlsStr = getCellStringValue(row.getCell(12), {
+        const weight = row.getCell(4).value ? String(row.getCell(4).value).trim() : "";
+        const rawTags = row.getCell(5).value ? String(row.getCell(5).value).trim() : "";
+        const mainGroup = row.getCell(6).value ? String(row.getCell(6).value).trim() : "";
+        const categoryName = row.getCell(7).value ? String(row.getCell(7).value).trim() : "";
+        const subcategoryName = row.getCell(8).value ? String(row.getCell(8).value).trim() : "";
+        const statusVal = row.getCell(9).value ? String(row.getCell(9).value).trim().toLowerCase() : "active";
+        const mainImageUrl = getCellStringValue(row.getCell(10));
+        const galleryUrlsStr = getCellStringValue(row.getCell(11), {
           preferTextForUrls: true,
         });
 
@@ -547,11 +542,10 @@ export const bulkUploadProducts = async (req, res) => {
 
         // Parse Variants (Variant 1 is required)
         const variants = [];
-        const v1Name = row.getCell(13).value ? String(row.getCell(13).value).trim() : "";
-        const v1PriceVal = row.getCell(14).value;
-        const v1SalePriceVal = row.getCell(15).value;
-        const v1StockVal = row.getCell(16).value;
-        const v1Sku = row.getCell(17).value ? String(row.getCell(17).value).trim() : "";
+        const v1Name = row.getCell(12).value ? String(row.getCell(12).value).trim() : "";
+        const v1PriceVal = row.getCell(13).value;
+        const v1SalePriceVal = row.getCell(14).value;
+        const v1StockVal = row.getCell(15).value;
 
         if (!v1Name) throw new Error("Variant 1 Name is required");
         if (v1PriceVal === null || v1PriceVal === undefined || isNaN(Number(v1PriceVal)) || Number(v1PriceVal) < 0) {
@@ -570,17 +564,16 @@ export const bulkUploadProducts = async (req, res) => {
           price: v1Price,
           salePrice: v1SalePrice,
           stock: v1Stock,
-          sku: v1Sku || makeProductSku(name, 1),
+          sku: makeProductSku(name, 1),
         });
 
         // Additional variants (2-5)
         for (let v = 2; v <= 5; v++) {
-          const startCol = 13 + (v - 1) * 5; // Variant 2 starts at 18
+          const startCol = 12 + (v - 1) * 4; // Variant 2 starts at 16
           const vName = row.getCell(startCol).value ? String(row.getCell(startCol).value).trim() : "";
           const vPriceVal = row.getCell(startCol + 1).value;
           const vSalePriceVal = row.getCell(startCol + 2).value;
           const vStockVal = row.getCell(startCol + 3).value;
-          const vSku = row.getCell(startCol + 4).value ? String(row.getCell(startCol + 4).value).trim() : "";
 
           if (vName || vPriceVal !== null || vStockVal !== null) {
             if (!vName) throw new Error(`Variant ${v} Name is required when variant columns are populated`);
@@ -596,7 +589,7 @@ export const bulkUploadProducts = async (req, res) => {
               price: Number(vPriceVal),
               salePrice: vSalePriceVal ? Number(vSalePriceVal) : 0,
               stock: Number(vStockVal),
-              sku: vSku || makeProductSku(name, v),
+              sku: makeProductSku(name, v),
             });
           }
         }
@@ -630,7 +623,7 @@ export const bulkUploadProducts = async (req, res) => {
           name,
           description,
           brand,
-          sku: sku || makeProductSku(name, 1),
+          sku: makeProductSku(name, 1),
           weight,
           tags,
           headerId,

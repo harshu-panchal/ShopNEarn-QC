@@ -795,21 +795,19 @@ const ProductManagement = () => {
                                             </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                 <div className="space-y-1.5 flex flex-col">
-                                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Brand Name</label>
+                                                    <label className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
+                                                        Brand Name
+                                                    </label>
                                                     <input
                                                         value={formData.brand}
-                                                        onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                                                        onChange={(e) =>
+                                                            setFormData({
+                                                                ...formData,
+                                                                brand: e.target.value,
+                                                            })
+                                                        }
                                                         className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none ring-primary/5 focus:ring-2"
                                                         placeholder="e.g. Amul"
-                                                    />
-                                                </div>
-                                                <div className="space-y-1.5 flex flex-col">
-                                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Product Code</label>
-                                                    <input
-                                                        value={formData.sku}
-                                                        onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                                                        className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-mono font-bold outline-none ring-primary/5 focus:ring-2"
-                                                        placeholder="AUTO-GENERATED"
                                                     />
                                                 </div>
                                             </div>
@@ -868,7 +866,7 @@ const ProductManagement = () => {
                                                 <h4 className="text-sm font-bold text-slate-900">Product Variants</h4>
                                                 <button
                                                     type="button"
-                                                    onClick={() => setFormData({ ...formData, variants: [...formData.variants, { id: Date.now(), name: '', price: '', salePrice: '', stock: '', sku: '' }] })}
+                                                    onClick={() => setFormData({ ...formData, variants: [...formData.variants, { id: Date.now(), name: '', price: '', salePrice: '', stock: '' }] })}
                                                     className="rounded-xl bg-rose-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-rose-600 transition-colors hover:bg-rose-100"
                                                 >
                                                     + ADD
@@ -877,7 +875,7 @@ const ProductManagement = () => {
                                             <div className="space-y-3">
                                                 {formData.variants.map((v, i) => (
                                                     <div key={v.id} className="rounded-3xl border border-slate-100 bg-slate-50/80 p-4 shadow-sm">
-                                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+                                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                                                             <div className="space-y-1.5">
                                                                 <label className="ml-1 text-[8px] font-bold uppercase tracking-widest text-slate-400">Variant Name</label>
                                                                 <input
