@@ -26,7 +26,7 @@ export async function getFranchiseStockSummary(franchisePartnerId) {
   const products = productIds.length
     ? await Product.find(
         { _id: { $in: productIds } },
-        { name: 1, price: 1, salePrice: 1, mainImage: 1, galleryImages: 1 },
+        { name: 1, price: 1, salePrice: 1, mainImage: 1, galleryImages: 1, variants: 1 },
       ).lean()
     : [];
   const pmap = new Map(products.map((p) => [String(p._id), p]));
