@@ -9,7 +9,6 @@ import { getAvailableStock } from "@/core/utils/productStock";
  * Props:
  *   cart              – array of cart items
  *   onUpdateQuantity  – (id, delta, variantSku) => void
- *   onRemoveFromCart  – (id, variantSku) => void
  *   onMoveToWishlist  – (item) => void
  *   showAll           – boolean (currently unused — all items shown)
  *   onToggleShowAll   – () => void
@@ -17,7 +16,6 @@ import { getAvailableStock } from "@/core/utils/productStock";
 const CheckoutCartSummary = React.memo(function CheckoutCartSummary({
   cart,
   onUpdateQuantity,
-  onRemoveFromCart,
   onMoveToWishlist,
 }) {
   return (
@@ -53,10 +51,11 @@ const CheckoutCartSummary = React.memo(function CheckoutCartSummary({
           <div className="flex flex-col items-end gap-2">
             <div className="flex items-center gap-2 bg-primary rounded-lg px-2 py-1">
               <button
-                onClick={() =>
-                  item.quantity > 1
-                    ? onUpdateQuantity(item.id, -1, item.variantSku)
-                    : onRemoveFromCart(item.id, item.variantSku)
+                onClick={() => onUpdateQuantity(item.id, -1, item.variantSku)}
+                aria-label={
+                  item.quantity <= 1
+                    ? `Remove ${item.name}`
+                    : `Decrease ${item.name} quantity`
                 }
                 className="text-white p-1 hover:bg-white/20 rounded transition-colors">
                 <Minus size={14} strokeWidth={3} />

@@ -1147,7 +1147,6 @@ const CheckoutPage = () => {
             <CheckoutCartSummary
               cart={cart}
               onUpdateQuantity={updateQuantity}
-              onRemoveFromCart={removeFromCart}
               onMoveToWishlist={handleMoveToWishlist}
               showAll={showAllCartItems}
               onToggleShowAll={() => setShowAllCartItems((v) => !v)}

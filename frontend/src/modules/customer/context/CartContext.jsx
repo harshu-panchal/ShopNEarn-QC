@@ -7,6 +7,9 @@ import { useToast } from "@shared/components/ui/Toast";
 
 const CartContext = createContext();
 
+const cartLineKey = (productId, variantSku = "") =>
+  `${String(productId ?? "")}::${String(variantSku || "").trim()}`;
+
 const loadGuestCart = () => {
   const parsed = getJSON(STORAGE_KEYS.CART, []);
   if (!Array.isArray(parsed)) {
@@ -26,6 +29,11 @@ export const CartProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const pendingRequestsRef = React.useRef(0);
   const lsDebounceRef = useRef(null);
+  const cartRef = useRef(cart);
+
+  useEffect(() => {
+    cartRef.current = cart;
+  }, [cart]);
 
   // Clear cart locally when user logs out is handled by the useEffect dependency on isAuthenticated
   const normalizeBackendCart = (items) => {
@@ -193,15 +201,14 @@ export const CartProvider = ({ children }) => {
   }, [cart, isAuthenticated, showToast]);
 
   const removeFromCart = useCallback(async (productId, variantSku = "") => {
+    const normalizedProductId = String(productId ?? "");
     const normalizedVariantSku = String(variantSku || "").trim();
-    const key = `${productId}::${normalizedVariantSku || ""}`;
+    const key = cartLineKey(normalizedProductId, normalizedVariantSku);
 
     // Optimistic update (remove only the matching line when variantSku is provided).
     setCart((prev) =>
       prev.filter(
-        (item) =>
-          `${item.id || item._id}::${String(item.variantSku || "").trim()}` !==
-          key,
+        (item) => cartLineKey(item.id || item._id, item.variantSku) !== key,
       ),
     );
 
@@ -209,34 +216,37 @@ export const CartProvider = ({ children }) => {
       pendingRequestsRef.current += 1;
       try {
         const response = await customerApi.removeFromCart(
-          productId,
+          normalizedProductId,
           normalizedVariantSku,
         );
         pendingRequestsRef.current -= 1;
         await syncCart(response.data.result.items);
       } catch (error) {
         pendingRequestsRef.current -= 1;
-        console.error("Error removing from cart on backend", error);
+        showToast(
+          error.response?.data?.message || "Could not remove item from cart",
+          "error",
+        );
         if (pendingRequestsRef.current === 0) {
           await fetchCart();
         }
       }
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, showToast]);
 
   const updateQuantity = useCallback(async (productId, delta, variantSku = "") => {
+    const normalizedProductId = String(productId ?? "");
     const normalizedVariantSku = String(variantSku || "").trim();
-    const key = `${productId}::${normalizedVariantSku || ""}`;
-    const currentItem = cart.find(
-      (item) =>
-        `${item.id || item._id}::${String(item.variantSku || "").trim()}` === key,
+    const key = cartLineKey(normalizedProductId, normalizedVariantSku);
+    const currentItem = cartRef.current.find(
+      (item) => cartLineKey(item.id || item._id, item.variantSku) === key,
     );
     if (!currentItem) return false;
 
-    const newQty = Math.max(0, currentItem.quantity + delta);
+    const newQty = Math.max(0, Number(currentItem.quantity || 0) + delta);
 
     if (newQty === 0) {
-      removeFromCart(productId, normalizedVariantSku);
+      removeFromCart(normalizedProductId, normalizedVariantSku);
       return true;
     }
 
@@ -253,10 +263,7 @@ export const CartProvider = ({ children }) => {
 
     setCart((prev) =>
       prev.map((item) => {
-        if (
-          `${item.id || item._id}::${String(item.variantSku || "").trim()}` ===
-          key
-        ) {
+        if (cartLineKey(item.id || item._id, item.variantSku) === key) {
           return { ...item, quantity: newQty };
         }
         return item;
@@ -267,7 +274,7 @@ export const CartProvider = ({ children }) => {
       pendingRequestsRef.current += 1;
       try {
         const response = await customerApi.updateCartQuantity({
-          productId,
+          productId: normalizedProductId,
           quantity: newQty,
           variantSku: normalizedVariantSku,
         });
@@ -287,7 +294,7 @@ export const CartProvider = ({ children }) => {
     }
 
     return true;
-  }, [cart, isAuthenticated, showToast, removeFromCart]);
+  }, [isAuthenticated, showToast, removeFromCart]);
 
   const clearCart = useCallback(async () => {
     if (isAuthenticated) {

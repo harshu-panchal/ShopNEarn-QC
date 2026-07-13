@@ -60,10 +60,17 @@ export function validate(schema, source = "body") {
         message: joinJoiMessages(error),
       });
     }
-    // Mutating req.query / req.params is supported by Express and matches
-    // the pre-existing req.body pattern; downstream handlers see the
-    // sanitized value transparently.
-    req[source] = value;
+    // Express 5 defines `req.query` as a getter-only prototype property, so
+    // plain assignment throws "Cannot set property query ... which has only a
+    // getter". Defining an own property shadows the prototype getter and
+    // works for every source, so downstream handlers still see the sanitized
+    // value transparently.
+    Object.defineProperty(req, source, {
+      value,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
     return next();
   };
 }

@@ -39,6 +39,16 @@ import {
 } from "../../services/mlm/mlmUpgradePaymentService.js";
 import { adminActivateMembership } from "../../services/mlm/mlmActivationService.js";
 import { getMlmConfig, resolveJoiningPackageShoppingCredit } from "../../services/mlm/mlmConfigService.js";
+import MlmJoiningPayment from "../../models/mlmJoiningPayment.js";
+import MlmUpgradePayment from "../../models/mlmUpgradePayment.js";
+import Customer from "../../models/customer.js";
+import { PAYMENT_STATUS } from "../../constants/payment.js";
+import { creditWallet, debitWallet } from "../../services/finance/walletService.js";
+import { invalidate } from "../../services/cacheService.js";
+import {
+  getMembershipByUserId,
+  syncCustomerMlmProjection,
+} from "../../services/mlm/mlmMembershipService.js";
 import { drainAllPendingPlanABonuses } from "../../services/mlm/mlmPairBonusCooldownReleaseService.js";
 import { softDeleteMlmMember } from "../../services/mlm/mlmMemberSoftDeleteService.js";
 import { verifyMlmMemberWallet } from "../../jobs/mlmWalletLedgerVerifierJob.js";

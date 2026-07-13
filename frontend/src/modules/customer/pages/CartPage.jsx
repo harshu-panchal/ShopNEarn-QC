@@ -113,7 +113,7 @@ const CartPage = () => {
                                                         <button
                                                             onClick={() => updateQuantity(item.id, -1, item.variantSku)}
                                                             className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-all hover:bg-white hover:text-slate-900 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-30"
-                                                            disabled={item.quantity <= 1}
+                                                            aria-label={item.quantity <= 1 ? `Remove ${item.name}` : `Decrease ${item.name} quantity`}
                                                         >
                                                             <Minus size={15} strokeWidth={3} />
                                                         </button>
