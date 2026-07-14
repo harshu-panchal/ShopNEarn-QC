@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { User, CreditCard, IdCard, Mail, Phone, MapPin, Menu, Info, Edit2, X, Save } from 'lucide-react';
+import { User, CreditCard, IdCard, Menu, Info, Edit2, X, Save } from 'lucide-react';
 import { useAuth } from '@core/context/AuthContext';
 import { mlmApi } from '../../services/mlmApi';
 import { customerApi } from '../../services/customerApi';
@@ -18,6 +18,71 @@ const Header = ({ title }) => {
                 <Menu size={22} className="text-slate-700" />
             </button>
             <h1 className="text-xl font-bold text-slate-800 ml-1">{title}</h1>
+        </div>
+    );
+};
+
+const METHOD_OPTIONS = [
+    { value: 'bank', label: 'BANK' },
+    { value: 'upi', label: 'UPI' },
+];
+
+/**
+ * Must live outside MlmProfilePage. Defining it inside caused a new component
+ * type on every keystroke → React remounted the <input> → Android keyboard
+ * closed after each character.
+ */
+const InfoRow = ({
+    label,
+    value,
+    name,
+    type = 'text',
+    editable = false,
+    isSelect = false,
+    options = [],
+    isEditing = false,
+    formValue = '',
+    onChange,
+}) => {
+    if (isEditing && editable) {
+        if (isSelect) {
+            return (
+                <div className="flex flex-col py-3 border-b border-slate-100 last:border-0">
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</span>
+                    <select
+                        name={name}
+                        value={formValue || ''}
+                        onChange={onChange}
+                        className="mt-1 text-sm font-medium text-slate-900 border border-slate-300 rounded-md p-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                        <option value="">Select Method</option>
+                        {options.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                    </select>
+                </div>
+            );
+        }
+        return (
+            <div className="flex flex-col py-3 border-b border-slate-100 last:border-0">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</span>
+                <input
+                    type={type}
+                    name={name}
+                    value={formValue || ''}
+                    onChange={onChange}
+                    className="mt-1 text-sm font-medium text-slate-900 border border-slate-300 rounded-md p-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full"
+                />
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col py-3 border-b border-slate-100 last:border-0">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</span>
+            <span className="text-sm font-medium text-slate-900 mt-1">
+                {value || <span className="text-slate-400 italic">Not provided</span>}
+            </span>
         </div>
     );
 };
@@ -52,8 +117,7 @@ const MlmProfilePage = () => {
                 const res = await mlmApi.getMembership();
                 const memData = res.data?.result?.membership || null;
                 setMembership(memData);
-                
-                // Initialize form data
+
                 setFormData({
                     name: user?.name || '',
                     email: user?.email || '',
@@ -82,20 +146,18 @@ const MlmProfilePage = () => {
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
     const handleSave = async () => {
         try {
             setSaving(true);
-            
-            // 1. Update Customer Core Profile (Name, Email)
+
             await customerApi.updateProfile({
                 name: formData.name,
                 email: formData.email
             });
 
-            // 2. Upload images if selected
             let aadhaarImageUrl = formData.aadhaarImage;
             if (formData.aadhaarImageFile) {
                 const res = await mlmApi.uploadMedia(formData.aadhaarImageFile);
@@ -107,7 +169,6 @@ const MlmProfilePage = () => {
                 panImageUrl = res.data?.result?.url || res.data?.url;
             }
 
-            // 3. Update MLM Membership Details (Payout, KYC)
             const membershipUpdate = {
                 payoutBeneficiary: {
                     accountHolderName: formData.accountHolderName,
@@ -137,59 +198,11 @@ const MlmProfilePage = () => {
 
     const beneficiary = membership?.payoutBeneficiary || {};
 
-    const InfoRow = ({ label, value, name, type = "text", editable = false, isSelect = false, options = [] }) => {
-        if (isEditing && editable) {
-            if (isSelect) {
-                return (
-                    <div className="flex flex-col py-3 border-b border-slate-100 last:border-0">
-                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</span>
-                        <select
-                            name={name}
-                            value={formData[name] || ''}
-                            onChange={handleInputChange}
-                            className="mt-1 text-sm font-medium text-slate-900 border border-slate-300 rounded-md p-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        >
-                            <option value="">Select Method</option>
-                            {options.map(opt => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                        </select>
-                    </div>
-                );
-            }
-            return (
-                <div className="flex flex-col py-3 border-b border-slate-100 last:border-0">
-                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</span>
-                    <input
-                        type={type}
-                        name={name}
-                        value={formData[name] || ''}
-                        onChange={handleInputChange}
-                        className="mt-1 text-sm font-medium text-slate-900 border border-slate-300 rounded-md p-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full"
-                    />
-                </div>
-            );
-        }
-
-        return (
-            <div className="flex flex-col py-3 border-b border-slate-100 last:border-0">
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</span>
-                <span className="text-sm font-medium text-slate-900 mt-1">
-                    {value || <span className="text-slate-400 italic">Not provided</span>}
-                </span>
-            </div>
-        );
-    };
-
     return (
         <div className="flex flex-col min-h-screen bg-slate-50">
-            {/* Mobile Header */}
             <Header title="My Profile" />
 
-            {/* Main content - full width */}
             <div className="flex-1 p-4 md:p-6 lg:p-8 w-full space-y-6">
-                
-                {/* Header Action Row */}
                 <div className="flex justify-end items-center mb-4">
                     {!isEditing ? (
                         <button
@@ -219,7 +232,6 @@ const MlmProfilePage = () => {
                     )}
                 </div>
 
-                {/* Basic Details Section */}
                 <section className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
                     <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-100">
                         <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
@@ -231,14 +243,13 @@ const MlmProfilePage = () => {
                         </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-2">
-                        <InfoRow label="Full Name" value={user?.name} name="name" editable={true} />
-                        <InfoRow label="Email Address" value={user?.email} name="email" type="email" editable={true} />
-                        <InfoRow label="Phone Number" value={user?.phone} editable={false} />
-                        <InfoRow label="Referral Code" value={membership?.referralCode} editable={false} />
+                        <InfoRow label="Full Name" value={user?.name} name="name" editable isEditing={isEditing} formValue={formData.name} onChange={handleInputChange} />
+                        <InfoRow label="Email Address" value={user?.email} name="email" type="email" editable isEditing={isEditing} formValue={formData.email} onChange={handleInputChange} />
+                        <InfoRow label="Phone Number" value={user?.phone} isEditing={isEditing} />
+                        <InfoRow label="Referral Code" value={membership?.referralCode} isEditing={isEditing} />
                     </div>
                 </section>
 
-                {/* Bank & UPI Section */}
                 <section className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
                     <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-100">
                         <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
@@ -254,26 +265,25 @@ const MlmProfilePage = () => {
                         <div className="text-center py-4 text-slate-500 text-sm">Loading payout details...</div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-2">
-                            <InfoRow label="Account Holder Name" value={beneficiary.accountHolderName} name="accountHolderName" editable={true} />
-                            <InfoRow label="Account Number" value={beneficiary.accountNumber} name="accountNumber" editable={true} />
-                            <InfoRow label="IFSC Code" value={beneficiary.ifsc} name="ifsc" editable={true} />
-                            <InfoRow label="UPI ID" value={beneficiary.upiId} name="upiId" editable={true} />
-                            <InfoRow 
-                                label="Preferred Method" 
-                                value={beneficiary.method ? beneficiary.method.toUpperCase() : null} 
-                                name="method" 
-                                editable={true} 
-                                isSelect={true}
-                                options={[
-                                    { value: 'bank', label: 'BANK' },
-                                    { value: 'upi', label: 'UPI' }
-                                ]}
+                            <InfoRow label="Account Holder Name" value={beneficiary.accountHolderName} name="accountHolderName" editable isEditing={isEditing} formValue={formData.accountHolderName} onChange={handleInputChange} />
+                            <InfoRow label="Account Number" value={beneficiary.accountNumber} name="accountNumber" editable isEditing={isEditing} formValue={formData.accountNumber} onChange={handleInputChange} />
+                            <InfoRow label="IFSC Code" value={beneficiary.ifsc} name="ifsc" editable isEditing={isEditing} formValue={formData.ifsc} onChange={handleInputChange} />
+                            <InfoRow label="UPI ID" value={beneficiary.upiId} name="upiId" editable isEditing={isEditing} formValue={formData.upiId} onChange={handleInputChange} />
+                            <InfoRow
+                                label="Preferred Method"
+                                value={beneficiary.method ? beneficiary.method.toUpperCase() : null}
+                                name="method"
+                                editable
+                                isSelect
+                                options={METHOD_OPTIONS}
+                                isEditing={isEditing}
+                                formValue={formData.method}
+                                onChange={handleInputChange}
                             />
                         </div>
                     )}
                 </section>
 
-                {/* KYC Section */}
                 <section className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
                     <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-100">
                         <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl">
@@ -290,14 +300,14 @@ const MlmProfilePage = () => {
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-x-8 gap-y-6">
                             <div className="space-y-4">
-                                <InfoRow label="Aadhaar Number" value={beneficiary.aadhaarNumber} name="aadhaarNumber" editable={true} />
+                                <InfoRow label="Aadhaar Number" value={beneficiary.aadhaarNumber} name="aadhaarNumber" editable isEditing={isEditing} formValue={formData.aadhaarNumber} onChange={handleInputChange} />
                                 {isEditing ? (
                                     <div className="flex flex-col py-3 border-b border-slate-100 last:border-0">
                                         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Aadhaar Image</span>
                                         <input
                                             type="file"
                                             accept="image/*"
-                                            onChange={(e) => setFormData(prev => ({ ...prev, aadhaarImageFile: e.target.files[0] }))}
+                                            onChange={(e) => setFormData((prev) => ({ ...prev, aadhaarImageFile: e.target.files[0] }))}
                                             className="mt-1 text-sm text-slate-900 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
                                         />
                                         {formData.aadhaarImageFile && <span className="text-xs text-indigo-600 mt-1">File selected: {formData.aadhaarImageFile.name}</span>}
@@ -320,14 +330,14 @@ const MlmProfilePage = () => {
                             </div>
 
                             <div className="space-y-4">
-                                <InfoRow label="PAN Number" value={beneficiary.panNumber} name="panNumber" editable={true} />
+                                <InfoRow label="PAN Number" value={beneficiary.panNumber} name="panNumber" editable isEditing={isEditing} formValue={formData.panNumber} onChange={handleInputChange} />
                                 {isEditing ? (
                                     <div className="flex flex-col py-3 border-b border-slate-100 last:border-0">
                                         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">PAN Image</span>
                                         <input
                                             type="file"
                                             accept="image/*"
-                                            onChange={(e) => setFormData(prev => ({ ...prev, panImageFile: e.target.files[0] }))}
+                                            onChange={(e) => setFormData((prev) => ({ ...prev, panImageFile: e.target.files[0] }))}
                                             className="mt-1 text-sm text-slate-900 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
                                         />
                                         {formData.panImageFile && <span className="text-xs text-indigo-600 mt-1">File selected: {formData.panImageFile.name}</span>}
@@ -350,7 +360,7 @@ const MlmProfilePage = () => {
                             </div>
                         </div>
                     )}
-                    
+
                     {!isEditing && (
                         <div className="mt-4 flex items-start gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100 max-w-2xl">
                             <Info size={16} className="text-slate-500 shrink-0 mt-0.5" />

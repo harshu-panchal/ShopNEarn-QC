@@ -133,7 +133,7 @@ const CategoryProductsPage = () => {
     }, [safeProducts]);
 
     return (
-        <div className="flex flex-col min-h-screen bg-white max-w-md mx-auto relative font-sans">
+        <div className="flex flex-col min-h-screen bg-white max-w-md md:max-w-7xl mx-auto relative font-sans">
             {/* Header */}
             <header className={cn(
                 "sticky top-0 z-50 bg-white border-b border-gray-50 px-4 py-4 flex items-center justify-between",
@@ -179,26 +179,26 @@ const CategoryProductsPage = () => {
                 ) : (
                     <>
                         {/* Sidebar */}
-                        <aside className="w-[70px] border-r border-gray-50 flex flex-col bg-white overflow-y-auto hide-scrollbar sticky top-[60px] h-[calc(100vh-60px)] pb-32 flex-shrink-0">
+                        <aside className="w-[70px] md:w-64 border-r border-gray-50 flex flex-col bg-white overflow-y-auto hide-scrollbar sticky top-[60px] h-[calc(100vh-60px)] pb-32 flex-shrink-0">
                             {subCategories.map((cat) => (
                                 <button
                                     key={cat.id}
                                     onClick={() => setSelectedSubCategory(cat.id)}
                                     className={cn(
-                                        "flex flex-col items-center py-4 px-1 gap-2 transition-all relative border-l-4",
+                                        "flex flex-col md:flex-row items-center py-4 px-1 md:py-3 md:px-4 md:gap-4 gap-2 transition-all relative border-l-4",
                                         selectedSubCategory === cat.id
                                             ? "bg-[#F7FCF5] border-primary"
                                             : "border-transparent hover:bg-gray-50"
                                     )}
                                 >
                                     <div className={cn(
-                                        "w-14 h-14 rounded-2xl flex items-center justify-center p-1.5 transition-all duration-300",
+                                        "w-14 h-14 md:w-10 md:h-10 rounded-2xl flex items-center justify-center p-1.5 transition-all duration-300 shrink-0",
                                         selectedSubCategory === cat.id ? "scale-110" : "opacity-100"
                                     )}>
                                         <img src={applyCloudinaryTransform(cat.icon)} alt={cat.name} loading="lazy" className="w-full h-full object-contain" />
                                     </div>
                                     <span className={cn(
-                                        "text-[10px] text-center font-bold font-sans leading-tight px-1",
+                                        "text-[10px] md:text-sm text-center md:text-left font-bold font-sans leading-tight px-1",
                                         selectedSubCategory === cat.id ? "text-primary" : "text-gray-600"
                                     )}>
                                         {cat.name}
@@ -208,8 +208,8 @@ const CategoryProductsPage = () => {
                         </aside>
 
                         {/* Content */}
-                        <main className="flex-1 p-2 pb-24 bg-white space-y-4 overflow-x-hidden">
-                            <div className="grid grid-cols-2 gap-x-2 gap-y-3">
+                        <main className="flex-1 p-2 md:p-6 pb-24 bg-white space-y-4 overflow-x-hidden">
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-2 gap-y-3 md:gap-x-4 md:gap-y-6">
                                 {filteredProducts.map((product) => (
                                     <ProductCard key={product.id} product={product} compact={true} />
                                 ))}

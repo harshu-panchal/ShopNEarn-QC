@@ -1065,19 +1065,6 @@ const ProductManagement = () => {
                             placeholder="e.g. Amul"
                           />
                         </div>
-                        <div className="space-y-1.5 flex flex-col">
-                          <label className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
-                            Product Code
-                          </label>
-                          <input
-                            value={formData.sku}
-                            onChange={(e) =>
-                              setFormData({ ...formData, sku: e.target.value })
-                            }
-                            className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-mono font-bold outline-none ring-primary/5 focus:ring-2"
-                            placeholder="AUTO-GENERATED"
-                          />
-                        </div>
                       </div>
                     </div>
                   )}
@@ -1272,14 +1259,6 @@ const ProductManagement = () => {
                               }} placeholder="Stock" className="w-full bg-white px-3 py-2 rounded-xl text-xs ring-1 ring-slate-100 outline-none" />
                             </div>
                             <div className="flex items-center gap-2">
-                              <div className="flex-1 space-y-1">
-                                <label className="text-[8px] font-bold text-slate-600 uppercase tracking-widest ml-1">SKU</label>
-                                <input value={v.sku} onChange={e => {
-                                  const news = [...formData.variants];
-                                  news[i].sku = e.target.value;
-                                  setFormData({ ...formData, variants: news });
-                                }} placeholder="SKU" className="w-full bg-white px-3 py-2 rounded-xl text-[10px] ring-1 ring-slate-100 outline-none" />
-                              </div>
                               <button type="button" onClick={() => {
                                 setFormData((prev) => {
                                   const remaining = prev.variants

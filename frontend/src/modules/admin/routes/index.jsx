@@ -1,7 +1,9 @@
 import React, { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import DashboardLayout from "@shared/layout/DashboardLayout";
+import { applyNavBadgeCounts } from "@shared/layout/applyNavBadgeCounts";
 import { useSupportUnread } from "@core/context/SupportUnreadContext";
+import { useNavBadges } from "@core/context/NavBadgeContext";
 import { setActiveRole, ROLES } from "@core/auth/activeRoleStore";
 import {
   LayoutDashboard,
@@ -283,15 +285,29 @@ const AdminRoutes = () => {
   }, []);
 
   const { totalUnread } = useSupportUnread();
+  const { countsByPath } = useNavBadges();
 
   const navItemsWithBadges = React.useMemo(() => {
-    const count = Number.isFinite(totalUnread) ? totalUnread : 0;
-    if (count <= 0) return navItems;
-    return navItems.map((item) => {
+    const withQueueBadges = applyNavBadgeCounts(navItems, countsByPath);
+    const supportUnread = Number.isFinite(totalUnread) ? totalUnread : 0;
+    if (supportUnread <= 0) return withQueueBadges;
+
+    return withQueueBadges.map((item) => {
       if (item?.label !== "Customer Support") return item;
-      return { ...item, badgeCount: count };
+      const children = (item.children || []).map((child) => {
+        if (String(child?.path || "") !== "/admin/support-tickets") return child;
+        return {
+          ...child,
+          badgeCount: Number(child.badgeCount || 0) + supportUnread,
+        };
+      });
+      return {
+        ...item,
+        children,
+        badgeCount: Number(item.badgeCount || 0) + supportUnread,
+      };
     });
-  }, [totalUnread]);
+  }, [totalUnread, countsByPath]);
 
   return (
     <DashboardLayout navItems={navItemsWithBadges} title="Admin Center">

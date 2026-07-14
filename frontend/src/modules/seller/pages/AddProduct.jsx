@@ -28,22 +28,9 @@ const AddProduct = () => {
 
   const randomSuffixRef = useRef(Math.random().toString(36).substring(2, 6));
 
-  const makeSku = (name, index = 1) => {
-    const prefix =
-      String(name || "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "")
-        .slice(0, 5) || "item";
-    return `${prefix}-${String(index).padStart(3, "0")}-${randomSuffixRef.current}`;
-  };
-
-  const isAutoSku = (sku, name, index = 1) =>
-    String(sku || "").toLowerCase() === makeSku(name, index);
-
   const [formData, setFormData] = useState({
     name: "",
     slug: "",
-    sku: "",
     description: "",
     price: "",
     salePrice: "",
@@ -65,7 +52,6 @@ const AddProduct = () => {
         price: "",
         salePrice: "",
         stock: "",
-        sku: "",
       },
     ],
   });
@@ -74,29 +60,8 @@ const AddProduct = () => {
   const [isLoadingCats, setIsLoadingCats] = useState(true);
 
   useEffect(() => {
-    setFormData((prev) => {
-      if (!prev.name) return prev;
-
-      const nextSku =
-        !prev.sku || isAutoSku(prev.sku, prev.name, 1)
-          ? makeSku(prev.name, 1)
-          : prev.sku;
-
-      const nextVariants = prev.variants.map((variant, idx) => {
-        const variantIndex = idx + 1;
-        const shouldAuto =
-          !variant.sku || isAutoSku(variant.sku, prev.name, variantIndex);
-        return shouldAuto
-          ? { ...variant, sku: makeSku(prev.name, variantIndex) }
-          : variant;
-      });
-
-      const changed =
-        nextSku !== prev.sku ||
-        nextVariants.some((variant, idx) => variant !== prev.variants[idx]);
-
-      return changed ? { ...prev, sku: nextSku, variants: nextVariants } : prev;
-    });
+    // Only name changes affect variants if we had SKU auto-generation, but we removed it.
+    // Keeping this hook empty or removing it entirely if it does nothing else.
   }, [formData.name]);
 
   React.useEffect(() => {
@@ -143,7 +108,6 @@ const AddProduct = () => {
       // Basic fields
       data.append("name", formData.name);
       data.append("slug", formData.slug);
-      data.append("sku", formData.sku);
       data.append("description", formData.description);
       data.append("brand", formData.brand);
       data.append("weight", formData.weight);
@@ -307,19 +271,6 @@ const AddProduct = () => {
                     setFormData((prev) => ({
                       ...prev,
                       name: nextName,
-                      sku:
-                        !prev.sku || isAutoSku(prev.sku, prev.name, 1)
-                          ? makeSku(nextName, 1)
-                          : prev.sku,
-                      variants: prev.variants.map((variant, idx) => {
-                        const variantIndex = idx + 1;
-                        const shouldAuto =
-                          !variant.sku ||
-                          isAutoSku(variant.sku, prev.name, variantIndex);
-                        return shouldAuto
-                          ? { ...variant, sku: makeSku(nextName, variantIndex) }
-                          : variant;
-                      }),
                     }));
                   }}
                   className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-md text-sm font-semibold outline-none ring-primary/5 focus:ring-2 transition-all"
@@ -355,19 +306,6 @@ const AddProduct = () => {
                     placeholder="e.g. Amul"
                   />
                 </div>
-                <div className="space-y-1.5 flex flex-col">
-                  <label className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
-                    Product Code
-                  </label>
-                  <input
-                    value={formData.sku}
-                    onChange={(e) =>
-                      setFormData({ ...formData, sku: e.target.value })
-                    }
-                    className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-md text-sm font-mono font-bold outline-none ring-primary/5 focus:ring-2 transition-all"
-                    placeholder="AUTO-GENERATED"
-                  />
-                </div>
               </div>
             </div>
           )}
@@ -395,7 +333,6 @@ const AddProduct = () => {
                           price: "",
                           salePrice: "",
                           stock: "",
-                          sku: makeSku(prev.name, prev.variants.length + 1),
                         },
                       ],
                     }))
@@ -482,21 +419,6 @@ const AddProduct = () => {
                         className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
                       />
                     </div>
-                    <div className="col-span-5 md:col-span-2 space-y-1">
-                      <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
-                        Product Code
-                      </label>
-                      <input
-                        value={variant.sku}
-                        onChange={(e) => {
-                          const newVariants = [...formData.variants];
-                          newVariants[index].sku = e.target.value;
-                          setFormData({ ...formData, variants: newVariants });
-                        }}
-                        placeholder={makeSku(formData.name, index + 1)}
-                        className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-primary/10"
-                      />
-                    </div>
                     <div className="col-span-1 flex justify-end pb-1">
                       <button
                         onClick={() => {
@@ -505,14 +427,7 @@ const AddProduct = () => {
                               const remaining = prev.variants
                                 .map((variant, idx) => ({ variant, oldIndex: idx + 1 }))
                                 .filter((item) => item.oldIndex !== index + 1)
-                                .map((item, newIdx) => {
-                                  const shouldAuto =
-                                    !item.variant.sku ||
-                                    isAutoSku(item.variant.sku, prev.name, item.oldIndex);
-                                  return shouldAuto
-                                    ? { ...item.variant, sku: makeSku(prev.name, newIdx + 1) }
-                                    : item.variant;
-                                });
+                                .map((item) => item.variant);
                               return { ...prev, variants: remaining };
                             });
                           }

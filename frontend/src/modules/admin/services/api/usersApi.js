@@ -21,6 +21,12 @@ export const adminUsersApi = {
     approveSeller: (id) => axiosInstance.patch(`/admin/sellers/approve/${id}`),
     rejectSeller: (id, data) =>
         axiosInstance.delete(`/admin/sellers/reject/${id}`, { data }),
+
+    /** Sidebar "new since last visit" badge counts. `since` is a key→ISO map. */
+    getNavBadges: (sinceByKey = {}) =>
+        axiosInstance.get('/admin/nav-badges', {
+            params: { since: JSON.stringify(sinceByKey || {}) },
+        }),
 };
 
 export default adminUsersApi;

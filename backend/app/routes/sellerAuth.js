@@ -11,6 +11,7 @@ import {
 import { getSellerProfile, updateSellerProfile, requestWithdrawal, getNearbySellers } from "../controller/sellerController.js";
 import { getSellerStats, getSellerEarnings } from "../controller/sellerStatsController.js";
 import { getSellerWalletSummaryController } from "../controller/adminFinanceController.js";
+import { getSellerNavBadges } from "../controller/navBadgeController.js";
 import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
 import {
     authRouteRateLimiter,
@@ -88,6 +89,7 @@ router.put(
 router.get("/stats", verifyToken, allowRoles("seller"), getSellerStats);
 router.get("/earnings", verifyToken, allowRoles("seller"), getSellerEarnings);
 router.get("/wallet/summary", verifyToken, allowRoles("seller"), getSellerWalletSummaryController);
+router.get("/nav-badges", verifyToken, allowRoles("seller"), getSellerNavBadges);
 router.post("/request-withdrawal", verifyToken, allowRoles("seller"), requestWithdrawal);
 
 export default router;

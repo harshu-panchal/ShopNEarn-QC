@@ -33,11 +33,23 @@ const FranchiseStockPage = () => {
     load();
   }, []);
 
+  const getProductPrice = (product) => {
+    if (!product) return 0;
+    let price = Number(product.salePrice) || Number(product.price) || 0;
+    if (Array.isArray(product.variants) && product.variants.length > 0) {
+      const defaultVar = product.variants.find(v => v.salePrice > 0 || v.price > 0) || product.variants[0];
+      if (defaultVar && (defaultVar.salePrice > 0 || defaultVar.price > 0)) {
+        price = Number(defaultVar.salePrice) || Number(defaultVar.price);
+      }
+    }
+    return price;
+  };
+
   const stats = useMemo(() => {
     const skuCount = items.length;
     const totalUnits = items.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
     const estValue = items.reduce(
-      (sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.product?.price) || 0),
+      (sum, r) => sum + (Number(r.quantity) || 0) * getProductPrice(r.product),
       0,
     );
     return { skuCount, totalUnits, estValue };
@@ -99,7 +111,7 @@ const FranchiseStockPage = () => {
                 </thead>
                 <tbody>
                   {items.map((row) => {
-                    const price = Number(row.product?.price) || 0;
+                    const price = getProductPrice(row.product);
                     const qty = Number(row.quantity) || 0;
                     return (
                       <tr key={row._id} className="border-t border-slate-100">

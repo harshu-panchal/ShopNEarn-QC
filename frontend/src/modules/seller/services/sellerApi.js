@@ -40,6 +40,10 @@ export const sellerApi = {
     axiosInstance.put(`/orders/status/${orderId}`, data),
   getEarnings: () => axiosInstance.get("/seller/earnings"),
   getWalletSummary: () => axiosInstance.get("/seller/wallet/summary"),
+  getNavBadges: (sinceByKey = {}) =>
+    axiosInstance.get("/seller/nav-badges", {
+      params: { since: JSON.stringify(sinceByKey || {}) },
+    }),
   getProfile: () => axiosInstance.get("/seller/profile"),
   updateProfile: (data) => axiosInstance.put("/seller/profile", data),
 

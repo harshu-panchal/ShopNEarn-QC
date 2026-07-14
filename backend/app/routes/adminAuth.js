@@ -52,6 +52,7 @@ import {
     authRouteRateLimiter,
     createContentLengthGuard,
 } from "../middleware/securityMiddlewares.js";
+import { getAdminNavBadges } from "../controller/navBadgeController.js";
 
 const router = express.Router();
 
@@ -194,6 +195,9 @@ router.get("/seller-withdrawals", verifyToken, allowRoles("admin"), getSellerWit
 router.get("/delivery-withdrawals", verifyToken, allowRoles("admin"), getDeliveryWithdrawals);
 router.get("/seller-transactions", verifyToken, allowRoles("admin"), getSellerTransactions);
 router.put("/withdrawals/:id", verifyToken, allowRoles("admin"), updateWithdrawalStatus);
+
+// Sidebar "new since last visit" badge counts
+router.get("/nav-badges", verifyToken, allowRoles("admin"), getAdminNavBadges);
 
 // Protected admin route example
 router.get(

@@ -1,6 +1,8 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import DashboardLayout from "@shared/layout/DashboardLayout";
+import { applyNavBadgeCounts } from "@shared/layout/applyNavBadgeCounts";
+import { useNavBadges } from "@core/context/NavBadgeContext";
 import { setActiveRole, ROLES } from "@core/auth/activeRoleStore";
 import Orders from "../pages/Orders";
 import {
@@ -79,8 +81,14 @@ const SellerRoutes = () => {
     setActiveRole(ROLES.SELLER);
   }, []);
 
+  const { countsByPath } = useNavBadges();
+  const navItemsWithBadges = useMemo(
+    () => applyNavBadgeCounts(navItems, countsByPath),
+    [countsByPath],
+  );
+
   return (
-    <DashboardLayout navItems={navItems} title="Seller Panel">
+    <DashboardLayout navItems={navItemsWithBadges} title="Seller Panel">
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/products" element={<ProductManagement />} />
