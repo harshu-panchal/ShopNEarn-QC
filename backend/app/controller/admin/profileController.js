@@ -1,30 +1,40 @@
 import Admin from "../../models/admin.js";
 import handleResponse from "../../utils/helper.js";
+import {
+  resolveAdminAccess,
+  sanitizeAdminForResponse,
+} from "../../services/admin/adminRbacService.js";
 
 export const getAdminProfile = async (req, res) => {
   try {
-    console.log('[ProfileService] Fetching admin profile for ID:', req.user?.id);
     if (!req.user?.id) {
-      console.error('[ProfileService] Missing ID in req.user');
       return handleResponse(res, 400, "Missing user ID in session");
     }
 
-    const admin = await Admin.findById(req.user.id);
-    if (!admin) {
-      console.warn('[ProfileService] Admin document not found in database for ID:', req.user.id);
-      return handleResponse(res, 404, "Admin not found");
+    // Prefer access already resolved by requireActiveAdmin.
+    if (req.admin && req.adminAccess) {
+      return handleResponse(
+        res,
+        200,
+        "Admin profile fetched successfully",
+        sanitizeAdminForResponse(req.admin, {
+          _id: req.adminAccess.roleId,
+          key: req.adminAccess.roleKey,
+          name: req.adminAccess.roleName,
+          permissions: req.adminAccess.permissions,
+        }),
+      );
     }
 
-    console.log('[ProfileService] Successfully fetched profile for:', admin.email);
+    const access = await resolveAdminAccess(req.user.id);
     return handleResponse(
       res,
       200,
       "Admin profile fetched successfully",
-      admin,
+      sanitizeAdminForResponse(access.admin, access.role),
     );
   } catch (error) {
-    console.error('[ProfileService] FATAL ERROR:', error);
-    return handleResponse(res, 500, error.message);
+    return handleResponse(res, error.statusCode || 500, error.message);
   }
 };
 
@@ -32,7 +42,7 @@ export const updateAdminProfile = async (req, res) => {
   try {
     const { name, email } = req.body;
 
-    const admin = await Admin.findById(req.user.id);
+    const admin = await Admin.findById(req.user.id).populate("roleId");
     if (!admin) {
       return handleResponse(res, 404, "Admin not found");
     }
@@ -51,7 +61,7 @@ export const updateAdminProfile = async (req, res) => {
       res,
       200,
       "Admin profile updated successfully",
-      updatedAdmin,
+      sanitizeAdminForResponse(updatedAdmin, updatedAdmin.roleId),
     );
   } catch (error) {
     if (error.code === 11000) {
@@ -77,9 +87,14 @@ export const updateAdminPassword = async (req, res) => {
     }
 
     admin.password = newPassword;
+    admin.tokenVersion = Number(admin.tokenVersion || 0) + 1;
     await admin.save();
 
-    return handleResponse(res, 200, "Password updated successfully");
+    return handleResponse(
+      res,
+      200,
+      "Password updated successfully. Please sign in again.",
+    );
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }

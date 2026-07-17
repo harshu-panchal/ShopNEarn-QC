@@ -62,6 +62,11 @@ import {
   previewBinaryMove,
   executeBinaryMove,
 } from "../../services/mlm/mlmBinaryMoveService.js";
+import { buildBinaryTreeBottomUp } from "../../services/mlm/mlmBinaryTreeBuilder.js";
+import {
+  buildMlmMembersExcelBuffer,
+  queryMlmMembersEnriched,
+} from "../../services/mlm/mlmMemberListService.js";
 import MlmDailyPayoutReport, {
   MLM_DAILY_PAYOUT_REPORT_STATUS,
 } from "../../models/mlmDailyPayoutReport.js";
@@ -211,107 +216,43 @@ export const getMlmDashboard = async (req, res) => {
  */
 export const listMlmMembers = async (req, res) => {
   try {
-    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 200);
-    const skip = (page - 1) * limit;
-
-    const query = {};
-    if (req.query.planType && ALL_MLM_PLAN_TYPES.includes(req.query.planType)) {
-      query.planType = req.query.planType;
-    }
-    if (req.query.status) query.status = req.query.status;
-
-    const rawNeedle = req.query.q ? String(req.query.q).trim() : "";
-    if (rawNeedle) {
-      // Escape regex meta-characters so admin input like "user+test@x"
-      // doesn't accidentally compile to invalid regex.
-      const escaped = rawNeedle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const rx = new RegExp(escaped, "i");
-
-      const matchingUserIds = await Customer.find({
-        $or: [
-          { name: rx },
-          { phone: rx },
-          { email: rx },
-          { userId: rx },
-        ],
-      })
-        .select({ _id: 1 })
-        .lean()
-        .then((users) => users.map((u) => u._id));
-
-      // Combine the User-side matches with a direct `referralCode`
-      // match on the membership. We always set at least one branch
-      // (`referralCode`) so an empty `matchingUserIds` doesn't
-      // collapse the `$or` into a no-op that returns every row.
-      query.$or = [
-        { referralCode: rx },
-        ...(matchingUserIds.length > 0
-          ? [{ userId: { $in: matchingUserIds } }]
-          : []),
-      ];
-    }
-
-    // `let` (not `const`) because the sponsor-enrichment block
-    // below remaps the array in place.
-    let items = await MlmMembership.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate("userId", "name phone email mlm userId createdAt")
-      .lean();
-
-    // Customer-MLM-rebuild Phase 10 — enrich rows with sponsor name +
-    // referral code so the admin table can show "sponsor" without a
-    // second round-trip. We do this in JS after the main query to keep
-    // the index-friendly sort path.
-    const sponsorIds = Array.from(
-      new Set(
-        items
-          .map((m) => m.sponsorId)
-          .filter(Boolean)
-          .map((id) => String(id)),
-      ),
-    );
-    let sponsorMap = new Map();
-    if (sponsorIds.length > 0) {
-      const sponsors = await MlmMembership.find({
-        userId: { $in: sponsorIds },
-      })
-        .select({ userId: 1, referralCode: 1, createdAt: 1 })
-        .populate("userId", "name phone userId createdAt")
-        .lean();
-      sponsorMap = new Map(
-        sponsors.map((s) => [String(s.userId?._id || s.userId), s]),
-      );
-    }
-    items = items.map((row) => ({
-      ...row,
-      joinedAt: resolveMemberRegistrationAt(row),
-      sponsor: row.sponsorId
-        ? (() => {
-            const sp = sponsorMap.get(String(row.sponsorId));
-            if (!sp) return null;
-            return {
-              name: sp.userId?.name || null,
-              phone: sp.userId?.phone || null,
-              userId: sp.userId?.userId || null,
-              referralCode: sp.referralCode || null,
-              joinedAt: resolveMemberRegistrationAt(sp),
-            };
-          })()
-        : null,
-    }));
-
-    const total = await MlmMembership.countDocuments(query);
-
-    return handleResponse(res, 200, "MLM members", {
-      items,
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit) || 1,
+    const result = await queryMlmMembersEnriched({
+      planType: req.query.planType,
+      status: req.query.status,
+      q: req.query.q,
+      page: req.query.page,
+      limit: req.query.limit,
     });
+
+    return handleResponse(res, 200, "MLM members", result);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/** GET /api/admin/mlm/members/export?q=&planType=&status=
+ *
+ * Downloads an Excel workbook of every member matching the same
+ * filters as the list view (not just the current page).
+ */
+export const exportMlmMembers = async (req, res) => {
+  try {
+    const buffer = await buildMlmMembersExcelBuffer({
+      planType: req.query.planType,
+      status: req.query.status,
+      q: req.query.q,
+    });
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="mlm-members-${stamp}.xlsx"`,
+    );
+    return res.send(buffer);
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
   }
@@ -696,6 +637,84 @@ export const softDeleteMember = async (req, res) => {
       res,
       error.statusCode || 500,
       error.message || "Failed to soft-delete member",
+    );
+  }
+};
+
+/**
+ * POST /api/admin/mlm/customers/:customerId/delete-non-member
+ *
+ * Soft-deletes a Customer account that has NO live MlmMembership.
+ * Used for "No MLM" rows on the members list — accounts that completed
+ * signup/OTP but never got an MLM membership. Tombstoning frees the
+ * phone unique index (partialFilterExpression: deletedAt=null) so the
+ * person can register again from scratch.
+ *
+ * Refuses if a live membership exists — those must go through the
+ * full member soft-delete path (tree restructure).
+ */
+export const deleteNonMlmCustomer = async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(customerId)) {
+      return handleResponse(res, 400, "Invalid customer id");
+    }
+
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      return handleResponse(res, 404, "Customer not found");
+    }
+
+    const liveMembership = await MlmMembership.findOne({
+      userId: customer._id,
+    }).lean();
+    if (liveMembership) {
+      return handleResponse(
+        res,
+        409,
+        "This account has an MLM membership. Open the member page and use soft-delete instead.",
+        {
+          code: "HAS_MEMBERSHIP",
+          membershipId: String(liveMembership._id),
+        },
+      );
+    }
+
+    if (customer.deletedAt) {
+      return handleResponse(res, 200, "Account was already deleted", {
+        customerId: String(customer._id),
+        alreadyDeleted: true,
+      });
+    }
+
+    const reason = (req.body?.reason || "").toString().trim().slice(0, 240);
+    customer.deletedAt = new Date();
+    customer.deletedBy = req.user?.id || null;
+    customer.updatedBy = req.user?.id || null;
+    customer.isActive = false;
+    await customer.save();
+
+    console.warn(
+      `[admin-delete-non-mlm] admin=${req.user?.id} -> customer=${customer._id} ` +
+        `phone=${customer.phone} userId=${customer.userId}` +
+        (reason ? ` reason=${reason}` : ""),
+    );
+
+    return handleResponse(
+      res,
+      200,
+      "Account deleted. The phone number can be used to register again.",
+      {
+        customerId: String(customer._id),
+        phone: customer.phone,
+        userId: customer.userId,
+      },
+    );
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to delete account",
     );
   }
 };
@@ -2198,6 +2217,33 @@ export const finalizeMlmPayoutReport = async (req, res) => {
     }
     await report.save();
     return handleResponse(res, 200, "Report finalized", { report });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+/** DELETE /api/admin/mlm/payout-reports/:date
+ *
+ * Removes a daily payout report row. Safe because the report is
+ * derived data (a rollup of MlmCommissionEvent) — deleting it never
+ * touches wallets or ledger entries, and the same date can be
+ * regenerated at any time via the generate endpoint.
+ */
+export const deleteMlmPayoutReport = async (req, res) => {
+  try {
+    assertValidReportDate(req.params.date);
+    const report = await MlmDailyPayoutReport.findOneAndDelete({
+      reportDate: req.params.date,
+    });
+    if (!report) return handleResponse(res, 404, "Report not found");
+
+    console.warn(
+      `[mlm-payout-report] admin=${req.user?.id || null} deleted report ${req.params.date} (status=${report.status})`,
+    );
+
+    return handleResponse(res, 200, "Report deleted", {
+      reportDate: req.params.date,
+    });
   } catch (error) {
     return handleResponse(res, error.statusCode || 400, error.message);
   }

@@ -133,6 +133,55 @@ function applyMediaFields(productData) {
   }
 }
 
+/**
+ * Update-safe media merge: keep main cover and gallery independent.
+ * - Never promotes gallery[0] into mainImage.
+ * - Never clears gallery/main just because the other field was updated.
+ * - `existingGalleryImages` = URLs the client wants to keep.
+ * - Newly uploaded gallery files are appended after kept URLs.
+ */
+function applyMediaFieldsForUpdate(productData, { uploadedGalleryUrls = [] } = {}) {
+  const explicitMainImage = normalizeUrl(
+    productData.mainImage || productData.mainImageUrl,
+  );
+  delete productData.mainImageUrl;
+
+  if (explicitMainImage) {
+    productData.mainImage = explicitMainImage;
+  } else {
+    // Omit from $set so the existing DB mainImage is preserved.
+    delete productData.mainImage;
+  }
+
+  const hasExistingGalleryField = Object.prototype.hasOwnProperty.call(
+    productData,
+    "existingGalleryImages",
+  );
+  const keptGallery = hasExistingGalleryField
+    ? parseImageList(productData.existingGalleryImages)
+    : null;
+  delete productData.existingGalleryImages;
+  delete productData.images;
+
+  if (hasExistingGalleryField || uploadedGalleryUrls.length > 0) {
+    const base = keptGallery || parseImageList(productData.galleryImages);
+    // Dedupe while preserving order: kept first, then new uploads.
+    const seen = new Set();
+    const merged = [];
+    for (const url of [...base, ...uploadedGalleryUrls]) {
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      merged.push(url);
+    }
+    // Main cover must not also sit in the gallery list.
+    productData.galleryImages = explicitMainImage
+      ? merged.filter((url) => url !== explicitMainImage)
+      : merged;
+  } else {
+    delete productData.galleryImages;
+  }
+}
+
 const RESTRICTED_MODERATION_FIELDS = [
   "approvalStatus",
   "approvalRequestedAt",
@@ -769,6 +818,16 @@ export const createProduct = async (req, res) => {
     }
 
     applyMediaFields(productData);
+    // Keep main cover out of the gallery list when both were uploaded.
+    if (
+      productData.mainImage &&
+      Array.isArray(productData.galleryImages) &&
+      productData.galleryImages.length > 0
+    ) {
+      productData.galleryImages = productData.galleryImages.filter(
+        (url) => url !== productData.mainImage,
+      );
+    }
 
     // Handle tags if string
     if (typeof productData.tags === "string") {
@@ -860,8 +919,8 @@ export const updateProduct = async (req, res) => {
 
     // Handle multipart files (mainImage and galleryImages)
     const files = req.files || [];
+    const uploadedGalleryUrls = [];
     if (files.length > 0) {
-      const galleryUrls = [];
       for (const file of files) {
         try {
           if (file.fieldname === "mainImage") {
@@ -875,7 +934,7 @@ export const updateProduct = async (req, res) => {
               mimeType: file.mimetype,
               resourceType: "image",
             });
-            galleryUrls.push(url);
+            uploadedGalleryUrls.push(url);
           }
         } catch (err) {
           logger.error("Cloudinary upload failed during update", {
@@ -883,9 +942,6 @@ export const updateProduct = async (req, res) => {
             error: err,
           });
         }
-      }
-      if (galleryUrls.length > 0) {
-        productData.galleryImages = galleryUrls;
       }
     }
 
@@ -936,7 +992,7 @@ export const updateProduct = async (req, res) => {
       productData.sku = product.sku || makeProductSku(skuBaseName, 1);
     }
 
-    applyMediaFields(productData);
+    applyMediaFieldsForUpdate(productData, { uploadedGalleryUrls });
 
     if (typeof productData.tags === "string") {
       productData.tags = productData.tags.split(",").map((tag) => tag.trim());

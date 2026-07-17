@@ -10,6 +10,11 @@ import axiosInstance from '@core/api/axios';
 export const adminMlmApi = {
     getDashboard: () => axiosInstance.get('/admin/mlm/dashboard'),
     listMembers: (params) => axiosInstance.get('/admin/mlm/members', { params }),
+    exportMembers: (params) =>
+        axiosInstance.get('/admin/mlm/members/export', {
+            params,
+            responseType: 'blob',
+        }),
     getMember: (id) => axiosInstance.get(`/admin/mlm/members/${id}`),
     getMemberDownline: (id, params) =>
         axiosInstance.get(`/admin/mlm/members/${id}/downline`, { params }),
@@ -68,6 +73,16 @@ export const adminMlmApi = {
     softDeleteMember: (membershipId, data) =>
         axiosInstance.post(
             `/admin/mlm/members/${membershipId}/soft-delete`,
+            data || {},
+        ),
+
+    /**
+     * Soft-delete a verified customer with no MLM membership ("No MLM"
+     * rows). Frees the phone so they can register again.
+     */
+    deleteNonMlmCustomer: (customerId, data) =>
+        axiosInstance.post(
+            `/admin/mlm/customers/${customerId}/delete-non-member`,
             data || {},
         ),
 
@@ -154,6 +169,8 @@ export const adminMlmApi = {
         axiosInstance.get(`/admin/mlm/payout-reports/${date}`),
     generatePayoutReport: (date, data) =>
         axiosInstance.post(`/admin/mlm/payout-reports/${date}/generate`, data || {}),
+    deletePayoutReport: (date) =>
+        axiosInstance.delete(`/admin/mlm/payout-reports/${date}`),
     patchPayoutReportLineItem: (date, lineItemId, data) =>
         axiosInstance.patch(`/admin/mlm/payout-reports/${date}/line-items/${lineItemId}`, data),
     applyPayoutReportCorrection: (date, lineItemId, data) =>

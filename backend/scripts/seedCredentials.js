@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import Admin from '../app/models/admin.js';
 import Seller from '../app/models/seller.js';
+import { ensureSuperAdminRole } from '../app/services/admin/adminRbacService.js';
 
 dotenv.config();
 
@@ -19,15 +20,28 @@ async function seed() {
         await mongoose.connect(process.env.MONGO_URI);
         console.log('Connected to MongoDB');
 
+        const superRole = await ensureSuperAdminRole();
+        console.log('Ensured super_admin role');
+
         for (const adminData of admins) {
             // Find existing
             let admin = await Admin.findOne({ email: adminData.email });
             if (admin) {
                 admin.password = adminData.password;
+                admin.roleId = superRole._id;
+                admin.isActive = true;
+                if (admin.tokenVersion == null) admin.tokenVersion = 0;
                 await admin.save();
                 console.log(`Updated Admin: ${adminData.email}`);
             } else {
-                await Admin.create({ ...adminData, role: 'admin', isVerified: true });
+                await Admin.create({
+                    ...adminData,
+                    role: 'admin',
+                    roleId: superRole._id,
+                    isVerified: true,
+                    isActive: true,
+                    tokenVersion: 0,
+                });
                 console.log(`Created Admin: ${adminData.email}`);
             }
         }

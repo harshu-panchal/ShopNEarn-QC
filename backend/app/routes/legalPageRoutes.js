@@ -9,23 +9,22 @@ import {
     seedDefaultLegalPages,
     updateLegalPage,
 } from "../controller/legalPageController.js";
-import { allowRoles, verifyToken } from "../middleware/authMiddleware.js";
+import { adminPermissionGuard } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
-const adminGuard = [verifyToken, allowRoles("admin")];
 
 /* Admin (mounted at /admin/legal-pages) */
 export const legalPageAdminRouter = express.Router();
-legalPageAdminRouter.get("/", ...adminGuard, listAdminLegalPages);
-legalPageAdminRouter.post("/", ...adminGuard, createLegalPage);
+legalPageAdminRouter.get("/", ...adminPermissionGuard("content:view"), listAdminLegalPages);
+legalPageAdminRouter.post("/", ...adminPermissionGuard("content:create"), createLegalPage);
 legalPageAdminRouter.post(
     "/seed-defaults",
-    ...adminGuard,
+    ...adminPermissionGuard("content:create"),
     seedDefaultLegalPages,
 );
-legalPageAdminRouter.get("/:id", ...adminGuard, getAdminLegalPageById);
-legalPageAdminRouter.put("/:id", ...adminGuard, updateLegalPage);
-legalPageAdminRouter.delete("/:id", ...adminGuard, deleteLegalPage);
+legalPageAdminRouter.get("/:id", ...adminPermissionGuard("content:view"), getAdminLegalPageById);
+legalPageAdminRouter.put("/:id", ...adminPermissionGuard("content:update"), updateLegalPage);
+legalPageAdminRouter.delete("/:id", ...adminPermissionGuard("content:delete"), deleteLegalPage);
 
 /* Public (mounted at /public/legal-pages) */
 export const legalPagePublicRouter = express.Router();

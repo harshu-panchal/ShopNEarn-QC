@@ -1,5 +1,5 @@
 import express from "express";
-import { allowRoles, verifyToken } from "../middleware/authMiddleware.js";
+import { adminPermissionGuard } from "../middleware/authMiddleware.js";
 import {
   exportAdminInventoryReports,
   getAdminInventoryB2bReports,
@@ -14,24 +14,22 @@ import {
 
 const router = express.Router();
 
-router.get("/overview", verifyToken, allowRoles("admin"), getAdminInventoryOverviewReports);
-router.get("/sellers", verifyToken, allowRoles("admin"), getAdminInventorySellerReports);
-router.get("/franchise", verifyToken, allowRoles("admin"), getAdminInventoryFranchiseReports);
-router.get("/hub", verifyToken, allowRoles("admin"), getAdminInventoryHubReports);
-router.get("/b2b-purchases", verifyToken, allowRoles("admin"), getAdminInventoryB2bReports);
+router.get("/overview", ...adminPermissionGuard("inventory:view"), getAdminInventoryOverviewReports);
+router.get("/sellers", ...adminPermissionGuard("inventory:view"), getAdminInventorySellerReports);
+router.get("/franchise", ...adminPermissionGuard("inventory:view"), getAdminInventoryFranchiseReports);
+router.get("/hub", ...adminPermissionGuard("inventory:view"), getAdminInventoryHubReports);
+router.get("/b2b-purchases", ...adminPermissionGuard("inventory:view"), getAdminInventoryB2bReports);
 router.get(
   "/customer-retail",
-  verifyToken,
-  allowRoles("admin"),
+  ...adminPermissionGuard("inventory:view"),
   getAdminInventoryCustomerRetailReports,
 );
-router.get("/customer", verifyToken, allowRoles("admin"), getAdminInventoryCustomerReports);
+router.get("/customer", ...adminPermissionGuard("inventory:view"), getAdminInventoryCustomerReports);
 router.get(
   "/transfers/reconciliation",
-  verifyToken,
-  allowRoles("admin"),
+  ...adminPermissionGuard("inventory:view"),
   getAdminInventoryTransferReconciliation,
 );
-router.get("/export", verifyToken, allowRoles("admin"), exportAdminInventoryReports);
+router.get("/export", ...adminPermissionGuard("inventory:export"), exportAdminInventoryReports);
 
 export default router;

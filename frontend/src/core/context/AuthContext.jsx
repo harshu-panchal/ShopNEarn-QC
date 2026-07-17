@@ -133,7 +133,17 @@ export const AuthProvider = ({ children }) => {
                     setUser(response.data.result);
                 } catch (error) {
                     console.error('Failed to fetch profile:', error);
-                    // Preserve stored tokens on request failures; only manual logout clears auth storage.
+                    const status = error?.response?.status;
+                    // Admin sessions that are revoked / expired / unauthorized should
+                    // clear the stored token so the shell does not stay half-authenticated.
+                    if (
+                        currentRole === 'admin' &&
+                        (status === 401 || status === 403)
+                    ) {
+                        const storageKey = ROLE_STORAGE_KEYS.admin;
+                        if (storageKey) rawRemove(storageKey);
+                        setAuthData((prev) => ({ ...prev, admin: null }));
+                    }
                     setUser(null);
                 } finally {
                     setIsLoading(false);

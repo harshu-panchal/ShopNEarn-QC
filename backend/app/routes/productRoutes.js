@@ -20,6 +20,8 @@ import {
     allowRoles,
     optionalVerifyToken,
     requireApprovedSeller,
+    adminPermissionGuard,
+    requireAdminPermissionIfAdmin,
 } from "../middleware/authMiddleware.js";
 import {
     exportSellerInventoryReports,
@@ -66,9 +68,9 @@ router.get(
     exportSellerInventoryReports
 );
 router.post("/adjust-stock", verifyToken, allowRoles("seller"), requireApprovedSeller, adjustStock);
-router.get("/moderation", verifyToken, allowRoles("admin"), getModerationProducts);
-router.patch("/moderation/:id/approve", verifyToken, allowRoles("admin"), approveProduct);
-router.patch("/moderation/:id/reject", verifyToken, allowRoles("admin"), rejectProduct);
+router.get("/moderation", ...adminPermissionGuard("products:view"), getModerationProducts);
+router.patch("/moderation/:id/approve", ...adminPermissionGuard("products:approve"), approveProduct);
+router.patch("/moderation/:id/reject", ...adminPermissionGuard("products:reject"), rejectProduct);
 router.get("/:id", optionalVerifyToken, getProductById);
 
 router.post(
@@ -76,6 +78,7 @@ router.post(
     verifyToken,
     allowRoles("seller", "admin"),
     requireApprovedSeller,
+    requireAdminPermissionIfAdmin("products:update"),
     upload.any(),
     createProduct
 );
@@ -85,6 +88,7 @@ router.put(
     verifyToken,
     allowRoles("seller", "admin"),
     requireApprovedSeller,
+    requireAdminPermissionIfAdmin("products:update"),
     upload.any(),
     updateProduct
 );
@@ -94,6 +98,7 @@ router.delete(
     verifyToken,
     allowRoles("seller", "admin"),
     requireApprovedSeller,
+    requireAdminPermissionIfAdmin("products:update"),
     deleteProduct
 );
 

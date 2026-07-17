@@ -29,6 +29,8 @@ import mongoose from "mongoose";
 
 // Core domain models
 import "../models/admin.js";
+import "../models/adminRole.js";
+import "../models/adminAuditLog.js";
 import "../models/cart.js";
 import "../models/category.js";
 import "../models/checkoutGroup.js";
@@ -91,6 +93,8 @@ export const REQUIRED_MODELS = Object.freeze([
   "Seller",
   "Delivery",
   "Admin",
+  "AdminRole",
+  "AdminAuditLog",
 
   // Catalog
   "Product",

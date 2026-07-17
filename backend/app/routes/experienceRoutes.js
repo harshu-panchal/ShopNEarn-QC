@@ -6,7 +6,7 @@ import {
   getAdminHeroConfig,
   upsertHeroConfig,
 } from "../controller/experienceController.js";
-import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
+import { adminPermissionGuard } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -14,21 +14,18 @@ const upload = multer({ storage: multer.memoryStorage() });
 // Admin hero config
 router.get(
   "/admin/experience/hero",
-  verifyToken,
-  allowRoles("admin"),
+  ...adminPermissionGuard("marketing:view"),
   getAdminHeroConfig
 );
 router.put(
   "/admin/experience/hero",
-  verifyToken,
-  allowRoles("admin"),
+  ...adminPermissionGuard("marketing:update"),
   upsertHeroConfig
 );
 
 router.post(
   "/admin/experience/upload-banner",
-  verifyToken,
-  allowRoles("admin"),
+  ...adminPermissionGuard("marketing:update"),
   upload.single("image"),
   uploadBannerImage
 );

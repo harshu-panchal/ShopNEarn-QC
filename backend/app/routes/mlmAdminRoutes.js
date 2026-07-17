@@ -19,10 +19,12 @@ import {
   listUpgradeReviews,
   listMilestoneRules,
   listMlmMembers,
+  exportMlmMembers,
   rejectJoiningReview,
   rejectUpgradeReview,
   rejectWithdrawal,
   softDeleteMember,
+  deleteNonMlmCustomer,
   updateMemberProfile,
   updateMilestoneRule,
   updateMlmSettings,
@@ -38,120 +40,68 @@ import {
   applyMlmPayoutReportCorrection,
   finalizeMlmPayoutReport,
   exportMlmPayoutReport,
+  deleteMlmPayoutReport,
 } from "../controller/admin/mlmAdminController.js";
-import { allowRoles, verifyToken } from "../middleware/authMiddleware.js";
+import { adminPermissionGuard } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
-const adminGuard = [verifyToken, allowRoles("admin")];
 
-router.get("/dashboard", ...adminGuard, getMlmDashboard);
-router.get("/members", ...adminGuard, listMlmMembers);
-router.get("/members/:id", ...adminGuard, getMlmMemberDetail);
-router.get("/members/:id/downline", ...adminGuard, getMlmMemberDownlineTree);
-router.post("/members/:id/adjust-wallet", ...adminGuard, adjustMemberWallet);
-router.get("/members/:id/wallet-verification", ...adminGuard, verifyMemberWalletEndpoint);
+router.get("/dashboard", ...adminPermissionGuard("mlm:view"), getMlmDashboard);
+router.get("/members/export", ...adminPermissionGuard("mlm:view"), exportMlmMembers);
+router.get("/members", ...adminPermissionGuard("mlm:view"), listMlmMembers);
+router.get("/members/:id", ...adminPermissionGuard("mlm:view"), getMlmMemberDetail);
+router.get("/members/:id/downline", ...adminPermissionGuard("mlm:view"), getMlmMemberDownlineTree);
+router.post("/members/:id/adjust-wallet", ...adminPermissionGuard("mlm:adjust"), adjustMemberWallet);
+router.get("/members/:id/wallet-verification", ...adminPermissionGuard("mlm:view"), verifyMemberWalletEndpoint);
 
-// Phase 7 (PO-request): admin-initiated "approve without payment".
-// Flips a REGISTERED_UNPAID member to ACTIVE / Plan A. Idempotent.
-router.post("/members/:id/approve", ...adminGuard, approveMlmMember);
+router.post("/members/:id/approve", ...adminPermissionGuard("mlm:approve"), approveMlmMember);
+router.post("/members/:id/add-child", ...adminPermissionGuard("mlm:move"), addChildMember);
+router.post("/members/:id/move-binary/preview", ...adminPermissionGuard("mlm:move"), previewMoveBinaryMember);
+router.post("/members/:id/move-binary", ...adminPermissionGuard("mlm:move"), moveBinaryMember);
+router.post("/members/:id/impersonation-token", ...adminPermissionGuard("mlm:impersonate"), issueImpersonationToken);
+router.post("/members/:id/soft-delete", ...adminPermissionGuard("mlm:adjust"), softDeleteMember);
+router.post("/customers/:customerId/delete-non-member", ...adminPermissionGuard("customers:view"), deleteNonMlmCustomer);
+router.patch("/members/:id/profile", ...adminPermissionGuard("mlm:adjust"), updateMemberProfile);
+router.post("/members/:id/deactivate", ...adminPermissionGuard("mlm:approve"), deactivateMember);
 
-// Genealogy redesign — admin places a brand-new member into a
-// specific empty L/R slot directly under the parent identified by
-// `:id`. Mirrors the customer endpoint at
-// `POST /api/customer/mlm/genealogy/add-member` but bypasses the
-// downline-ownership check (admins can place anywhere).
-router.post("/members/:id/add-child", ...adminGuard, addChildMember);
+router.get("/withdrawals", ...adminPermissionGuard("mlm:view"), listAdminWithdrawals);
+router.post("/withdrawals/:id/approve", ...adminPermissionGuard("mlm:approve"), approveWithdrawal);
+router.post("/withdrawals/:id/reject", ...adminPermissionGuard("mlm:reject"), rejectWithdrawal);
 
-router.post(
-  "/members/:id/move-binary/preview",
-  ...adminGuard,
-  previewMoveBinaryMember,
-);
-router.post("/members/:id/move-binary", ...adminGuard, moveBinaryMember);
+router.get("/joining-reviews", ...adminPermissionGuard("mlm:view"), listJoiningReviews);
+router.post("/joining-reviews/:id/approve", ...adminPermissionGuard("mlm:approve"), approveJoiningReview);
+router.post("/joining-reviews/:id/reject", ...adminPermissionGuard("mlm:reject"), rejectJoiningReview);
 
-// Admin support tool (PO-request Jun 2026): mint a short-lived
-// customer JWT so the admin can open a new tab pre-authenticated
-// as this member. See controller for the audit / security notes.
-router.post(
-  "/members/:id/impersonation-token",
-  ...adminGuard,
-  issueImpersonationToken,
-);
+router.get("/upgrade-reviews", ...adminPermissionGuard("mlm:view"), listUpgradeReviews);
+router.post("/upgrade-reviews/:id/approve", ...adminPermissionGuard("mlm:approve"), approveUpgradeReview);
+router.post("/upgrade-reviews/:id/reject", ...adminPermissionGuard("mlm:reject"), rejectUpgradeReview);
 
-// Soft-delete a member and promote their larger subtree into the
-// vacated slot. See `mlmMemberSoftDeleteService` for the full
-// restructuring contract.
-router.post(
-  "/members/:id/soft-delete",
-  ...adminGuard,
-  softDeleteMember,
-);
+router.get("/settings", ...adminPermissionGuard("mlm:settings"), getMlmSettings);
+router.put("/settings", ...adminPermissionGuard("mlm:settings"), updateMlmSettings);
 
-// Admin edits to a member's profile: User ID, name, email, phone,
-// password. All fields optional; only provided fields are written.
-// Uniqueness is checked against ALL customers including soft-deleted
-// rows (we don't want to recycle an identifier that downstream
-// ledgers still reference). See controller for the full contract.
-router.patch(
-  "/members/:id/profile",
-  ...adminGuard,
-  updateMemberProfile,
-);
+router.get("/maintenance/jobs", ...adminPermissionGuard("mlm:maintenance"), listMlmMaintenanceJobs);
+router.post("/maintenance/jobs/:jobId/run", ...adminPermissionGuard("mlm:maintenance"), runMlmMaintenanceJob);
 
-// Inverse of `approveMlmMember`: flips an ACTIVE membership back to
-// REGISTERED_UNPAID. Re-activation is the existing "Approve Plan A"
-// button. Fully reversible; no data destroyed.
-router.post(
-  "/members/:id/deactivate",
-  ...adminGuard,
-  deactivateMember,
-);
+router.get("/milestone-rules", ...adminPermissionGuard("mlm:settings"), listMilestoneRules);
+router.post("/milestone-rules", ...adminPermissionGuard("mlm:settings"), createMilestoneRule);
+router.put("/milestone-rules/:id", ...adminPermissionGuard("mlm:settings"), updateMilestoneRule);
+router.delete("/milestone-rules/:id", ...adminPermissionGuard("mlm:settings"), deleteMilestoneRule);
 
-router.get("/withdrawals", ...adminGuard, listAdminWithdrawals);
-router.post("/withdrawals/:id/approve", ...adminGuard, approveWithdrawal);
-router.post("/withdrawals/:id/reject", ...adminGuard, rejectWithdrawal);
-
-router.get("/joining-reviews", ...adminGuard, listJoiningReviews);
-router.post(
-  "/joining-reviews/:id/approve",
-  ...adminGuard,
-  approveJoiningReview,
-);
-router.post("/joining-reviews/:id/reject", ...adminGuard, rejectJoiningReview);
-
-router.get("/upgrade-reviews", ...adminGuard, listUpgradeReviews);
-router.post(
-  "/upgrade-reviews/:id/approve",
-  ...adminGuard,
-  approveUpgradeReview,
-);
-router.post("/upgrade-reviews/:id/reject", ...adminGuard, rejectUpgradeReview);
-
-router.get("/settings", ...adminGuard, getMlmSettings);
-router.put("/settings", ...adminGuard, updateMlmSettings);
-
-router.get("/maintenance/jobs", ...adminGuard, listMlmMaintenanceJobs);
-router.post("/maintenance/jobs/:jobId/run", ...adminGuard, runMlmMaintenanceJob);
-
-router.get("/milestone-rules", ...adminGuard, listMilestoneRules);
-router.post("/milestone-rules", ...adminGuard, createMilestoneRule);
-router.put("/milestone-rules/:id", ...adminGuard, updateMilestoneRule);
-router.delete("/milestone-rules/:id", ...adminGuard, deleteMilestoneRule);
-
-router.get("/payout-reports", ...adminGuard, listMlmPayoutReports);
-router.get("/payout-reports/:date/export", ...adminGuard, exportMlmPayoutReport);
-router.get("/payout-reports/:date", ...adminGuard, getMlmPayoutReport);
-router.post("/payout-reports/:date/generate", ...adminGuard, generateMlmPayoutReport);
+router.get("/payout-reports", ...adminPermissionGuard("mlm:payout"), listMlmPayoutReports);
+router.get("/payout-reports/:date/export", ...adminPermissionGuard("mlm:payout"), exportMlmPayoutReport);
+router.get("/payout-reports/:date", ...adminPermissionGuard("mlm:payout"), getMlmPayoutReport);
+router.post("/payout-reports/:date/generate", ...adminPermissionGuard("mlm:payout"), generateMlmPayoutReport);
+router.delete("/payout-reports/:date", ...adminPermissionGuard("mlm:payout"), deleteMlmPayoutReport);
 router.patch(
   "/payout-reports/:date/line-items/:lineItemId",
-  ...adminGuard,
+  ...adminPermissionGuard("mlm:payout"),
   patchMlmPayoutReportLineItem,
 );
 router.post(
   "/payout-reports/:date/line-items/:lineItemId/apply-correction",
-  ...adminGuard,
+  ...adminPermissionGuard("mlm:payout"),
   applyMlmPayoutReportCorrection,
 );
-router.post("/payout-reports/:date/finalize", ...adminGuard, finalizeMlmPayoutReport);
+router.post("/payout-reports/:date/finalize", ...adminPermissionGuard("mlm:payout"), finalizeMlmPayoutReport);
 
 export default router;

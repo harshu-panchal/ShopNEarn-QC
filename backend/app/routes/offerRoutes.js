@@ -15,78 +15,31 @@ import {
   deleteOfferSection,
   reorderOfferSections,
 } from "../controller/offerSectionController.js";
-import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
+import { adminPermissionGuard } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 router.get("/offers", getPublicOffers);
 router.get("/offer-sections", getPublicOfferSections);
 
-router.get(
-  "/admin-offers",
-  verifyToken,
-  allowRoles("admin"),
-  getAdminOffers,
-);
+router.get("/admin-offers", ...adminPermissionGuard("marketing:view"), getAdminOffers);
+router.post("/admin-offers", ...adminPermissionGuard("marketing:create"), createOffer);
+router.put("/admin-offers/reorder", ...adminPermissionGuard("marketing:update"), reorderOffers);
+router.put("/admin-offers/:id", ...adminPermissionGuard("marketing:update"), updateOffer);
+router.delete("/admin-offers/:id", ...adminPermissionGuard("marketing:delete"), deleteOffer);
 
-router.post(
-  "/admin-offers",
-  verifyToken,
-  allowRoles("admin"),
-  createOffer,
-);
-
-router.put(
-  "/admin-offers/reorder",
-  verifyToken,
-  allowRoles("admin"),
-  reorderOffers,
-);
-
-router.put(
-  "/admin-offers/:id",
-  verifyToken,
-  allowRoles("admin"),
-  updateOffer,
-);
-
-router.delete(
-  "/admin-offers/:id",
-  verifyToken,
-  allowRoles("admin"),
-  deleteOffer,
-);
-
-router.get(
-  "/admin-offer-sections",
-  verifyToken,
-  allowRoles("admin"),
-  getAdminOfferSections,
-);
-router.post(
-  "/admin-offer-sections",
-  verifyToken,
-  allowRoles("admin"),
-  createOfferSection,
-);
+router.get("/admin-offer-sections", ...adminPermissionGuard("marketing:view"), getAdminOfferSections);
+router.post("/admin-offer-sections", ...adminPermissionGuard("marketing:create"), createOfferSection);
 router.put(
   "/admin-offer-sections/reorder",
-  verifyToken,
-  allowRoles("admin"),
+  ...adminPermissionGuard("marketing:update"),
   reorderOfferSections,
 );
-router.put(
-  "/admin-offer-sections/:id",
-  verifyToken,
-  allowRoles("admin"),
-  updateOfferSection,
-);
+router.put("/admin-offer-sections/:id", ...adminPermissionGuard("marketing:update"), updateOfferSection);
 router.delete(
   "/admin-offer-sections/:id",
-  verifyToken,
-  allowRoles("admin"),
+  ...adminPermissionGuard("marketing:delete"),
   deleteOfferSection,
 );
 
 export default router;
-

@@ -209,6 +209,11 @@ const FranchiseRegistrations = () => {
             : ""
         }
         screenshotUrl={selected?.manualPaymentDetails?.screenshotUrl}
+        screenshotDownloadFilename={
+          selected
+            ? `franchise-registration-${selected.manualPaymentDetails?.transactionId || selected._id}`
+            : 'payment-screenshot'
+        }
         canAct={selected ? canAct(selected) : false}
         onApprove={() => approve(selected._id)}
         onReject={() => reject(selected._id)}

@@ -105,11 +105,19 @@ export const getAllTickets = async (req, res) => {
 // Admin/User: Reply to a ticket
 export const replyToTicket = async (req, res) => {
     try {
-        const { text, isAdmin, mediaUrl, mediaType, mimeType } = req.body;
+        const { text, mediaUrl, mediaType, mimeType } = req.body;
         const { id } = req.params;
+
+        // Admin-ness comes from the authenticated portal role, never the body.
+        const isAdmin = req.user?.role === "admin";
 
         const ticket = await Ticket.findById(id);
         if (!ticket) return handleResponse(res, 404, "Ticket not found");
+
+        // Non-admins may only reply to their own tickets.
+        if (!isAdmin && String(ticket.userId) !== String(req.user.id)) {
+            return handleResponse(res, 403, "Access denied");
+        }
 
         const safeText = String(text || "").trim();
         const safeMediaUrl = String(mediaUrl || "").trim();

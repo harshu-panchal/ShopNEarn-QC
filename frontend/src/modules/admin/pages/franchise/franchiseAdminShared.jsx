@@ -12,6 +12,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import PaymentScreenshotPreview from "@shared/components/admin/PaymentScreenshotPreview";
 
 export const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -210,6 +211,7 @@ export const PaymentReviewModal = ({
   subtitle,
   fields = [],
   screenshotUrl,
+  screenshotDownloadFilename = "payment-screenshot",
   canAct = true,
   onApprove,
   onReject,
@@ -250,28 +252,13 @@ export const PaymentReviewModal = ({
             ))}
           </div>
 
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
-              Payment screenshot
-            </p>
-            {screenshotUrl ? (
-              <a
-                href={screenshotUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="block bg-slate-50 border border-slate-200 rounded-xl p-3 hover:bg-slate-100"
-              >
-                <img
-                  src={screenshotUrl}
-                  alt="Payment proof"
-                  className="w-full max-h-96 object-contain rounded-lg"
-                />
-                <p className="text-xs text-indigo-600 font-semibold mt-2">Open full image</p>
-              </a>
-            ) : (
-              <p className="text-sm text-slate-500 italic">No screenshot submitted.</p>
-            )}
-          </div>
+          <PaymentScreenshotPreview
+            screenshotUrl={screenshotUrl}
+            downloadFilename={screenshotDownloadFilename}
+            label="Payment screenshot"
+            maxHeightClass="max-h-96"
+            emptyMessage="No screenshot submitted."
+          />
         </div>
 
         <div className="flex gap-2 justify-end px-5 py-4 border-t border-slate-100 shrink-0">

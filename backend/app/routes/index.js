@@ -31,6 +31,7 @@ import mlmAdminRoute from "./mlmAdminRoutes.js";
 import franchiseCustomerRoute from "./franchiseCustomerRoutes.js";
 import franchiseAdminRoute from "./franchiseAdminRoutes.js";
 import inventoryReportAdminRoute from "./inventoryReportAdminRoutes.js";
+import adminRbacRoute from "./adminRbacRoutes.js";
 
 import express from "express";
 
@@ -58,6 +59,7 @@ const setupRoutes = (app) => {
     router.use("/admin/mlm", mlmAdminRoute);
     router.use("/admin/franchise", franchiseAdminRoute);
     router.use("/admin/inventory-reports", inventoryReportAdminRoute);
+    router.use("/admin/rbac", adminRbacRoute);
     router.use("/admin", adminRoute);
     router.use("/seller", sellerRoute);
     router.use("/settings", settingsRoute);

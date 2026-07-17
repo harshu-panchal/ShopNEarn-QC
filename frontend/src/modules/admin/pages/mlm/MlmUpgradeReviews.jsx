@@ -12,6 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import { adminMlmApi } from "../../services/api/mlmApi";
 import MemberJoinedSubtitle from "@shared/components/mlm/MemberJoinedSubtitle";
+import PaymentScreenshotPreview from "@shared/components/admin/PaymentScreenshotPreview";
 
 const formatINR = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", {
@@ -494,33 +495,10 @@ const ReviewModal = ({
             </InfoBlock>
           </div>
 
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2">
-              Payment Screenshot
-            </p>
-            {row.screenshotUrl ? (
-              <a
-                href={row.screenshotUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="block bg-slate-50 border border-slate-200 rounded-xl p-3 hover:bg-slate-100">
-                <img
-                  src={row.screenshotUrl}
-                  alt="Payment screenshot"
-                  className="w-full max-h-[480px] object-contain rounded-md"
-                />
-                <p className="text-[11px] text-indigo-600 mt-2 text-center">
-                  Click to open full size in new tab
-                </p>
-              </a>
-            ) : (
-              <div className="bg-slate-50 border border-slate-200 rounded-xl py-12 text-center">
-                <p className="text-sm text-slate-500">
-                  No screenshot submitted yet.
-                </p>
-              </div>
-            )}
-          </div>
+          <PaymentScreenshotPreview
+            screenshotUrl={row.screenshotUrl}
+            downloadFilename={`upgrade-payment-${row.transactionId || row._id}`}
+          />
 
           <StatusPill status={row.status} />
 

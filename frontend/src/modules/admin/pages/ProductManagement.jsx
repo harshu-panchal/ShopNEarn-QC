@@ -172,7 +172,21 @@ const ProductManagement = () => {
 
             if (formData.mainImageFile) {
                 data.append('mainImage', formData.mainImageFile);
+            } else if (
+                formData.mainImage &&
+                typeof formData.mainImage === 'string' &&
+                !formData.mainImage.startsWith('data:')
+            ) {
+                data.append('mainImage', formData.mainImage);
             }
+
+            // Persist which remote gallery URLs to keep (removals in the UI
+            // are reflected here). New local picks are uploaded as files.
+            const existingGallery = (formData.galleryImages || []).filter(
+                (url) => typeof url === 'string' && !url.startsWith('data:'),
+            );
+            data.append('existingGalleryImages', JSON.stringify(existingGallery));
+
             if (formData.galleryFiles && formData.galleryFiles.length > 0) {
                 formData.galleryFiles.forEach((file) => data.append('galleryImages', file));
             }
@@ -305,7 +319,9 @@ const ProductManagement = () => {
                 weight: item.weight || '',
                 brand: item.brand || '',
                 mainImage: item.mainImage || null,
+                mainImageFile: null,
                 galleryImages: item.galleryImages || item.images || [],
+                galleryFiles: [],
                 variants: (item.variants && item.variants.length > 0) ? item.variants.map(v => ({ ...v, id: v._id || Date.now() })) : [
                     {
                         id: Date.now(),
@@ -324,7 +340,7 @@ const ProductManagement = () => {
                 salePrice: '', stock: '', lowStockAlert: 5, unit: 'packet',
                 header: '', categoryId: '', subcategoryId: '', status: 'active',
                 isFeatured: false, tags: '', weight: '', brand: '',
-                mainImage: null, galleryImages: [],
+                mainImage: null, mainImageFile: null, galleryImages: [], galleryFiles: [],
                 variants: [
                     { id: Date.now(), name: 'Default', price: '', salePrice: '', stock: '', sku: '' }
                 ]
@@ -1007,10 +1023,32 @@ const ProductManagement = () => {
                                                                 <img src={image} alt={`Gallery ${index + 1}`} className="h-full w-full object-cover" />
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => setFormData({
-                                                                        ...formData,
-                                                                        galleryImages: formData.galleryImages.filter((_, i) => i !== index)
-                                                                    })}
+                                                                    onClick={() => {
+                                                                        const removed = formData.galleryImages[index];
+                                                                        const isLocalPreview =
+                                                                            typeof removed === 'string' &&
+                                                                            removed.startsWith('data:');
+                                                                        let nextFiles = formData.galleryFiles || [];
+                                                                        if (isLocalPreview) {
+                                                                            const dataIndex = formData.galleryImages
+                                                                                .slice(0, index)
+                                                                                .filter(
+                                                                                    (url) =>
+                                                                                        typeof url === 'string' &&
+                                                                                        url.startsWith('data:'),
+                                                                                ).length;
+                                                                            nextFiles = nextFiles.filter(
+                                                                                (_, i) => i !== dataIndex,
+                                                                            );
+                                                                        }
+                                                                        setFormData({
+                                                                            ...formData,
+                                                                            galleryImages: formData.galleryImages.filter(
+                                                                                (_, i) => i !== index,
+                                                                            ),
+                                                                            galleryFiles: nextFiles,
+                                                                        });
+                                                                    }}
                                                                     className="absolute top-2 right-2 p-2 rounded-full bg-white/90 text-rose-500 shadow-md opacity-0 group-hover:opacity-100 transition-all"
                                                                 >
                                                                     <HiOutlineTrash className="h-4 w-4" />

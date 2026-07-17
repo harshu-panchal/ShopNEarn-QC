@@ -98,7 +98,9 @@ axiosInstance.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        const status = error.response?.status;
+
+        if (status === 401 && !originalRequest._retry) {
             originalRequest._retry = true;
             const hasStoredRoleToken = ROLE_STORAGE_KEYS.some((key) => Boolean(rawGet(key)));
             if (hasStoredRoleToken) {
@@ -111,6 +113,12 @@ axiosInstance.interceptors.response.use(
                 );
             }
         }
+
+        // 403 = authenticated but unauthorized. Do not logout; let pages/toasts handle UX.
+        if (status === 403) {
+            error.isPermissionDenied = true;
+        }
+
         return Promise.reject(error);
     }
 );

@@ -1,5 +1,5 @@
 import express from "express";
-import { allowRoles, verifyToken } from "../middleware/authMiddleware.js";
+import { adminPermissionGuard } from "../middleware/authMiddleware.js";
 import {
   getFranchiseAdminDashboard,
   listRegistrationReviews,
@@ -21,28 +21,35 @@ import {
 } from "../controller/admin/franchiseAdminController.js";
 
 const router = express.Router();
-const adminGuard = [verifyToken, allowRoles("admin")];
 
-router.get("/dashboard", ...adminGuard, getFranchiseAdminDashboard);
-router.get("/settings", ...adminGuard, getFranchiseSettings);
-router.put("/settings", ...adminGuard, updateFranchiseSettings);
-router.post("/hub-seller/impersonation-token", ...adminGuard, issueHubSellerImpersonationToken);
-router.post("/hub-seller/:sellerId", ...adminGuard, markHubSeller);
+router.get("/dashboard", ...adminPermissionGuard("franchise:view"), getFranchiseAdminDashboard);
+router.get("/settings", ...adminPermissionGuard("franchise:settings"), getFranchiseSettings);
+router.put("/settings", ...adminPermissionGuard("franchise:settings"), updateFranchiseSettings);
+router.post(
+  "/hub-seller/impersonation-token",
+  ...adminPermissionGuard("franchise:impersonate"),
+  issueHubSellerImpersonationToken,
+);
+router.post("/hub-seller/:sellerId", ...adminPermissionGuard("franchise:settings"), markHubSeller);
 
-router.get("/registrations", ...adminGuard, listRegistrationReviews);
-router.post("/registrations/:id/approve", ...adminGuard, approveRegistration);
-router.post("/registrations/:id/reject", ...adminGuard, rejectRegistration);
+router.get("/registrations", ...adminPermissionGuard("franchise:view"), listRegistrationReviews);
+router.post("/registrations/:id/approve", ...adminPermissionGuard("franchise:approve"), approveRegistration);
+router.post("/registrations/:id/reject", ...adminPermissionGuard("franchise:reject"), rejectRegistration);
 
-router.get("/topups", ...adminGuard, listTopUpReviews);
-router.post("/topups/:id/approve", ...adminGuard, approveTopUp);
-router.post("/topups/:id/reject", ...adminGuard, rejectTopUp);
+router.get("/topups", ...adminPermissionGuard("franchise:view"), listTopUpReviews);
+router.post("/topups/:id/approve", ...adminPermissionGuard("franchise:approve"), approveTopUp);
+router.post("/topups/:id/reject", ...adminPermissionGuard("franchise:reject"), rejectTopUp);
 
-router.get("/partners", ...adminGuard, listPartners);
-router.get("/partners/:id", ...adminGuard, getPartnerDetail);
-router.patch("/partners/:id/territory", ...adminGuard, patchPartnerTerritory);
-router.post("/partners/:id/adjust-wallet", ...adminGuard, adjustWallet);
+router.get("/partners", ...adminPermissionGuard("franchise:view"), listPartners);
+router.get("/partners/:id", ...adminPermissionGuard("franchise:view"), getPartnerDetail);
+router.patch("/partners/:id/territory", ...adminPermissionGuard("franchise:adjust"), patchPartnerTerritory);
+router.post("/partners/:id/adjust-wallet", ...adminPermissionGuard("franchise:adjust"), adjustWallet);
 
-router.get("/orders", ...adminGuard, listFranchiseDispatchOrders);
-router.post("/orders/:orderId/assign-delivery", ...adminGuard, assignFranchiseDispatchDelivery);
+router.get("/orders", ...adminPermissionGuard("franchise:dispatch"), listFranchiseDispatchOrders);
+router.post(
+  "/orders/:orderId/assign-delivery",
+  ...adminPermissionGuard("franchise:dispatch"),
+  assignFranchiseDispatchDelivery,
+);
 
 export default router;

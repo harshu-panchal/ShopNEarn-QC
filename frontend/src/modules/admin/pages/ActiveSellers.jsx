@@ -16,7 +16,9 @@ import {
   HiOutlineClock,
   HiOutlineArrowPath,
   HiOutlineDocumentText,
+  HiOutlineArrowRightOnRectangle,
 } from "react-icons/hi2";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -114,6 +116,7 @@ const ActiveSellers = () => {
   const [lastSyncAt, setLastSyncAt] = useState(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [selectedSeller, setSelectedSeller] = useState(null);
+  const [impersonatingSellerId, setImpersonatingSellerId] = useState(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -181,6 +184,57 @@ const ActiveSellers = () => {
 
     loadSellers();
   }, [debouncedSearch, categoryFilter, sortBy, page, pageSize, refreshTick]);
+
+  const handleLoginAsSeller = async (seller) => {
+    const sellerId = seller?.id || seller?._id;
+    const shopName = seller?.shopName || "this seller";
+    if (!sellerId || impersonatingSellerId) return;
+
+    if (
+      !window.confirm(
+        `Open a new tab and sign in as ${shopName}? They will not be notified. ` +
+          "If you already have a seller session open in this browser, it will be replaced.",
+      )
+    ) {
+      return;
+    }
+
+    const newTab = window.open("about:blank", "_blank");
+    if (!newTab) {
+      toast.error("Pop-up blocked. Please allow pop-ups for this site and try again.");
+      return;
+    }
+
+    setImpersonatingSellerId(sellerId);
+    try {
+      const res = await adminApi.issueSellerImpersonationToken(sellerId);
+      const payload = res.data?.result ?? res.data?.data ?? {};
+      if (!payload.token) {
+        throw new Error("Backend returned no impersonation token.");
+      }
+      const redirect = payload.redirect || "/seller";
+      const handoffUrl =
+        `${window.location.origin}/auth/handoff` +
+        `#token=${encodeURIComponent(payload.token)}` +
+        `&role=seller` +
+        `&redirect=${encodeURIComponent(redirect)}`;
+      newTab.location.replace(handoffUrl);
+      toast.success(`Opening session for ${shopName}…`);
+    } catch (err) {
+      try {
+        newTab.close();
+      } catch {
+        /* ignore */
+      }
+      toast.error(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to start impersonation session.",
+      );
+    } finally {
+      setImpersonatingSellerId(null);
+    }
+  };
 
   const summaryCards = useMemo(
     () => [
@@ -681,6 +735,22 @@ const ActiveSellers = () => {
                   </div>
 
                   <div className="mt-6 flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleLoginAsSeller(selectedSeller)}
+                      disabled={Boolean(impersonatingSellerId)}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                      title="Open a new tab signed in as this seller"
+                    >
+                      {impersonatingSellerId === (selectedSeller.id || selectedSeller._id) ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <HiOutlineArrowRightOnRectangle className="h-3.5 w-3.5" />
+                      )}
+                      {impersonatingSellerId === (selectedSeller.id || selectedSeller._id)
+                        ? "Signing in…"
+                        : "Log in as Seller"}
+                    </button>
                     <button
                       onClick={() => setSelectedSeller(null)}
                       className="px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all"

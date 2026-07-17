@@ -19,6 +19,7 @@ import {
     bulkSettleDelivery,
     getActiveSellers,
     getPendingSellers,
+    issueSellerImpersonationToken,
     approveSellerApplication,
     rejectSellerApplication,
     getSellerWithdrawals,
@@ -46,7 +47,10 @@ import {
     updateDeliverySettingsController,
 } from "../controller/adminFinanceController.js";
 
-import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
+import {
+    adminAuthGuard,
+    adminPermissionGuard,
+} from "../middleware/authMiddleware.js";
 import {
     adminBootstrapRateLimiter,
     authRouteRateLimiter,
@@ -64,152 +68,65 @@ router.post("/bootstrap", adminBootstrapRateLimiter, smallAdminPayload, bootstra
 router.post("/signup", adminBootstrapRateLimiter, smallAdminPayload, signupAdmin);
 router.post("/login", authRouteRateLimiter, smallAdminPayload, loginAdmin);
 
-// Profile routes
-router.get(
-    "/profile",
-    verifyToken,
-    allowRoles("admin"),
-    getAdminProfile
-);
+// Profile routes — any active admin
+router.get("/profile", ...adminAuthGuard, getAdminProfile);
+router.put("/profile", ...adminAuthGuard, updateAdminProfile);
+router.put("/profile/password", ...adminAuthGuard, updateAdminPassword);
 
-router.put(
-    "/profile",
-    verifyToken,
-    allowRoles("admin"),
-    updateAdminProfile
-);
+router.get("/stats", ...adminPermissionGuard("dashboard:view"), getAdminStats);
+router.get("/finance/summary", ...adminPermissionGuard("finance:view"), getAdminFinanceSummaryController);
+router.get("/finance/ledger", ...adminPermissionGuard("finance:view"), getAdminFinanceLedgerController);
+router.get("/finance/payouts", ...adminPermissionGuard("finance:view"), getAdminFinancePayoutsController);
+router.post("/finance/payouts/process", ...adminPermissionGuard("finance:process"), processAdminFinancePayoutsController);
+router.get("/finance/export-statement", ...adminPermissionGuard("finance:export"), exportAdminFinanceStatementController);
 
-router.put(
-    "/profile/password",
-    verifyToken,
-    allowRoles("admin"),
-    updateAdminPassword
-);
+router.get("/settings/platform", ...adminPermissionGuard("settings:view"), getPlatformSettings);
+router.get("/settings/delivery", ...adminPermissionGuard("settings:view"), getDeliverySettingsController);
+router.put("/settings/delivery", ...adminPermissionGuard("settings:update"), updateDeliverySettingsController);
+router.put("/settings/platform", ...adminPermissionGuard("settings:update"), updatePlatformSettings);
 
-router.get(
-    "/stats",
-    verifyToken,
-    allowRoles("admin"),
-    getAdminStats
-);
-router.get(
-    "/finance/summary",
-    verifyToken,
-    allowRoles("admin"),
-    getAdminFinanceSummaryController,
-);
-router.get(
-    "/finance/ledger",
-    verifyToken,
-    allowRoles("admin"),
-    getAdminFinanceLedgerController,
-);
-router.get(
-    "/finance/payouts",
-    verifyToken,
-    allowRoles("admin"),
-    getAdminFinancePayoutsController,
-);
+router.get("/users", ...adminPermissionGuard("customers:view"), getUsers);
+router.get("/users/:id", ...adminPermissionGuard("customers:view"), getUserById);
+router.get("/sellers", ...adminPermissionGuard("sellers:view"), getSellers);
+router.get("/sellers/locations", ...adminPermissionGuard("sellers:view"), getSellerLocations);
+router.get("/sellers/active", ...adminPermissionGuard("sellers:view"), getActiveSellers);
 router.post(
-    "/finance/payouts/process",
-    verifyToken,
-    allowRoles("admin"),
-    processAdminFinancePayoutsController,
+    "/sellers/:id/impersonation-token",
+    ...adminPermissionGuard("sellers:impersonate"),
+    issueSellerImpersonationToken,
 );
-router.get(
-    "/finance/export-statement",
-    verifyToken,
-    allowRoles("admin"),
-    exportAdminFinanceStatementController,
-);
-router.get(
-    "/settings/platform",
-    verifyToken,
-    allowRoles("admin"),
-    getPlatformSettings
-);
-router.get(
-    "/settings/delivery",
-    verifyToken,
-    allowRoles("admin"),
-    getDeliverySettingsController,
-);
-router.put(
-    "/settings/delivery",
-    verifyToken,
-    allowRoles("admin"),
-    updateDeliverySettingsController,
-);
-router.put(
-    "/settings/platform",
-    verifyToken,
-    allowRoles("admin"),
-    updatePlatformSettings
-);
-router.get("/users", verifyToken, allowRoles("admin"), getUsers);
-router.get("/users/:id", verifyToken, allowRoles("admin"), getUserById);
-router.get("/sellers", verifyToken, allowRoles("admin"), getSellers);
-router.get("/sellers/locations", verifyToken, allowRoles("admin"), getSellerLocations);
-router.get("/sellers/active", verifyToken, allowRoles("admin"), getActiveSellers);
-router.get("/sellers/pending", verifyToken, allowRoles("admin"), getPendingSellers);
-router.patch("/sellers/approve/:id", verifyToken, allowRoles("admin"), approveSellerApplication);
-router.delete("/sellers/reject/:id", verifyToken, allowRoles("admin"), rejectSellerApplication);
+router.get("/sellers/pending", ...adminPermissionGuard("sellers:view"), getPendingSellers);
+router.patch("/sellers/approve/:id", ...adminPermissionGuard("sellers:approve"), approveSellerApplication);
+router.delete("/sellers/reject/:id", ...adminPermissionGuard("sellers:reject"), rejectSellerApplication);
 
-router.get(
-    "/delivery-partners",
-    verifyToken,
-    allowRoles("admin"),
-    getDeliveryPartners
-);
+router.get("/delivery-partners", ...adminPermissionGuard("delivery:view"), getDeliveryPartners);
+router.patch("/delivery-partners/approve/:id", ...adminPermissionGuard("delivery:approve"), approveDeliveryPartner);
+router.delete("/delivery-partners/reject/:id", ...adminPermissionGuard("delivery:reject"), rejectDeliveryPartner);
 
-router.patch(
-    "/delivery-partners/approve/:id",
-    verifyToken,
-    allowRoles("admin"),
-    approveDeliveryPartner
-);
+router.get("/active-fleet", ...adminPermissionGuard("delivery:track"), getActiveFleet);
+router.get("/wallet-data", ...adminPermissionGuard("finance:view"), getAdminWalletData);
 
-router.delete(
-    "/delivery-partners/reject/:id",
-    verifyToken,
-    allowRoles("admin"),
-    rejectDeliveryPartner
-);
+router.get("/delivery-transactions", ...adminPermissionGuard("delivery:view"), getDeliveryTransactions);
+router.put("/transactions/:id/settle", ...adminPermissionGuard("delivery:settle"), settleTransaction);
+router.put("/transactions/bulk-settle-delivery", ...adminPermissionGuard("delivery:settle"), bulkSettleDelivery);
 
-router.get("/active-fleet", verifyToken, allowRoles("admin"), getActiveFleet);
-router.get("/wallet-data", verifyToken, allowRoles("admin"), getAdminWalletData);
+router.get("/delivery-cash", ...adminPermissionGuard("cash:view"), getDeliveryCashBalances);
+router.get("/rider-cash-details/:id", ...adminPermissionGuard("cash:view"), getRiderCashDetails);
+router.post("/settle-cash", ...adminPermissionGuard("cash:settle"), settleRiderCash);
+router.get("/cash-history", ...adminPermissionGuard("cash:view"), getCashSettlementHistory);
 
-// Delivery Payouts / Funds
-router.get("/delivery-transactions", verifyToken, allowRoles('admin'), getDeliveryTransactions);
-router.put("/transactions/:id/settle", verifyToken, allowRoles("admin"), settleTransaction);
-router.put("/transactions/bulk-settle-delivery", verifyToken, allowRoles("admin"), bulkSettleDelivery);
+router.get("/seller-withdrawals", ...adminPermissionGuard("finance:view"), getSellerWithdrawals);
+router.get("/delivery-withdrawals", ...adminPermissionGuard("finance:view"), getDeliveryWithdrawals);
+router.get("/seller-transactions", ...adminPermissionGuard("finance:view"), getSellerTransactions);
+router.put("/withdrawals/:id", ...adminPermissionGuard("finance:settle"), updateWithdrawalStatus);
 
-// Cash Collection Hub
-router.get("/delivery-cash", verifyToken, allowRoles("admin"), getDeliveryCashBalances);
-router.get("/rider-cash-details/:id", verifyToken, allowRoles("admin"), getRiderCashDetails);
-router.post("/settle-cash", verifyToken, allowRoles("admin"), settleRiderCash);
-router.get("/cash-history", verifyToken, allowRoles("admin"), getCashSettlementHistory);
+router.get("/nav-badges", ...adminAuthGuard, getAdminNavBadges);
 
-// Seller Withdrawal Management
-router.get("/seller-withdrawals", verifyToken, allowRoles("admin"), getSellerWithdrawals);
-router.get("/delivery-withdrawals", verifyToken, allowRoles("admin"), getDeliveryWithdrawals);
-router.get("/seller-transactions", verifyToken, allowRoles("admin"), getSellerTransactions);
-router.put("/withdrawals/:id", verifyToken, allowRoles("admin"), updateWithdrawalStatus);
-
-// Sidebar "new since last visit" badge counts
-router.get("/nav-badges", verifyToken, allowRoles("admin"), getAdminNavBadges);
-
-// Protected admin route example
-router.get(
-    "/dashboard",
-    verifyToken,
-    allowRoles("admin"),
-    (req, res) => {
-        res.json({
-            success: true,
-            message: "Welcome to Admin Dashboard",
-        });
-    }
-);
+router.get("/dashboard", ...adminPermissionGuard("dashboard:view"), (req, res) => {
+    res.json({
+        success: true,
+        message: "Welcome to Admin Dashboard",
+    });
+});
 
 export default router;

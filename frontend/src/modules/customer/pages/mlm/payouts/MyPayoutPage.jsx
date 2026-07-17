@@ -251,7 +251,7 @@ const MyPayoutPage = () => {
               </span>
             </div>
             <div className="flex justify-between text-rose-600">
-              <span>GST / statutory deduction</span>
+              <span>TDS</span>
               <span className="font-bold">-{formatINR(preview.gst)}</span>
             </div>
             <div className="flex justify-between text-emerald-700 border-t border-slate-200 pt-1.5 mt-1">

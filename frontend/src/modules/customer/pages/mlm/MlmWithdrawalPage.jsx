@@ -178,7 +178,7 @@ const MlmWithdrawalPage = () => {
                         <div className="bg-slate-50 rounded-xl p-3 text-xs space-y-1.5">
                             <div className="flex justify-between"><span>Requested</span><span className="font-bold">{formatINR(preview.amount)}</span></div>
                             <div className="flex justify-between text-rose-600"><span>Admin charge</span><span className="font-bold">-{formatINR(preview.adminCharge)}</span></div>
-                            <div className="flex justify-between text-rose-600"><span>GST</span><span className="font-bold">-{formatINR(preview.gst)}</span></div>
+                            <div className="flex justify-between text-rose-600"><span>TDS</span><span className="font-bold">-{formatINR(preview.gst)}</span></div>
                             <div className="flex justify-between text-emerald-700 border-t border-slate-200 pt-1.5 mt-1"><span className="font-bold">You receive</span><span className="font-black">{formatINR(preview.net)}</span></div>
                         </div>
                     )}

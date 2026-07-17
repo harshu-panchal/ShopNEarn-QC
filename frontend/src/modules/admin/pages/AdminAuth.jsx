@@ -45,10 +45,9 @@ const AdminAuth = () => {
         e.preventDefault();
         setIsLoading(true);
 
-        // Debug logging
+        // Debug logging (never log credentials)
         console.log('=== FRONTEND LOGIN ATTEMPT ===');
         console.log('Email:', formData.email);
-        console.log('Password:', formData.password);
         console.log('Password Length:', formData.password?.length);
         console.log('Is Login:', isLogin);
         console.log('==============================');

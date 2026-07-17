@@ -291,7 +291,19 @@ const ProductManagement = () => {
 
       if (formData.mainImageFile) {
         data.append("mainImage", formData.mainImageFile);
+      } else if (
+        formData.mainImage &&
+        typeof formData.mainImage === "string" &&
+        !formData.mainImage.startsWith("data:")
+      ) {
+        data.append("mainImage", formData.mainImage);
       }
+
+      const existingGallery = (formData.galleryImages || []).filter(
+        (url) => typeof url === "string" && !url.startsWith("data:"),
+      );
+      data.append("existingGalleryImages", JSON.stringify(existingGallery));
+
       if (formData.galleryFiles && formData.galleryFiles.length > 0) {
         formData.galleryFiles.forEach((file) => data.append("galleryImages", file));
       }
@@ -400,7 +412,9 @@ const ProductManagement = () => {
         weight: item.weight || "",
         brand: item.brand || "",
         mainImage: item.mainImage || null,
+        mainImageFile: null,
         galleryImages: item.galleryImages || [],
+        galleryFiles: [],
         variants: (item.variants && item.variants.length > 0) ? item.variants.map(v => ({ ...v, id: v._id || Date.now() })) : [
           {
             id: Date.now(),

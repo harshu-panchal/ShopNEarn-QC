@@ -6,20 +6,24 @@ import {
   loginAdminSchema,
   validateSchema,
 } from "../validation/adminAuthValidation.js";
+import {
+  ensureSuperAdminRole,
+  resolveAdminAccess,
+  sanitizeAdminForResponse,
+} from "../services/admin/adminRbacService.js";
 
 const PUBLIC_ADMIN_SIGNUP_ENABLED = () =>
   process.env.ENABLE_PUBLIC_ADMIN_SIGNUP === "true";
 
-function sanitizeAdmin(adminDoc) {
-  const admin = adminDoc?.toObject ? adminDoc.toObject() : { ...(adminDoc || {}) };
-  delete admin.password;
-  delete admin.__v;
-  return admin;
-}
-
-const generateToken = (admin) =>
+const generateToken = (admin, access = {}) =>
   jwt.sign(
-    { id: admin._id, role: "admin" },
+    {
+      id: admin._id,
+      role: "admin",
+      adminRoleId: access.role?._id || admin.roleId || null,
+      adminRoleKey: access.roleKey || access.role?.key || null,
+      tokenVersion: Number(admin.tokenVersion || 0),
+    },
     process.env.JWT_SECRET,
     { expiresIn: "7d" },
   );
@@ -30,6 +34,15 @@ function readBootstrapSecret(req) {
       req.body?.adminSecret ||
       "",
   ).trim();
+}
+
+async function buildLoginPayload(adminDoc) {
+  const access = await resolveAdminAccess(adminDoc._id);
+  const token = generateToken(access.admin, access);
+  return {
+    token,
+    admin: sanitizeAdminForResponse(access.admin, access.role),
+  };
 }
 
 export const bootstrapAdmin = async (req, res) => {
@@ -55,19 +68,20 @@ export const bootstrapAdmin = async (req, res) => {
       return handleResponse(res, 409, "Admin already exists");
     }
 
+    const superRole = await ensureSuperAdminRole();
     const admin = await Admin.create({
       name: payload.name,
       email: payload.email,
       password: payload.password,
       role: "admin",
+      roleId: superRole._id,
       isVerified: true,
+      isActive: true,
+      tokenVersion: 0,
     });
 
-    const token = generateToken(admin);
-    return handleResponse(res, 201, "Admin bootstrapped successfully", {
-      token,
-      admin: sanitizeAdmin(admin),
-    });
+    const loginPayload = await buildLoginPayload(admin);
+    return handleResponse(res, 201, "Admin bootstrapped successfully", loginPayload);
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
   }
@@ -89,19 +103,20 @@ export const signupAdmin = async (req, res) => {
     }
 
     const payload = validateSchema(bootstrapAdminSchema, req.body || {});
+    const superRole = await ensureSuperAdminRole();
     const admin = await Admin.create({
       name: payload.name,
       email: payload.email,
       password: payload.password,
       role: "admin",
+      roleId: superRole._id,
       isVerified: true,
+      isActive: true,
+      tokenVersion: 0,
     });
 
-    const token = generateToken(admin);
-    return handleResponse(res, 201, "Admin registered successfully", {
-      token,
-      admin: sanitizeAdmin(admin),
-    });
+    const loginPayload = await buildLoginPayload(admin);
+    return handleResponse(res, 201, "Admin registered successfully", loginPayload);
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
   }
@@ -121,14 +136,27 @@ export const loginAdmin = async (req, res) => {
       return handleResponse(res, 401, "Invalid credentials");
     }
 
+    if (admin.isActive === false) {
+      return handleResponse(res, 403, "Admin account is disabled");
+    }
+
+    if (admin.isVerified === false) {
+      return handleResponse(res, 403, "Admin account is not verified");
+    }
+
+    // Ensure legacy admins without roleId get super_admin before login.
+    if (!admin.roleId) {
+      const superRole = await ensureSuperAdminRole();
+      admin.roleId = superRole._id;
+      if (admin.tokenVersion == null) admin.tokenVersion = 0;
+      if (admin.isActive == null) admin.isActive = true;
+    }
+
     admin.lastLogin = new Date();
     await admin.save();
 
-    const token = generateToken(admin);
-    return handleResponse(res, 200, "Login successful", {
-      token,
-      admin: sanitizeAdmin(admin),
-    });
+    const loginPayload = await buildLoginPayload(admin);
+    return handleResponse(res, 200, "Login successful", loginPayload);
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
   }

@@ -164,6 +164,11 @@ const FranchiseTopUps = () => {
         title="Wallet top-up request"
         subtitle={selected ? `Submitted ${formatDate(selected.manualPaymentDetails?.submittedAt || selected.updatedAt)}` : ""}
         screenshotUrl={selected?.manualPaymentDetails?.screenshotUrl}
+        screenshotDownloadFilename={
+          selected
+            ? `franchise-topup-${selected.manualPaymentDetails?.transactionId || selected._id}`
+            : 'payment-screenshot'
+        }
         canAct={selected ? canAct(selected) : false}
         onApprove={() => approve(selected._id)}
         onReject={() => reject(selected._id)}
