@@ -83,7 +83,18 @@ const CheckoutPricingBreakdown = React.memo(function CheckoutPricingBreakdown({
             <span className="text-slate-500 font-bold text-[13px] uppercase tracking-wider">
               Delivery Fee
             </span>
-            <span className="font-black text-slate-800">₹{deliveryFee}</span>
+            <span
+              className={`font-black ${
+                pricingPreview && deliveryFee === 0
+                  ? "text-brand-600"
+                  : "text-slate-800"
+              }`}>
+              {isPreviewLoading
+                ? "…"
+                : pricingPreview && deliveryFee === 0
+                  ? "FREE"
+                  : `₹${deliveryFee}`}
+            </span>
           </div>
           {pricingPreview &&
             typeof pricingPreview.distanceKmActual === "number" &&

@@ -35,6 +35,8 @@ import {
   getLegacyStatusFromOrder,
   getOrderStatusLabel,
 } from "@/shared/utils/orderStatus";
+import { normalizeOrderPricing } from "@shared/utils/orderPricingSummary";
+import { OrderPricingSummary } from "../components/orders";
 import { Loader2 } from "lucide-react";
 import Pagination from "@shared/components/ui/Pagination";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -100,53 +102,57 @@ const Orders = () => {
         ? payload.items
         : response.data.results || [];
 
-      const formattedOrders = (rawOrders || []).map((order) => ({
-        id: order.orderId,
-        _id: order._id,
-        customer: {
-          name: order.customer?.name || "Unknown",
-          phone: order.customer?.phone || "",
-          avatar: (order.customer?.name || "U").charAt(0),
-        },
-        items: (order.items || []).map((item) => ({
-          name: item.name,
-          price: item.price,
-          qty: item.quantity,
-          image: item.image,
-        })),
-        total: order.pricing?.total || 0,
-        status: getLegacyStatusFromOrder(order),
-        workflowStatus: order.workflowStatus,
-        workflowVersion: order.workflowVersion,
-        franchisePartnerId: order.franchisePartnerId,
-        shipmentStatus: order.shipmentStatus,
-        isFranchiseStockOrder: order.isFranchiseStockOrder,
-        statusLabel: getOrderStatusLabel(order),
-        franchiseStatus: order.franchiseStatus,
-        hubAcceptanceStatus: order.hubAcceptanceStatus,
-        shipmentStatus: order.shipmentStatus,
-        date: order.createdAt
-          ? new Date(order.createdAt).toLocaleDateString("en-IN", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })
-          : "",
-        time: order.createdAt
-          ? new Date(order.createdAt).toLocaleTimeString("en-IN", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-          : "",
-        address: order.address
-          ? `${order.address.address || ""}, ${order.address.city || ""}`.trim()
-          : "",
-        location: order.address?.location || null,
-        payment:
-          order.payment?.method === "cash" || order.payment?.method === "cod"
-            ? "Cash on Delivery"
-            : "Online Paid",
-      }));
+      const formattedOrders = (rawOrders || []).map((order) => {
+        const pricing = normalizeOrderPricing(order);
+        return {
+          id: order.orderId,
+          _id: order._id,
+          customer: {
+            name: order.customer?.name || "Unknown",
+            phone: order.customer?.phone || "",
+            avatar: (order.customer?.name || "U").charAt(0),
+          },
+          items: (order.items || []).map((item) => ({
+            name: item.name,
+            price: item.price,
+            qty: item.quantity,
+            image: item.image,
+          })),
+          total: pricing.grandTotal,
+          paymentBreakdown: order.paymentBreakdown || null,
+          pricing: order.pricing || null,
+          status: getLegacyStatusFromOrder(order),
+          workflowStatus: order.workflowStatus,
+          workflowVersion: order.workflowVersion,
+          franchisePartnerId: order.franchisePartnerId,
+          shipmentStatus: order.shipmentStatus,
+          isFranchiseStockOrder: order.isFranchiseStockOrder,
+          statusLabel: getOrderStatusLabel(order),
+          franchiseStatus: order.franchiseStatus,
+          hubAcceptanceStatus: order.hubAcceptanceStatus,
+          date: order.createdAt
+            ? new Date(order.createdAt).toLocaleDateString("en-IN", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })
+            : "",
+          time: order.createdAt
+            ? new Date(order.createdAt).toLocaleTimeString("en-IN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "",
+          address: order.address
+            ? `${order.address.address || ""}, ${order.address.city || ""}`.trim()
+            : "",
+          location: order.address?.location || null,
+          payment:
+            order.payment?.method === "cash" || order.payment?.method === "cod"
+              ? "Cash on Delivery"
+              : "Online Paid",
+        };
+      });
 
       setOrders(formattedOrders);
       setSummary({
@@ -1046,38 +1052,7 @@ const Orders = () => {
                         </div>
                       </div>
                       <div className="space-y-3 sm:space-y-4">
-                        <div className="bg-primary/5 p-3 sm:p-4 rounded-3xl border border-primary/10">
-                          <h4 className="text-xs font-black text-primary uppercase tracking-widest mb-3">
-                            Order Summary
-                          </h4>
-                          <div className="space-y-2">
-                            <div className="flex justify-between text-xs">
-                              <span className="font-bold text-slate-600">
-                                Subtotal
-                              </span>
-                              <span className="font-black text-slate-900">
-                                ₹{(selectedOrder.total - 10).toFixed(2)}
-                              </span>
-                            </div>
-                            <div className="flex justify-between text-xs">
-                              <span className="font-bold text-slate-600">
-                                Delivery Fee
-                              </span>
-                              <span className="font-black text-brand-600">
-                                ₹10.00
-                              </span>
-                            </div>
-                            <div className="h-px bg-primary/10 my-2" />
-                            <div className="flex justify-between text-sm">
-                              <span className="font-black text-slate-900">
-                                Total
-                              </span>
-                              <span className="font-black text-primary">
-                                ₹{selectedOrder.total.toFixed(2)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
+                        <OrderPricingSummary order={selectedOrder} />
                         <div className="bg-slate-900 p-3 sm:p-4 rounded-3xl text-white shadow-xl shadow-slate-900/10">
                           <h4 className="text-xs font-black text-slate-600 uppercase tracking-widest mb-2">
                             Payment Status

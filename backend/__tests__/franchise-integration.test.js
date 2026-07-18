@@ -248,6 +248,19 @@ async function seedFranchiseFixture() {
   };
 }
 
+/**
+ * Routing is stock-aware: a partner only receives hub orders when their
+ * franchise stock ledger covers the full cart. Seed ledger stock directly
+ * so tests exercising partner routing keep the partner eligible.
+ */
+async function seedPartnerStock(fixture, quantity = 10) {
+  await FranchiseStockLedger.create({
+    franchisePartnerId: fixture.partner._id,
+    productId: fixture.hubProduct._id,
+    quantity,
+  });
+}
+
 (RUN_INTEGRATION ? describe : describe.skip)(
   "Franchise integration (Mongo + services)",
   () => {
@@ -325,6 +338,7 @@ async function seedFranchiseFixture() {
 
     it("prices hub-only checkout from franchise partner distance, not hub warehouse radius", async () => {
       const fixture = await seedFranchiseFixture();
+      await seedPartnerStock(fixture);
 
       await Seller.findByIdAndUpdate(fixture.hubSeller._id, {
         shopName: "Shop N Earn",
@@ -374,8 +388,10 @@ async function seedFranchiseFixture() {
     });
 
     it("routes hub-only retail orders to the nearest active franchise partner", async () => {
+      const fixture = await seedFranchiseFixture();
       const { buyerUser, hubProduct, partner, deliveryAddress, hubSeller } =
-        await seedFranchiseFixture();
+        fixture;
+      await seedPartnerStock(fixture);
 
       const isHubOnly = await cartIsHubOnly([
         { sellerId: String(hubSeller._id) },
@@ -414,6 +430,110 @@ async function seedFranchiseFixture() {
         orderId: placement.order.orderId,
       }).lean();
       expect(stored.franchiseRoutedAt).toBeInstanceOf(Date);
+    });
+
+    it("falls back to the hub seller workflow when no partner holds stock", async () => {
+      const fixture = await seedFranchiseFixture();
+      const { buyerUser, hubProduct, deliveryAddress, hubSeller } = fixture;
+      // Deliberately no seedPartnerStock: the territory partner exists
+      // but cannot fulfill, so the hub seller must get the order alert.
+
+      const placement = await placeOrderAtomic({
+        customerId: buyerUser._id,
+        payload: {
+          items: [{ product: String(hubProduct._id), quantity: 1 }],
+          address: deliveryAddress,
+          paymentMode: "COD",
+          timeSlot: "now",
+          tipAmount: 0,
+          discountTotal: 0,
+        },
+      });
+
+      expect(placement.order.franchisePartnerId).toBeFalsy();
+      expect(placement.order.franchiseStatus).toBeFalsy();
+      expect(String(placement.order.seller)).toBe(String(hubSeller._id));
+      expect(placement.order.workflowStatus).toBe(
+        WORKFLOW_STATUS.SELLER_PENDING,
+      );
+      expect(placement.order.sellerPendingExpiresAt).toBeTruthy();
+    });
+
+    it("falls back to the hub seller when partner stock cannot cover the full quantity", async () => {
+      const fixture = await seedFranchiseFixture();
+      await seedPartnerStock(fixture, 1);
+
+      const placement = await placeOrderAtomic({
+        customerId: fixture.buyerUser._id,
+        payload: {
+          items: [{ product: String(fixture.hubProduct._id), quantity: 3 }],
+          address: fixture.deliveryAddress,
+          paymentMode: "COD",
+          timeSlot: "now",
+        },
+      });
+
+      expect(placement.order.franchisePartnerId).toBeFalsy();
+      expect(placement.order.workflowStatus).toBe(
+        WORKFLOW_STATUS.SELLER_PENDING,
+      );
+    });
+
+    it("routes to the nearest partner that holds full stock, skipping unstocked ones", async () => {
+      const fixture = await seedFranchiseFixture();
+      const suffix = randomSuffix();
+
+      const farPartnerUser = await User.create({
+        name: "Far Franchise Partner",
+        phone: `8840${suffix.slice(-6)}`,
+        role: "user",
+        isVerified: true,
+      });
+
+      // Farther from the delivery point than the fixture partner, but the
+      // only one holding stock.
+      const farPartner = await FranchisePartner.create({
+        userId: farPartnerUser._id,
+        referralCode: `HF${suffix.slice(-6).toUpperCase()}`,
+        status: FRANCHISE_PARTNER_STATUS.ACTIVE,
+        territoryPincodes: [fixture.territoryPincode],
+        address: "Shop 99, Ring Road",
+        locality: "Bopal",
+        pincode: fixture.territoryPincode,
+        city: "Ahmedabad",
+        state: "Gujarat",
+        hubSellerId: fixture.hubSeller._id,
+        registeredAt: new Date(),
+        displayName: farPartnerUser.name,
+        location: {
+          type: "Point",
+          coordinates: [72.6, 23.1],
+        },
+      });
+
+      await FranchiseStockLedger.create({
+        franchisePartnerId: farPartner._id,
+        productId: fixture.hubProduct._id,
+        quantity: 5,
+      });
+
+      const placement = await placeOrderAtomic({
+        customerId: fixture.buyerUser._id,
+        payload: {
+          items: [{ product: String(fixture.hubProduct._id), quantity: 2 }],
+          address: fixture.deliveryAddress,
+          paymentMode: "COD",
+          timeSlot: "now",
+        },
+      });
+
+      expect(String(placement.order.franchisePartnerId)).toBe(
+        String(farPartner._id),
+      );
+      expect(placement.order.franchiseStatus).toBe(
+        FRANCHISE_ORDER_STATUS.PENDING,
+      );
+      expect(placement.order.workflowStatus).toBe("FRANCHISE_PENDING");
     });
 
     it("does not route mixed-seller carts to a franchise partner", async () => {
@@ -467,8 +587,10 @@ async function seedFranchiseFixture() {
     });
 
     it("lists retail orders for partner and supports accept → admin dispatch → delivered", async () => {
+      const fixture = await seedFranchiseFixture();
       const { buyerUser, hubProduct, partner, deliveryAddress, suffix } =
-        await seedFranchiseFixture();
+        fixture;
+      await seedPartnerStock(fixture);
 
       const rider = await Delivery.create({
         name: "Dispatch Rider",

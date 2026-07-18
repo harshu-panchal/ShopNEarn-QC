@@ -858,124 +858,134 @@ export async function reconcileCodCash(
   }
 }
 
+async function applyCancellationFinanceReversal(
+  orderOrId,
+  { actorId = null, reason = "Order cancelled before settlement", session },
+) {
+  const order = await findOrderForUpdate(orderOrId, session);
+
+  // Audit Phase 3 (C-3): idempotency guard.
+  if (order.financeFlags?.cancellationReversalApplied) {
+    return { order, alreadyApplied: true };
+  }
+
+  if (order.paymentMode === "ONLINE" && order.financeFlags?.onlinePaymentCaptured) {
+    const refundAmount = roundCurrency(order.paymentBreakdown?.grandTotal || 0);
+    if (refundAmount > 0) {
+      const debitResult = await debitWallet({
+        ownerType: OWNER_TYPE.ADMIN,
+        ownerId: null,
+        amount: refundAmount,
+        bucket: "available",
+        session,
+      });
+
+      await createLedgerEntry(
+        {
+          orderId: order._id,
+          walletId: debitResult.wallet._id,
+          actorType: OWNER_TYPE.ADMIN,
+          actorId: null,
+          type: LEDGER_TRANSACTION_TYPE.REFUND,
+          direction: LEDGER_DIRECTION.DEBIT,
+          amount: refundAmount,
+          paymentMode: "ONLINE",
+          description: reason,
+          reference: order.orderId,
+          balanceBefore: debitResult.before,
+          balanceAfter: debitResult.after,
+          idempotencyKey: `CANCEL-ADMIN-REFUND-${order._id}`,
+        },
+        { session },
+      );
+    }
+    order.paymentStatus = ORDER_PAYMENT_STATUS.REFUNDED;
+  }
+
+  const walletUsed = roundCurrency(
+    order.pricing?.walletAmount || order.paymentBreakdown?.walletAmount || 0,
+  );
+  if (walletUsed > 0) {
+    const refundByBucket = await resolveWalletRefundSplit(order, walletUsed, { session });
+
+    for (const bucket of ["shopping", "earnings", "available"]) {
+      const amount = roundCurrency(refundByBucket[bucket] || 0);
+      if (amount <= 0) continue;
+      await creditWallet({
+        ownerType: OWNER_TYPE.CUSTOMER,
+        ownerId: order.customer,
+        amount,
+        bucket,
+        session,
+        ledgerType: LEDGER_TRANSACTION_TYPE.WALLET_REFUND,
+        ledgerReference: `${order.orderId}-${bucket}`,
+        ledgerDescription: `Refund for wallet payment (${bucket}): ${reason}`,
+        orderId: order._id,
+        idempotencyKey: `CANCEL-REFUND-${order._id}-${bucket}`,
+        metadata: { bucket, cancellationRefund: true },
+        syncUserWalletBalance: bucket === "available",
+      });
+    }
+  }
+
+  order.settlementStatus = {
+    ...(order.settlementStatus || {}),
+    overall: ORDER_SETTLEMENT_STATUS.CANCELLED,
+    sellerPayout: "NOT_APPLICABLE",
+    riderPayout: "NOT_APPLICABLE",
+  };
+
+  order.financeFlags = {
+    ...(order.financeFlags || {}),
+    cancellationReversalApplied: true,
+  };
+
+  await createFinanceAuditLog(
+    {
+      action: "FINANCE_ADJUSTMENT_APPLIED",
+      actorType: OWNER_TYPE.ADMIN,
+      actorId: actorId || null,
+      orderId: order._id,
+      metadata: { reason },
+    },
+    { session },
+  );
+
+  await order.save({ session });
+  return { order, alreadyApplied: false };
+}
+
 export async function reverseOrderFinanceOnCancellation(
   orderOrId,
-  { actorId = null, reason = "Order cancelled before settlement" } = {},
+  {
+    actorId = null,
+    reason = "Order cancelled before settlement",
+    session: externalSession = null,
+  } = {},
 ) {
+  if (externalSession) {
+    const result = await applyCancellationFinanceReversal(orderOrId, {
+      actorId,
+      reason,
+      session: externalSession,
+    });
+    return result.order;
+  }
+
   const session = await mongoose.startSession();
   try {
-    session.startTransaction();
-    const order = await findOrderForUpdate(orderOrId, session);
-
-    // Audit Phase 3 (C-3): idempotency guard. Without this, a retried
-    // cancellation (e.g. a stalled job that fires twice, or the v1 caller
-    // racing with a queue worker) would re-debit the ADMIN wallet for the
-    // gateway refund and re-credit the customer wallet — overpaying the
-    // customer and depleting the admin float. The flag is set further
-    // down in the same transaction so a crash before commit safely leaves
-    // it false and a future retry can complete the work.
-    if (order.financeFlags?.cancellationReversalApplied) {
-      await session.commitTransaction();
-      return order;
-    }
-
-    if (order.paymentMode === "ONLINE" && order.financeFlags?.onlinePaymentCaptured) {
-      const refundAmount = roundCurrency(order.paymentBreakdown?.grandTotal || 0);
-      if (refundAmount > 0) {
-        const debitResult = await debitWallet({
-          ownerType: OWNER_TYPE.ADMIN,
-          ownerId: null,
-          amount: refundAmount,
-          bucket: "available",
-          session,
-        });
-
-        await createLedgerEntry(
-          {
-            orderId: order._id,
-            walletId: debitResult.wallet._id,
-            actorType: OWNER_TYPE.ADMIN,
-            actorId: null,
-            type: LEDGER_TRANSACTION_TYPE.REFUND,
-            direction: LEDGER_DIRECTION.DEBIT,
-            amount: refundAmount,
-            paymentMode: "ONLINE",
-            description: reason,
-            reference: order.orderId,
-            balanceBefore: debitResult.before,
-            balanceAfter: debitResult.after,
-          },
-          { session },
-        );
-      }
-      order.paymentStatus = ORDER_PAYMENT_STATUS.REFUNDED;
-    }
-
-    // NEW: Refund Wallet Amount Used.
-    //
-    // MLM Phase 1: when the order recorded a per-bucket `walletSplit`
-    // (partial redemption OR a full Shopping/Earning Wallet tender), refund
-    // each bucket back to its SOURCE so shopping credit stays shopping
-    // credit and withdrawable earnings stay withdrawable. Fall back to the
-    // legacy single `available` refund when no split is present.
-    const walletUsed = roundCurrency(order.pricing?.walletAmount || order.paymentBreakdown?.walletAmount || 0);
-    if (walletUsed > 0) {
-      const refundByBucket = await resolveWalletRefundSplit(order, walletUsed, { session });
-
-      for (const bucket of ["shopping", "earnings", "available"]) {
-        const amount = roundCurrency(refundByBucket[bucket] || 0);
-        if (amount <= 0) continue;
-        await creditWallet({
-          ownerType: OWNER_TYPE.CUSTOMER,
-          ownerId: order.customer,
-          amount,
-          bucket,
-          session,
-          ledgerType: LEDGER_TRANSACTION_TYPE.WALLET_REFUND,
-          ledgerReference: `${order.orderId}-${bucket}`,
-          ledgerDescription: `Refund for wallet payment (${bucket}): ${reason}`,
-          orderId: order._id,
-          idempotencyKey: `CANCEL-REFUND-${order._id}-${bucket}`,
-          metadata: { bucket, cancellationRefund: true },
-          syncUserWalletBalance: bucket === "available",
-        });
-      }
-    }
-
-    order.settlementStatus = {
-      ...(order.settlementStatus || {}),
-      overall: ORDER_SETTLEMENT_STATUS.CANCELLED,
-      sellerPayout: "NOT_APPLICABLE",
-      riderPayout: "NOT_APPLICABLE",
-    };
-
-    // Audit Phase 3 (C-3): mark the reversal as applied INSIDE the same
-    // transaction that issued the wallet refund / gateway debit / audit
-    // log. The flag is committed atomically with the side-effects so the
-    // idempotency guard at the top of this function is correct under
-    // crash-and-retry.
-    order.financeFlags = {
-      ...(order.financeFlags || {}),
-      cancellationReversalApplied: true,
-    };
-
-    await createFinanceAuditLog(
-      {
-        action: "FINANCE_ADJUSTMENT_APPLIED",
-        actorType: OWNER_TYPE.ADMIN,
-        actorId: actorId || null,
-        orderId: order._id,
-        metadata: { reason },
-      },
-      { session },
-    );
-
-    await order.save({ session });
-    await session.commitTransaction();
-    return order;
-  } catch (error) {
-    await session.abortTransaction();
-    throw error;
+    let result = null;
+    await session.withTransaction(async () => {
+      result = await applyCancellationFinanceReversal(orderOrId, {
+        actorId,
+        reason,
+        session,
+      });
+    }, {
+      readConcern: { level: "snapshot" },
+      writeConcern: { w: "majority" },
+    });
+    return result?.order || null;
   } finally {
     session.endSession();
   }

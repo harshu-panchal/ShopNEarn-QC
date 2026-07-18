@@ -2,6 +2,7 @@ import React from 'react';
 import { useRouteError, useNavigate, isRouteErrorResponse } from 'react-router-dom';
 import { ShoppingBag, RefreshCw, Home, AlertCircle } from 'lucide-react';
 import { useSettings } from '@core/context/SettingsContext';
+import { isStaleChunkError, reloadOnceForStaleChunk } from '@shared/utils/staleChunkRecovery';
 
 const RootErrorBoundary = () => {
     const error = useRouteError();
@@ -9,6 +10,14 @@ const RootErrorBoundary = () => {
     const { settings } = useSettings();
     const appName = settings?.appName || 'App';
     console.error('Route Error:', error);
+
+    // Stale-deployment chunk failure: reload once to pick up the new build
+    // instead of showing the error screen. Falls through to the normal UI
+    // when a reload already happened recently (genuine failure).
+    const [isRecovering] = React.useState(
+        () => isStaleChunkError(error) && reloadOnceForStaleChunk(),
+    );
+    if (isRecovering) return null;
 
     let errorMessage = "An unexpected error occurred.";
     let errorStatus = 500;

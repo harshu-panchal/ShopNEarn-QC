@@ -11,6 +11,7 @@ import {
   generateOrderPaymentBreakdown,
   hydrateOrderItems,
 } from "./finance/pricingService.js";
+import { getOrCreateFinanceSettings } from "./finance/financeSettingsService.js";
 import { computeOrderDiscount } from "./finance/couponService.js";
 import { getMlmConfig } from "./mlm/mlmConfigService.js";
 import { cartIsHubOnly } from "./franchise/franchiseCatalogService.js";
@@ -120,19 +121,28 @@ async function computeDistanceKmForSeller({
   if (isHubSeller) {
     const routingAddress = normalizeAddressForFranchiseRouting(address);
     let partner = franchiseContext?.franchisePartner;
-    if (!partner && routingAddress) {
+    if (!partner && !franchiseContext?.isFranchiseHubCart && routingAddress) {
       partner = await resolveFranchisePartner({
         address: routingAddress,
         customerId: franchiseContext?.customerId,
+        hydratedItems: franchiseContext?.hydratedItems,
       });
     }
     if (!partner) {
-      const err = new Error(
-        "Home Shoppy is not available in your delivery area yet. No franchise partner serves this location.",
+      // Hub-seller fallback: no franchise partner covers the address or
+      // none holds full stock, so the hub fulfills directly. Measure from
+      // the hub warehouse without the standard serviceRadius gate.
+      if (!normalizedLocation) return 0;
+      const hubCoords = seller?.location?.coordinates;
+      if (!Array.isArray(hubCoords) || hubCoords.length < 2) return 0;
+      const [hubLng, hubLat] = hubCoords;
+      const hubDistanceMeters = distanceMeters(
+        normalizedLocation.lat,
+        normalizedLocation.lng,
+        Number(hubLat),
+        Number(hubLng),
       );
-      err.statusCode = 422;
-      err.code = "FRANCHISE_TERRITORY_UNAVAILABLE";
-      throw err;
+      return Number((hubDistanceMeters / 1000).toFixed(3));
     }
     if (!normalizedLocation) {
       return 0;
@@ -370,24 +380,28 @@ function applyGlobalHandlingFeeToSellerBreakdowns(
   }
 }
 
-// Audit Phase 5 (H-6): when the server-side coupon engine returns
-// `freeDelivery: true`, zero out the customer-facing delivery fee on
-// every seller breakdown. The rider keeps their full payout (the
+// Audit Phase 5 (H-6): when free delivery applies (coupon, MLM digital,
+// or cart-subtotal threshold), zero out the customer-facing delivery fee
+// on every seller breakdown. The rider keeps their full payout (the
 // platform absorbs the campaign cost), so we only adjust
 // `deliveryFeeCharged`, `grossTotal`, `grandTotal`, `payableAmount`,
 // and `platformLogisticsMargin`. Runs AFTER handling-fee allocation
 // (so `grossTotal` exists) and BEFORE tip/wallet allocation (so they
 // allocate against the post-rebate grandTotal).
-function applyFreeDeliveryToSellerBreakdowns(sellerBreakdownEntries = []) {
+function applyFreeDeliveryToSellerBreakdowns(
+  sellerBreakdownEntries = [],
+  { reason = "coupon" } = {},
+) {
   for (const entry of sellerBreakdownEntries) {
     const breakdown = entry?.breakdown;
     if (!breakdown) continue;
     const oldDeliveryFee = round2(Number(breakdown.deliveryFeeCharged || 0));
+    breakdown.snapshots = breakdown.snapshots && typeof breakdown.snapshots === "object"
+      ? breakdown.snapshots
+      : {};
     if (oldDeliveryFee <= 0) {
-      breakdown.snapshots = breakdown.snapshots && typeof breakdown.snapshots === "object"
-        ? breakdown.snapshots
-        : {};
       breakdown.snapshots.freeDeliveryRebate = 0;
+      breakdown.snapshots.freeDeliveryReason = reason;
       continue;
     }
     breakdown.deliveryFeeCharged = 0;
@@ -404,10 +418,8 @@ function applyFreeDeliveryToSellerBreakdowns(sellerBreakdownEntries = []) {
     breakdown.platformTotalEarning = round2(
       adminProductCommissionTotal + breakdown.platformLogisticsMargin,
     );
-    breakdown.snapshots = breakdown.snapshots && typeof breakdown.snapshots === "object"
-      ? breakdown.snapshots
-      : {};
     breakdown.snapshots.freeDeliveryRebate = oldDeliveryFee;
+    breakdown.snapshots.freeDeliveryReason = reason;
   }
 }
 
@@ -528,15 +540,19 @@ export async function buildCheckoutPricingSnapshot({
   };
   if (isFranchiseHubCart) {
     const hubSellerId = await getHubSellerId();
+    // Stock-aware: only partners holding FULL stock for the cart are
+    // eligible. A null partner means the hub seller fulfills directly.
     const franchisePartner = await resolveFranchisePartner({
       address: routingAddress,
       customerId,
+      hydratedItems,
     });
     franchiseContext = {
       isFranchiseHubCart: true,
       hubSellerId: hubSellerId ? String(hubSellerId) : null,
       franchisePartner,
       customerId,
+      hydratedItems,
     };
   }
 
@@ -569,6 +585,10 @@ export async function buildCheckoutPricingSnapshot({
   const sellerBreakdownEntries = [];
 
   const globalHandling = await computeGlobalHandlingFeeForCheckout(hydratedItems, { session });
+  const deliverySettings = await getOrCreateFinanceSettings({ session });
+  const freeDeliveryThreshold = round2(
+    Number(deliverySettings.freeDeliveryThreshold || 0),
+  );
 
   // Pre-compute each seller's subtotal for proportional discount/wallet distribution
   const sellerSubtotals = new Map();
@@ -579,6 +599,7 @@ export async function buildCheckoutPricingSnapshot({
     sellerSubtotals.set(sellerId, subtotal);
     totalSubtotal += subtotal;
   }
+  totalSubtotal = round2(totalSubtotal);
 
   for (const sellerId of sellerIds) {
     const sellerItems = itemsBySeller.get(sellerId) || [];
@@ -600,6 +621,7 @@ export async function buildCheckoutPricingSnapshot({
       distanceKm,
       discountTotal: sellerDiscount,
       taxTotal: 0,
+      deliverySettings,
       session,
     });
     sellerBreakdownEntries.push({
@@ -614,20 +636,33 @@ export async function buildCheckoutPricingSnapshot({
   }
 
   applyGlobalHandlingFeeToSellerBreakdowns(sellerBreakdownEntries, globalHandling);
-  // Audit Phase 5 (H-6): free-delivery rebate must run AFTER handling
-  // (so `grossTotal` is final on the delivery axis) and BEFORE tip /
-  // wallet allocation (so they clamp against the post-rebate grandTotal,
-  // matching the frontend math).
+  // Free-delivery rebate must run AFTER handling (so `grossTotal` is
+  // final on the delivery axis) and BEFORE tip / wallet allocation
+  // (so they clamp against the post-rebate grandTotal).
+  //
+  // Precedence when multiple rules qualify:
+  //   1. coupon free_delivery
+  //   2. MLM digital-only cart
+  //   3. admin cart-subtotal threshold (>=)
   //
   // MLM digital carve-out: when the cart is exclusively the
-  // joining-package or home-shopping SKU, we also apply the
-  // free-delivery transform — these are subscription-style purchases
-  // with no rider involvement, so charging a delivery fee would be
-  // both incorrect for the customer and wrong for finance
-  // reconciliation (no rider payout will ever be triggered).
+  // home-shopping SKU, we also apply the free-delivery transform —
+  // these are subscription-style purchases with no rider involvement.
   const mlmFreeDelivery = await isDigitalOnlyMlmCart(hydratedItems);
-  if (applyFreeDelivery || mlmFreeDelivery) {
-    applyFreeDeliveryToSellerBreakdowns(sellerBreakdownEntries);
+  const thresholdFreeDelivery =
+    freeDeliveryThreshold > 0 && totalSubtotal >= freeDeliveryThreshold;
+  let freeDeliveryReason = null;
+  if (applyFreeDelivery) {
+    freeDeliveryReason = "coupon";
+  } else if (mlmFreeDelivery) {
+    freeDeliveryReason = "digital";
+  } else if (thresholdFreeDelivery) {
+    freeDeliveryReason = "threshold";
+  }
+  if (freeDeliveryReason) {
+    applyFreeDeliveryToSellerBreakdowns(sellerBreakdownEntries, {
+      reason: freeDeliveryReason,
+    });
   }
   allocateCheckoutTipToSellerBreakdowns(sellerBreakdownEntries, tipAmount);
   // Audit Phase 4 (C-1): subtract wallet redemption from each seller's
@@ -664,7 +699,8 @@ export async function buildCheckoutPricingSnapshot({
     // deterministically against the rule that was in effect.
     couponSnapshot: resolvedCouponSnapshot,
     coupon: resolvedCoupon,
-    freeDeliveryApplied: applyFreeDelivery || mlmFreeDelivery,
+    freeDeliveryApplied: Boolean(freeDeliveryReason),
+    freeDeliveryReason,
   };
 }
 

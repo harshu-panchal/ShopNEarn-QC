@@ -176,7 +176,7 @@ const CartPage = () => {
                                         </div>
                                         <div className="flex justify-between text-sm text-white/75">
                                             <span>Delivery Fee</span>
-                                            <span className="font-bold text-brand-300">FREE</span>
+                                            <span className="font-bold text-white/60">At checkout</span>
                                         </div>
                                         <div className="border-t border-white/10 pt-4 flex items-center justify-between">
                                             <span className="text-base font-bold text-white/85">Total Amount</span>

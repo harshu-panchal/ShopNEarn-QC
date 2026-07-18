@@ -69,6 +69,15 @@ import CheckoutCouponSection from "./checkout/components/CheckoutCouponSection";
 import CheckoutRecommendedProducts from "./checkout/components/CheckoutRecommendedProducts";
 import CheckoutWishlistSection from "./checkout/components/CheckoutWishlistSection";
 import CheckoutOrderSuccess from "./checkout/components/CheckoutOrderSuccess";
+import {
+  buildAddressForOrder as buildCheckoutOrderAddress,
+  canProceedWithCheckoutAddress,
+  createEmptyCheckoutAddress,
+  isCheckoutAddressComplete,
+  isRecipientComplete,
+  isValidLatLng,
+  profileAddressToCheckoutAddress,
+} from "../utils/checkoutAddress";
 
 const CheckoutPage = () => {
   const {
@@ -121,6 +130,8 @@ const CheckoutPage = () => {
   const appName = settings?.appName || "App";
   const {
     savedAddresses: locationSavedAddresses,
+    addressesLoaded,
+    isLoadingAddresses,
     currentLocation,
     refreshLocation,
     isFetchingLocation,
@@ -149,23 +160,10 @@ const CheckoutPage = () => {
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const postOrderNavigateRef = useRef(null);
   const previewDebounceRef = useRef(null);
-  const [currentAddress, setCurrentAddress] = useState({
-    type: "Home",
-    name: "Harshvardhan Panchal",
-    address: "81 Pipliyahana Road, Near 214",
-    landmark: "",
-    city: "Indore - 452018",
-    phone: "6268423925",
-  });
+  const addressHydratedRef = useRef(false);
+  const [currentAddress, setCurrentAddress] = useState(null);
   const [isEditAddressOpen, setIsEditAddressOpen] = useState(false);
-  const [editAddressForm, setEditAddressForm] = useState({
-    type: "Home",
-    name: "Harshvardhan Panchal",
-    address: "81 Pipliyahana Road, Near 214",
-    landmark: "",
-    city: "Indore - 452018",
-    phone: "6268423925",
-  });
+  const [editAddressForm, setEditAddressForm] = useState(createEmptyCheckoutAddress());
   const [showRecipientForm, setShowRecipientForm] = useState(false);
   const [recipientData, setRecipientData] = useState({
     completeAddress: "",
@@ -267,13 +265,19 @@ const CheckoutPage = () => {
 
   const RECIPIENT_STORAGE_KEY = STORAGE_KEYS.RECIPIENT_ADDRESS;
 
+  const hasValidCheckoutAddress = canProceedWithCheckoutAddress({
+    currentAddress,
+    savedRecipient,
+  });
+
   // Derived display values for primary delivery card
-  const displayName = savedRecipient?.name || currentAddress.name;
-  const displayPhone =
-    savedRecipient?.phone || currentAddress.phone || "6268423925";
+  const displayName = savedRecipient?.name || currentAddress?.name || "";
+  const displayPhone = savedRecipient?.phone || currentAddress?.phone || "";
   const displayAddress = savedRecipient
     ? `${savedRecipient.completeAddress}${savedRecipient.landmark ? `, ${savedRecipient.landmark}` : ""}${savedRecipient.pincode ? ` - ${savedRecipient.pincode}` : ""}`
-    : `${currentAddress.address}${currentAddress.landmark ? `, ${currentAddress.landmark}` : ""}, ${currentAddress.city}`;
+    : currentAddress
+      ? `${currentAddress.address}${currentAddress.landmark ? `, ${currentAddress.landmark}` : ""}${currentAddress.city ? `, ${currentAddress.city}` : ""}`
+      : "";
 
   useEffect(() => {
     if (!paymentMethods.length) return;
@@ -354,60 +358,66 @@ const CheckoutPage = () => {
 
   const finalAmountToPay = Math.max(0, (pricingPreview?.grandTotal || 0) - walletAmountToUse);
 
-  const buildAddressForOrder = () => {
-    const locationFromContext =
-      Number.isFinite(currentLocation?.latitude) &&
-      Number.isFinite(currentLocation?.longitude)
-        ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
-        : undefined;
+  const buildAddressForOrder = () =>
+    buildCheckoutOrderAddress({
+      currentAddress,
+      savedRecipient,
+      currentLocation,
+    });
 
-    if (savedRecipient) {
-      const pincode = String(savedRecipient.pincode || "").trim();
-      return {
-        type: "Other",
-        name: savedRecipient.name,
-        address: savedRecipient.completeAddress,
-        landmark: savedRecipient.landmark || "",
-        city: pincode || "",
-        pincode: pincode || undefined,
-        phone: savedRecipient.phone,
-        location: locationFromContext,
-      };
-    }
-
-    const addrLoc = currentAddress?.location;
-    const hasAddrLoc =
-      addrLoc &&
-      typeof addrLoc.lat === "number" &&
-      typeof addrLoc.lng === "number" &&
-      Number.isFinite(addrLoc.lat) &&
-      Number.isFinite(addrLoc.lng);
-
-    const cityText = String(currentAddress?.city || "").trim();
-    const pincodeMatch = cityText.match(/\b(\d{6})\b/);
-
-    return {
-      ...currentAddress,
-      pincode: currentAddress?.pincode || (pincodeMatch ? pincodeMatch[1] : undefined),
-      location: hasAddrLoc
-        ? { lat: addrLoc.lat, lng: addrLoc.lng }
-        : locationFromContext,
-    };
-  };
-
-  const handleSaveRecipient = () => {
+  const handleSaveRecipient = async () => {
     if (
       !recipientData.completeAddress ||
       !recipientData.name ||
-      recipientData.phone.length !== 10
+      String(recipientData.phone || "").replace(/\D/g, "").length !== 10
     ) {
       showToast("Please fill all required fields", "error");
       return;
     }
-    setSavedRecipient(recipientData);
+
+    const location = await resolveAddressCoords(
+      [
+        recipientData.completeAddress,
+        recipientData.landmark,
+        recipientData.pincode,
+      ]
+        .filter(Boolean)
+        .join(", "),
+    );
+
+    if (!location) {
+      showToast(
+        "Could not locate this recipient address. Please refine it and try again.",
+        "error",
+      );
+      return;
+    }
+
+    const nextRecipient = {
+      ...recipientData,
+      phone: String(recipientData.phone || "").replace(/\D/g, "").slice(0, 10),
+      location,
+    };
+    setSavedRecipient(nextRecipient);
     setShowRecipientForm(false);
-    setJSON(RECIPIENT_STORAGE_KEY, recipientData);
+    setJSON(RECIPIENT_STORAGE_KEY, nextRecipient);
     showToast("Recipient details saved!", "success");
+  };
+
+  const handleRemoveRecipient = () => {
+    setSavedRecipient(null);
+    setRecipientData({
+      completeAddress: "",
+      landmark: "",
+      pincode: "",
+      name: "",
+      phone: "",
+    });
+    try {
+      localStorage.removeItem(RECIPIENT_STORAGE_KEY);
+    } catch {
+      // ignore storage failures
+    }
   };
 
   const handleMoveToWishlist = (item) => {
@@ -417,16 +427,16 @@ const CheckoutPage = () => {
   };
 
   const handleOpenEditAddress = () => {
-    setEditAddressForm(currentAddress);
+    setEditAddressForm(
+      currentAddress
+        ? { ...createEmptyCheckoutAddress(), ...currentAddress }
+        : createEmptyCheckoutAddress({
+            name: user?.name || "",
+            phone: user?.phone || "",
+          }),
+    );
     setIsEditAddressOpen(true);
   };
-
-  const isValidLatLng = (loc) =>
-    loc &&
-    typeof loc.lat === "number" &&
-    typeof loc.lng === "number" &&
-    Number.isFinite(loc.lat) &&
-    Number.isFinite(loc.lng);
 
   const resolveAddressCoords = async (addressText) => {
     const q = String(addressText || "").trim();
@@ -504,31 +514,36 @@ const CheckoutPage = () => {
         return;
       }
 
-      setCurrentAddress({
-        type: addr.label,
-        name: user?.name || currentAddress.name,
-        address: rawText,
-        city: "",
-        phone: addr.phone || currentAddress.phone,
-        landmark: "",
-        ...(pid ? { placeId: pid } : {}),
-        ...(resolvedLoc ? { location: resolvedLoc } : {}),
-      });
-
-      if (resolvedLoc) {
-        updateLocation(
-          {
-            name: rawText,
-            time: currentLocation?.time || "12-15 mins",
-            city: currentLocation?.city,
-            state: currentLocation?.state,
-            pincode: currentLocation?.pincode,
-            latitude: resolvedLoc.lat,
-            longitude: resolvedLoc.lng,
-          },
-          { persist: true, updateSavedHome: false },
+      const nextAddress = profileAddressToCheckoutAddress(
+        {
+          ...addr,
+          address: rawText,
+          location: resolvedLoc,
+          placeId: pid || addr.placeId || null,
+        },
+        user,
+      );
+      if (!nextAddress || !isCheckoutAddressComplete(nextAddress)) {
+        showToast(
+          "Selected address is incomplete. Please edit it before continuing.",
+          "error",
         );
+        return;
       }
+      setCurrentAddress(nextAddress);
+
+      updateLocation(
+        {
+          name: rawText,
+          time: currentLocation?.time || "12-15 mins",
+          city: nextAddress.city || addr.city || "",
+          state: nextAddress.state || addr.state || "",
+          pincode: nextAddress.pincode || addr.pincode || "",
+          latitude: resolvedLoc.lat,
+          longitude: resolvedLoc.lng,
+        },
+        { persist: true, updateSavedHome: false },
+      );
 
       setIsAddressModalOpen(false);
     } finally {
@@ -590,12 +605,27 @@ const CheckoutPage = () => {
       );
     }
 
-    setCurrentAddress({
+    if (!location) {
+      showToast(
+        "Could not fetch coordinates for this address. Please refine it.",
+        "error",
+      );
+      return;
+    }
+
+    const nextAddress = createEmptyCheckoutAddress({
       ...editAddressForm,
-      ...(location ? { location } : {}),
+      name: editAddressForm.name.trim() || user?.name || "",
+      phone: editAddressForm.phone.trim() || user?.phone || "",
+      location,
       ...(placeId ? { placeId } : {}),
       ...(formattedAddress ? { formattedAddress } : {}),
     });
+    if (!isCheckoutAddressComplete(nextAddress)) {
+      showToast("Please fill name, phone, address and city", "error");
+      return;
+    }
+    setCurrentAddress(nextAddress);
     setIsEditAddressOpen(false);
     showToast("Delivery address updated", "success");
   };
@@ -603,37 +633,48 @@ const CheckoutPage = () => {
   const handleUseCurrentLiveLocation = async () => {
     const result = await refreshLocation();
 
-    if (result?.ok && result.location) {
-      const liveLocation = result.location;
-      setCurrentAddress((prev) => ({
-        ...prev,
+    const applyLiveLocation = (liveLocation) => {
+      if (
+        typeof liveLocation?.latitude !== "number" ||
+        typeof liveLocation?.longitude !== "number" ||
+        !Number.isFinite(liveLocation.latitude) ||
+        !Number.isFinite(liveLocation.longitude)
+      ) {
+        return false;
+      }
+      const nextAddress = createEmptyCheckoutAddress({
+        type: currentAddress?.type || "Home",
+        name: user?.name || currentAddress?.name || "",
+        phone: user?.phone || currentAddress?.phone || "",
         address: liveLocation.name,
         landmark: "",
         city: [liveLocation.city, liveLocation.state, liveLocation.pincode]
           .filter(Boolean)
           .join(", "),
-        ...(typeof liveLocation.latitude === "number" &&
-        typeof liveLocation.longitude === "number"
-          ? { location: { lat: liveLocation.latitude, lng: liveLocation.longitude } }
-          : {}),
-      }));
+        state: liveLocation.state || "",
+        pincode: liveLocation.pincode || "",
+        location: { lat: liveLocation.latitude, lng: liveLocation.longitude },
+      });
+      if (!isCheckoutAddressComplete(nextAddress)) {
+        showToast(
+          "Live location found, but your profile name/phone is missing. Please edit the address.",
+          "error",
+        );
+        setCurrentAddress(nextAddress);
+        setEditAddressForm(nextAddress);
+        setIsEditAddressOpen(true);
+        return true;
+      }
+      setCurrentAddress(nextAddress);
+      return true;
+    };
+
+    if (result?.ok && result.location && applyLiveLocation(result.location)) {
       showToast("Using your current live location", "success");
       return;
     }
 
-    if (currentLocation?.name) {
-      setCurrentAddress((prev) => ({
-        ...prev,
-        address: currentLocation.name,
-        landmark: "",
-        city: [currentLocation.city, currentLocation.state, currentLocation.pincode]
-          .filter(Boolean)
-          .join(", "),
-        ...(typeof currentLocation.latitude === "number" &&
-        typeof currentLocation.longitude === "number"
-          ? { location: { lat: currentLocation.latitude, lng: currentLocation.longitude } }
-          : {}),
-      }));
+    if (currentLocation?.name && applyLiveLocation(currentLocation)) {
       showToast("Using your last detected location", "success");
       return;
     }
@@ -737,9 +778,16 @@ const CheckoutPage = () => {
   // Load recipient from localStorage + fetch coupons on mount
   useEffect(() => {
     const parsed = getJSON(RECIPIENT_STORAGE_KEY, null);
-    if (parsed && parsed.completeAddress && parsed.name && parsed.phone) {
+    if (parsed && isRecipientComplete(parsed)) {
       setRecipientData(parsed);
       setSavedRecipient(parsed);
+    } else if (parsed) {
+      // Stale recipient without coordinates — require re-entry.
+      try {
+        localStorage.removeItem(RECIPIENT_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
     }
 
     const fetchCoupons = async () => {
@@ -756,11 +804,65 @@ const CheckoutPage = () => {
     fetchCoupons();
   }, []);
 
+  // Hydrate checkout address from the first saved profile address once loaded.
+  useEffect(() => {
+    if (!addressesLoaded || addressHydratedRef.current) return;
+    if (savedRecipient && isRecipientComplete(savedRecipient)) {
+      addressHydratedRef.current = true;
+      return;
+    }
+    if (currentAddress && isCheckoutAddressComplete(currentAddress)) {
+      addressHydratedRef.current = true;
+      return;
+    }
+    if (!locationSavedAddresses.length) {
+      addressHydratedRef.current = true;
+      return;
+    }
+
+    const first = locationSavedAddresses[0];
+    const next = profileAddressToCheckoutAddress(first, user);
+    if (next && isCheckoutAddressComplete(next)) {
+      setCurrentAddress(next);
+      if (isValidLatLng(next.location)) {
+        updateLocation(
+          {
+            name: next.address,
+            time: currentLocation?.time || "12-15 mins",
+            city: next.city || first.city || "",
+            state: next.state || first.state || "",
+            pincode: next.pincode || first.pincode || "",
+            latitude: next.location.lat,
+            longitude: next.location.lng,
+          },
+          { persist: true, updateSavedHome: false },
+        );
+      }
+    } else if (next) {
+      setCurrentAddress(next);
+    }
+    addressHydratedRef.current = true;
+  }, [
+    addressesLoaded,
+    locationSavedAddresses,
+    user,
+    savedRecipient,
+    currentAddress,
+    currentLocation?.time,
+    updateLocation,
+  ]);
+
   // Debounced checkoutPreview — fires 400 ms after last dependency change
   useEffect(() => {
-    if (!isAuthenticated || cart.length === 0) {
+    if (!isAuthenticated || cart.length === 0 || !hasValidCheckoutAddress) {
       setPricingPreview(null);
       setIsFranchiseHubCart(false);
+      return;
+    }
+
+    const addressPayload = buildAddressForOrder();
+    if (!addressPayload) {
+      setPricingPreview(null);
       return;
     }
 
@@ -773,7 +875,7 @@ const CheckoutPage = () => {
         price: item.price,
         image: item.image,
       })),
-      address: buildAddressForOrder(),
+      address: addressPayload,
       discountTotal: discountAmount,
       taxTotal: 0,
       tipAmount: selectedTip,
@@ -828,6 +930,7 @@ const CheckoutPage = () => {
     savedRecipient,
     currentAddress,
     currentLocation,
+    hasValidCheckoutAddress,
   ]);
 
   // Recommended products — only re-fetches when the set of product IDs changes
@@ -854,6 +957,11 @@ const CheckoutPage = () => {
   }, [cartProductIdKey]);
 
   const handlePlaceOrder = async () => {
+    if (!hasValidCheckoutAddress) {
+      showToast("Add or confirm a delivery address to continue.", "error");
+      return;
+    }
+
     const walletSource = getWalletSource(selectedPayment);
     if (walletSource) {
       const orderTotal = Number(pricingPreview?.grandTotal || 0);
@@ -875,8 +983,14 @@ const CheckoutPage = () => {
     setIsPlacingOrder(true);
     try {
       const taxAmount = pricingPreview?.taxTotal || 0;
+      const orderAddress = buildAddressForOrder();
+      if (!orderAddress) {
+        setIsPlacingOrder(false);
+        showToast("Add or confirm a delivery address to continue.", "error");
+        return;
+      }
       const orderData = {
-        address: buildAddressForOrder(),
+        address: orderAddress,
         paymentMode: resolvePaymentMode(),
         discountTotal: discountAmount,
         taxTotal: taxAmount,
@@ -1137,10 +1251,12 @@ const CheckoutPage = () => {
               recipientData={recipientData}
               onRecipientDataChange={setRecipientData}
               onSaveRecipient={handleSaveRecipient}
-              onRemoveRecipient={() => setSavedRecipient(null)}
+              onRemoveRecipient={handleRemoveRecipient}
               displayName={displayName}
               displayPhone={displayPhone}
               displayAddress={displayAddress}
+              isLoadingAddresses={isLoadingAddresses || !addressesLoaded}
+              hasValidAddress={hasValidCheckoutAddress}
             />
 
             {/* Cart Summary */}
@@ -1210,10 +1326,20 @@ const CheckoutPage = () => {
 
             {/* Desktop Slide to Pay */}
             <div className="hidden lg:block">
+              {!hasValidCheckoutAddress && (
+                <p className="mb-3 text-center text-xs font-bold text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                  Add or confirm a delivery address to continue.
+                </p>
+              )}
               <SlideToPay
                 amount={finalAmountToPay}
                 onSuccess={handlePlaceOrder}
-                isLoading={isPlacingOrder || isPreviewLoading || !pricingPreview}
+                isLoading={
+                  isPlacingOrder ||
+                  isPreviewLoading ||
+                  !pricingPreview ||
+                  !hasValidCheckoutAddress
+                }
                 text={finalAmountToPay === 0 ? "Place Free Order" : "Order Now"}
               />
               <p className="text-center text-[10px] text-slate-400 font-bold mt-4 uppercase tracking-widest">
@@ -1227,10 +1353,20 @@ const CheckoutPage = () => {
       {/* Sticky Footer — Mobile Only */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-4 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50 rounded-t-3xl">
         <div className="max-w-4xl mx-auto">
+          {!hasValidCheckoutAddress && (
+            <p className="mb-2 text-center text-[11px] font-bold text-amber-700">
+              Add or confirm a delivery address to continue.
+            </p>
+          )}
           <SlideToPay
             amount={finalAmountToPay}
             onSuccess={handlePlaceOrder}
-            isLoading={isPlacingOrder || isPreviewLoading || !pricingPreview}
+            isLoading={
+              isPlacingOrder ||
+              isPreviewLoading ||
+              !pricingPreview ||
+              !hasValidCheckoutAddress
+            }
             text={finalAmountToPay === 0 ? "Place Free Order" : "Slide to Pay"}
           />
         </div>
@@ -1250,17 +1386,21 @@ const CheckoutPage = () => {
                 onClick={() => handleSelectSavedAddress(addr)}
                 disabled={isResolvingAddressCoords}
                 className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${
-                  currentAddress.id === addr.id
+                  currentAddress?.type === addr.label || currentAddress?.address === addr.address
                     ? "border-primary bg-brand-50 shadow-sm"
                     : "border-slate-100 bg-white hover:border-slate-200"
                 }`}>
                 <div className="flex items-center gap-3 mb-2">
-                  <div className={`p-2 rounded-full ${currentAddress.id === addr.id ? "bg-primary text-primary-foreground" : "bg-slate-100 text-slate-500"}`}>
+                  <div className={`p-2 rounded-full ${
+                    currentAddress?.type === addr.label || currentAddress?.address === addr.address
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-slate-100 text-slate-500"
+                  }`}>
                     <MapPin size={16} />
                   </div>
                   <span className="font-black text-slate-800 uppercase tracking-widest text-[10px]">{addr.label}</span>
                 </div>
-                <p className="text-sm font-bold text-slate-800">{user?.name || currentAddress.name}</p>
+                <p className="text-sm font-bold text-slate-800">{addr.name || user?.name || "—"}</p>
                 <p className="text-xs text-slate-500 leading-relaxed mb-1">{addr.address}</p>
                 {addr.phone && (
                   <p className="text-[11px] text-slate-400 font-medium">Phone: {addr.phone}</p>

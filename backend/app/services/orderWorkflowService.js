@@ -19,7 +19,7 @@ import {
   INITIAL_RETURN_PICKUP_RADIUS_M,
   RETURN_PICKUP_RADIUS_MULTIPLIER,
 } from "../constants/orderWorkflow.js";
-import { compensateOrderCancellation } from "./orderCompensation.js";
+import { cancelAndCompensateOrder } from "./orderCompensation.js";
 import { getRedisClient } from "../config/redis.js";
 import {
   scheduleSellerTimeout,
@@ -226,25 +226,26 @@ export async function sellerAcceptAtomic(sellerId, orderId) {
 export async function sellerRejectAtomic(sellerId, orderId) {
   orderId = await requireCanonicalOrderId(orderId);
   const now = new Date();
-  const order = await Order.findOneAndUpdate(
-    {
+  const cancelled = await cancelAndCompensateOrder({
+    filter: {
       orderId,
       seller: sellerId,
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
       sellerPendingExpiresAt: { $gt: now },
     },
-    {
-      $set: {
-        workflowStatus: WORKFLOW_STATUS.CANCELLED,
-        status: "cancelled",
-        cancelledBy: "seller",
-        cancelReason: "Rejected by seller",
-      },
+    cancellationPatch: {
+      workflowStatus: WORKFLOW_STATUS.CANCELLED,
+      status: "cancelled",
+      cancelledBy: "seller",
+      cancelReason: "Rejected by seller",
     },
-    { new: true },
-  );
+    actorId: sellerId,
+    reason: "Rejected by seller",
+    orderIdString: orderId,
+  });
 
+  const order = cancelled?.order;
   if (!order) {
     const err = new Error("Order not available to reject");
     err.statusCode = 409;
@@ -252,7 +253,6 @@ export async function sellerRejectAtomic(sellerId, orderId) {
   }
 
   await removeSellerTimeoutJob(orderId);
-  await compensateOrderCancellation(order, orderId);
 
   emitOrderStatusUpdate(order.orderId, {
     workflowStatus: WORKFLOW_STATUS.CANCELLED,
@@ -414,26 +414,30 @@ export async function processSellerTimeoutJob({ orderId }) {
     return;
   }
 
-  const updated = await Order.findOneAndUpdate(
-    {
-      orderId,
-      workflowVersion: { $gte: 2 },
-      workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
-    },
-    {
-      $set: {
+  let updated;
+  try {
+    const cancelled = await cancelAndCompensateOrder({
+      filter: {
+        orderId,
+        workflowVersion: { $gte: 2 },
+        workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
+      },
+      cancellationPatch: {
         workflowStatus: WORKFLOW_STATUS.CANCELLED,
         status: "cancelled",
         cancelledBy: "system",
         cancelReason: "Seller timeout (60s)",
       },
-    },
-    { new: true },
-  );
+      reason: "Seller timeout (60s)",
+      orderIdString: orderId,
+    });
+    updated = cancelled?.order;
+  } catch (err) {
+    if (err?.statusCode === 409) return;
+    throw err;
+  }
 
   if (!updated) return;
-
-  await compensateOrderCancellation(updated, orderId);
 
   emitOrderStatusUpdate(orderId, { workflowStatus: WORKFLOW_STATUS.CANCELLED }, updated.customer);
   emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
@@ -501,26 +505,31 @@ export async function processDeliveryTimeoutJob({ orderId, attempt }) {
     return;
   }
 
-  const updated = await Order.findOneAndUpdate(
-    {
-      orderId,
-      workflowVersion: { $gte: 2 },
-      workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
-    },
-    {
-      $set: {
+  let updated;
+  try {
+    const cancelled = await cancelAndCompensateOrder({
+      filter: {
+        orderId,
+        workflowVersion: { $gte: 2 },
+        workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
+      },
+      cancellationPatch: {
         workflowStatus: WORKFLOW_STATUS.CANCELLED,
         status: "cancelled",
         cancelledBy: "system",
         cancelReason: "No delivery partner (timeout)",
       },
-    },
-    { new: true },
-  );
+      reason: "No delivery partner (timeout)",
+      orderIdString: orderId,
+    });
+    updated = cancelled?.order;
+  } catch (err) {
+    if (err?.statusCode === 409) return;
+    throw err;
+  }
 
   if (!updated) return;
 
-  await compensateOrderCancellation(updated, orderId);
   emitOrderStatusUpdate(orderId, { workflowStatus: WORKFLOW_STATUS.CANCELLED }, updated.customer);
   emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
     orderId: updated.orderId,
@@ -730,22 +739,33 @@ export async function customerCancelV2(customerId, orderId, reason) {
     throw err;
   }
 
-  const updated = await Order.findOneAndUpdate(
-    {
-      orderId,
-      customer: customerId,
-      workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
-    },
-    {
-      $set: {
+  let updated;
+  try {
+    const cancelled = await cancelAndCompensateOrder({
+      filter: {
+        orderId,
+        customer: customerId,
+        workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
+      },
+      cancellationPatch: {
         workflowStatus: WORKFLOW_STATUS.CANCELLED,
         status: "cancelled",
         cancelledBy: "customer",
         cancelReason: reason || "Cancelled by customer",
       },
-    },
-    { new: true },
-  );
+      actorId: customerId,
+      reason: reason || "Cancelled by customer",
+      orderIdString: orderId,
+    });
+    updated = cancelled?.order;
+  } catch (err) {
+    if (err?.statusCode === 409) {
+      const conflict = new Error("Unable to cancel");
+      conflict.statusCode = 400;
+      throw conflict;
+    }
+    throw err;
+  }
 
   if (!updated) {
     const err = new Error("Unable to cancel");
@@ -754,7 +774,6 @@ export async function customerCancelV2(customerId, orderId, reason) {
   }
 
   await removeSellerTimeoutJob(orderId);
-  await compensateOrderCancellation(updated, orderId);
   emitOrderStatusUpdate(orderId, { workflowStatus: WORKFLOW_STATUS.CANCELLED }, updated.customer);
   emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
     orderId: updated.orderId,

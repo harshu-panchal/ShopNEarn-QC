@@ -263,6 +263,12 @@ const orderSchema = new mongoose.Schema(
         categoryCommissionSettings: { type: Array, default: [] },
         handlingFeeStrategy: { type: String, default: null },
         handlingCategoryUsed: { type: Object, default: {} },
+        freeDeliveryRebate: { type: Number, default: 0 },
+        freeDeliveryReason: {
+          type: String,
+          enum: ["threshold", "coupon", "digital"],
+          default: undefined,
+        },
       },
       lineItems: {
         type: Array,

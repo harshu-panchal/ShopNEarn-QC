@@ -52,6 +52,7 @@ const BillingCharges = () => {
                     setDeliveryMode(s.deliveryPricingMode === 'fixed_price' ? 'fixed' : 'distance');
                     setConfig((prev) => ({
                         ...prev,
+                        freeDeliveryThreshold: s.freeDeliveryThreshold ?? prev.freeDeliveryThreshold,
                         baseCharge: s.customerBaseDeliveryFee ?? s.baseDeliveryCharge ?? prev.baseCharge,
                         riderBasePayout: s.riderBasePayout ?? s.customerBaseDeliveryFee ?? prev.riderBasePayout,
                         baseDistance: s.baseDistanceCapacityKm ?? prev.baseDistance,
@@ -87,6 +88,7 @@ const BillingCharges = () => {
                     deliveryPartnerRatePerKm: config.deliveryPartnerRatePerKm,
                     fleetCommissionRatePerKm: config.deliveryPartnerRatePerKm,
                     fixedDeliveryFee: config.fixedCharge,
+                    freeDeliveryThreshold: config.freeDeliveryThreshold,
                     handlingFeeStrategy: config.handlingFeeStrategy,
                     codEnabled: config.codEnabled,
                     onlineEnabled: config.onlineEnabled,
@@ -180,12 +182,14 @@ const BillingCharges = () => {
                                     <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-slate-300 group-focus-within:text-red-500 transition-colors">₹</span>
                                     <input
                                         type="number"
+                                        min="0"
+                                        step="1"
                                         value={config.freeDeliveryThreshold}
                                         onChange={(e) => handleInputChange('freeDeliveryThreshold', e.target.value)}
                                         className="w-full pl-10 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-base font-black text-slate-900 outline-none focus:ring-2 focus:ring-red-500/10 transition-all"
                                     />
                                 </div>
-                                <p className="text-[10px] font-bold text-slate-400 italic">Orders above this amount will have free delivery.</p>
+                                <p className="text-[10px] font-bold text-slate-400 italic">Orders at or above this product subtotal get free delivery. Set 0 to disable.</p>
                             </div>
                         </div>
                     </Card>

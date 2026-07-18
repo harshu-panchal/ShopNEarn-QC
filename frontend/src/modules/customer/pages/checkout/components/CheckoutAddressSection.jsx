@@ -1,22 +1,12 @@
 import React from "react";
-import { Check, Contact2 } from "lucide-react";
+import { Check, Contact2, MapPin } from "lucide-react";
+import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 /**
  * CheckoutAddressSection
- *
- * Props:
- *   currentAddress       – the active delivery address object
- *   savedRecipient       – "order for someone else" recipient object or null
- *   savedAddresses       – array of saved addresses from LocationContext
- *   onSelectAddress      – () => void  — opens the address-selection modal
- *   onEditAddress        – () => void  — opens the edit-address modal
- *   onUseCurrentLocation – () => void  — triggers live-location detection
- *
- * Internal state for the "order for someone else" form is kept here because
- * it is purely presentational; the parent only needs the saved result.
  */
 const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
   currentAddress,
@@ -25,7 +15,6 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
   onSelectAddress,
   onEditAddress,
   onUseCurrentLocation,
-  // Extra props forwarded from CheckoutPage that the section needs
   isFetchingLocation,
   showRecipientForm,
   onToggleRecipientForm,
@@ -36,10 +25,11 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
   displayName,
   displayPhone,
   displayAddress,
+  isLoadingAddresses = false,
+  hasValidAddress = false,
 }) {
   return (
     <motion.div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-      {/* "Order for someone else" toggle */}
       <div className="flex justify-between items-center mb-3">
         <span className="text-xs text-slate-500 font-medium">
           Ordering for someone else?
@@ -55,7 +45,6 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
         </button>
       </div>
 
-      {/* Saved recipient card */}
       {savedRecipient && !showRecipientForm && (
         <div className="mb-4 p-4 bg-brand-50 border border-brand-100 rounded-2xl flex items-start justify-between">
           <div className="flex gap-3">
@@ -84,7 +73,6 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
         </div>
       )}
 
-      {/* Recipient form */}
       <AnimatePresence>
         {showRecipientForm && (
           <motion.div
@@ -169,43 +157,87 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
         )}
       </AnimatePresence>
 
-      {/* Delivery address heading */}
       <div className="mb-3">
         <h3 className="font-black text-slate-800 text-base">Delivery Address</h3>
         <p className="text-xs text-slate-500">Select or edit your saved address</p>
       </div>
 
-      {/* Active address card */}
-      <div className="border rounded-xl p-3 mb-3 relative cursor-pointer transition-all border-primary bg-brand-50/50">
-        <div className="flex items-start gap-3">
-          <div className="mt-1">
-            <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center">
-              <Check size={12} className="text-white stroke-[4]" />
-            </div>
-          </div>
-          <div className="flex-1">
-            <div className="flex justify-between items-start">
-              <h4 className="font-bold text-slate-800 text-sm">{displayName}</h4>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={(e) => { e.stopPropagation(); onEditAddress(); }}
-                  className="text-slate-500 text-xs font-bold hover:underline">
-                  Edit
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onSelectAddress(); }}
-                  className="text-primary text-xs font-bold hover:underline">
-                  Change
-                </button>
+      {isLoadingAddresses ? (
+        <div className="border rounded-xl p-4 mb-3 border-slate-100 bg-slate-50 text-sm font-medium text-slate-500">
+          Loading your saved addresses…
+        </div>
+      ) : hasValidAddress || (currentAddress && displayAddress) ? (
+        <div className="border rounded-xl p-3 mb-3 relative cursor-pointer transition-all border-primary bg-brand-50/50">
+          <div className="flex items-start gap-3">
+            <div className="mt-1">
+              <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center">
+                <Check size={12} className="text-white stroke-[4]" />
               </div>
             </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">{displayPhone}</p>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">{displayAddress}</p>
+            <div className="flex-1">
+              <div className="flex justify-between items-start">
+                <h4 className="font-bold text-slate-800 text-sm">
+                  {displayName || "Delivery address"}
+                </h4>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onEditAddress(); }}
+                    className="text-slate-500 text-xs font-bold hover:underline">
+                    Edit
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onSelectAddress(); }}
+                    className="text-primary text-xs font-bold hover:underline">
+                    Change
+                  </button>
+                </div>
+              </div>
+              {displayPhone ? (
+                <p className="text-xs text-slate-500 font-medium mt-0.5">{displayPhone}</p>
+              ) : null}
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">{displayAddress}</p>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="border border-dashed rounded-xl p-4 mb-3 border-amber-200 bg-amber-50/60 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 flex-shrink-0">
+              <MapPin size={16} />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-800">
+                No delivery address selected
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                Add a saved address or use your current live location to continue checkout.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to="/addresses"
+              className="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">
+              Add address
+            </Link>
+            {(savedAddresses?.length || 0) > 0 && (
+              <button
+                type="button"
+                onClick={onSelectAddress}
+                className="inline-flex items-center justify-center px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700">
+                Choose saved
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onEditAddress}
+              className="inline-flex items-center justify-center px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700">
+              Enter manually
+            </button>
+          </div>
+        </div>
+      )}
 
-      {/* Use current location */}
       <button
         type="button"
         onClick={onUseCurrentLocation}
@@ -214,20 +246,27 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
         {isFetchingLocation ? "Detecting live location..." : "Use current live location"}
       </button>
 
-      {/* Confirmation banner */}
-      <motion.div className="mt-3 rounded-2xl border border-brand-100 bg-brand-50/70 px-4 py-3 flex items-center gap-3 shadow-sm">
-        <div className="h-8 w-8 rounded-full bg-black  flex items-center justify-center shadow-brand-500/40 shadow-md">
-          <Check size={16} className="text-white stroke-[3]" />
-        </div>
-        <div className="flex-1">
-          <p className="text-[13px] font-semibold text-brand-900">
-            Delivery address confirmed
+      {hasValidAddress ? (
+        <motion.div className="mt-3 rounded-2xl border border-brand-100 bg-brand-50/70 px-4 py-3 flex items-center gap-3 shadow-sm">
+          <div className="h-8 w-8 rounded-full bg-black  flex items-center justify-center shadow-brand-500/40 shadow-md">
+            <Check size={16} className="text-white stroke-[3]" />
+          </div>
+          <div className="flex-1">
+            <p className="text-[13px] font-semibold text-brand-900">
+              Delivery address confirmed
+            </p>
+            <p className="text-[11px] font-medium text-brand-800/80">
+              We&apos;ll deliver to the address you&apos;ve entered above.
+            </p>
+          </div>
+        </motion.div>
+      ) : (
+        <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3">
+          <p className="text-[13px] font-semibold text-amber-900">
+            Confirm a delivery address to continue
           </p>
-          <p className="text-[11px] font-medium text-brand-800/80">
-            We&apos;ll deliver to the address you&apos;ve entered above.
-          </p>
         </div>
-      </motion.div>
+      )}
     </motion.div>
   );
 });

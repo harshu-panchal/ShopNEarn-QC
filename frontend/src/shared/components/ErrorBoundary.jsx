@@ -1,10 +1,11 @@
 import React, { Component } from 'react';
 import { AlertCircle, RefreshCw, Home, ShoppingBag } from 'lucide-react';
+import { isStaleChunkError, reloadOnceForStaleChunk } from '@shared/utils/staleChunkRecovery';
 
 class ErrorBoundary extends Component {
     constructor(props) {
         super(props);
-        this.state = { hasError: false, error: null };
+        this.state = { hasError: false, error: null, isRecovering: false };
     }
 
     static getDerivedStateFromError(error) {
@@ -12,10 +13,18 @@ class ErrorBoundary extends Component {
     }
 
     componentDidCatch(error, errorInfo) {
+        // Stale-deployment chunk failure: reload once to pick up the new
+        // build instead of showing the error screen.
+        if (isStaleChunkError(error) && reloadOnceForStaleChunk()) {
+            this.setState({ isRecovering: true });
+            return;
+        }
         console.error("Uncaught error:", error, errorInfo);
     }
 
     render() {
+        if (this.state.isRecovering) return null;
+
         if (this.state.hasError) {
             return (
                 <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 font-outfit">

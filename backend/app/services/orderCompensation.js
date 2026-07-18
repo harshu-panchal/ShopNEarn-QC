@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Transaction from "../models/transaction.js";
 import Order from "../models/order.js";
 import CheckoutGroup from "../models/checkoutGroup.js";
@@ -5,107 +6,180 @@ import { releaseReservedStockForOrder } from "./stockService.js";
 import { clearOrderTracking } from "./firebaseService.js";
 import { reverseOrderFinanceOnCancellation } from "./finance/orderFinanceService.js";
 import { restoreFranchiseStockForOrder } from "./franchise/franchiseOrderService.js";
-import logger from "./logger.js";
+async function updateCheckoutGroupAfterCancel(existing, { session } = {}) {
+  if (!existing?.checkoutGroupId) return;
+  const activeCount = await Order.countDocuments({
+    checkoutGroupId: existing.checkoutGroupId,
+    status: { $ne: "cancelled" },
+    workflowStatus: { $ne: "CANCELLED" },
+  }).session(session || null);
+
+  if (activeCount === 0) {
+    await CheckoutGroup.updateOne(
+      { checkoutGroupId: existing.checkoutGroupId },
+      {
+        $set: {
+          status: "CANCELLED",
+          paymentStatus: "FAILED",
+          "stockReservation.status": "RELEASED",
+          "stockReservation.releasedAt": new Date(),
+        },
+      },
+      session ? { session } : {},
+    );
+  }
+}
 
 /**
- * Reverse stock and fail seller transaction when an order is cancelled
- * after stock was deducted at placement.
- *
- * This function is the single chokepoint hit by every cancellation path
- * (seller timeout, payment timeout, delivery timeout, customer cancel,
- * auto-cancel job), so realtime tracking cleanup is wired here once and
- * stays consistent regardless of which caller triggers the cancellation.
- *
- * Audit Phase 3 (C-3): finance reversal (refund wallet redemption + debit
- * admin wallet for captured online payment) is also wired here so that
- * v2 cancellations stop silently keeping the customer's money. The
- * reversal is idempotent via `Order.financeFlags.cancellationReversalApplied`
- * (set inside the reversal's own transaction), so retried jobs and
- * legacy v1 callers that already invoke `reverseOrderFinanceOnCancellation`
- * directly (orderController.cancelOrder) never double-refund.
+ * Apply stock/finance/checkout-group compensation for an already-cancelled order.
+ * Prefer `cancelAndCompensateOrder` when the caller also owns the status transition.
  */
-export async function compensateOrderCancellation(order, orderIdString, opts = {}) {
-  const { actorId = null, reason = "Cancelled before settlement" } = opts;
+export async function compensateOrderCancellation(
+  order,
+  orderIdString,
+  opts = {},
+) {
+  const {
+    actorId = null,
+    reason = "Cancelled before settlement",
+    session: externalSession = null,
+  } = opts;
 
-  const existing = await Order.findById(order._id);
-  if (existing) {
-    await releaseReservedStockForOrder(existing, {
+  const run = async (session) => {
+    const existingQuery = Order.findById(order._id);
+    if (session) existingQuery.session(session);
+    const existing = await existingQuery;
+    if (!existing) {
+      return {
+        order: null,
+        stockReleased: false,
+        financeReversed: false,
+        duplicate: false,
+      };
+    }
+
+    const releaseResult = await releaseReservedStockForOrder(existing, {
       reason: "Cancelled",
+      session,
     });
+    // Keep the in-memory order aligned with the atomic claim so later
+    // saves (e.g. franchise restore) cannot overwrite RELEASED status.
+    if (releaseResult?.order?.stockReservation) {
+      existing.stockReservation = releaseResult.order.stockReservation;
+    }
+
     if (existing.franchisePartnerId && !existing.isFranchiseStockOrder) {
-      try {
-        await restoreFranchiseStockForOrder(existing);
-      } catch (franchiseRestoreErr) {
-        logger.warn?.("compensateOrderCancellation franchise stock restore failed", {
-          scope: "compensateOrderCancellation",
-          orderId: existing.orderId || orderIdString,
-          error: franchiseRestoreErr?.message,
-        });
-      }
+      await restoreFranchiseStockForOrder(existing, { session });
     }
-    await existing.save();
-  }
 
-  await Transaction.findOneAndUpdate(
-    { reference: orderIdString },
-    { status: "Failed" },
-  );
+    await Transaction.findOneAndUpdate(
+      { reference: orderIdString },
+      { status: "Failed" },
+      session ? { session } : {},
+    );
 
-  if (existing?.checkoutGroupId) {
-    const activeCount = await Order.countDocuments({
-      checkoutGroupId: existing.checkoutGroupId,
-      status: { $ne: "cancelled" },
-      workflowStatus: { $ne: "CANCELLED" },
-    });
-    if (activeCount === 0) {
-      await CheckoutGroup.updateOne(
-        { checkoutGroupId: existing.checkoutGroupId },
-        {
-          $set: {
-            status: "CANCELLED",
-            paymentStatus: "FAILED",
-            "stockReservation.status": "RELEASED",
-            "stockReservation.releasedAt": new Date(),
-          },
-        },
-      );
-    }
-  }
+    await updateCheckoutGroupAfterCancel(existing, { session });
 
-  // Audit Phase 3 (C-3): refund wallet redemption + reverse captured
-  // online payment. Idempotent through `financeFlags.cancellationReversalApplied`
-  // — orderController.cancelOrder (v1) and this v2 path can both fire safely.
-  //
-  // Only invoked when the order carries a frozen pricing snapshot
-  // (`paymentBreakdown.grandTotal != null`). Older orders that never went
-  // through the new placement flow skip the reversal to avoid touching
-  // wallets without a known refund amount; ops can backfill via the
-  // audit-plan migration if needed.
-  //
-  // Failures are logged and swallowed (mirroring orderController.cancelOrder
-  // L350-358). The cancellation path itself must not roll back stock release
-  // or tracking cleanup because the finance reversal failed — surface the
-  // error to ops and retry via the standard finance recovery tooling.
-  if (existing?.paymentBreakdown?.grandTotal != null) {
-    try {
+    let financeReversed = false;
+    if (existing.paymentBreakdown?.grandTotal != null) {
       await reverseOrderFinanceOnCancellation(existing._id, {
         actorId,
         reason,
+        session,
       });
-    } catch (financeError) {
-      logger.warn?.("compensateOrderCancellation finance reversal failed", {
-        scope: "compensateOrderCancellation",
-        orderId: existing.orderId || orderIdString,
-        error: financeError?.message,
-      });
+      financeReversed = true;
     }
+
+    return {
+      order: existing,
+      stockReleased: Boolean(releaseResult?.released),
+      financeReversed,
+      duplicate: Boolean(releaseResult?.duplicate),
+    };
+  };
+
+  let result;
+  if (externalSession) {
+    // Caller owns the transaction and post-commit side effects.
+    return run(externalSession);
   }
 
-  // Fire-and-forget cleanup of realtime tracking nodes. Mongo state is
-  // already cancelled at this point — keeping RTDB nodes around would
-  // just leave stale "live" markers on customer maps and bloat costs.
-  const canonicalOrderId = existing?.orderId || orderIdString;
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      result = await run(session);
+    }, {
+      readConcern: { level: "snapshot" },
+      writeConcern: { w: "majority" },
+    });
+  } finally {
+    session.endSession();
+  }
+
+  const canonicalOrderId = result?.order?.orderId || orderIdString;
   if (canonicalOrderId) {
     clearOrderTracking(canonicalOrderId).catch(() => {});
   }
+
+  return result;
+}
+
+/**
+ * Conditionally cancel an order and compensate inventory/finance in one transaction.
+ */
+export async function cancelAndCompensateOrder({
+  filter,
+  cancellationPatch,
+  actorId = null,
+  reason = "Cancelled before settlement",
+  orderIdString = null,
+} = {}) {
+  if (!filter || typeof filter !== "object") {
+    const err = new Error("cancelAndCompensateOrder requires a filter");
+    err.statusCode = 500;
+    throw err;
+  }
+
+  const session = await mongoose.startSession();
+  let result = null;
+  try {
+    await session.withTransaction(async () => {
+      const updated = await Order.findOneAndUpdate(
+        filter,
+        { $set: cancellationPatch || {} },
+        { new: true, session },
+      );
+
+      if (!updated) {
+        const err = new Error("Order not available to cancel");
+        err.statusCode = 409;
+        throw err;
+      }
+
+      const compensation = await compensateOrderCancellation(
+        updated,
+        orderIdString || updated.orderId,
+        { actorId, reason, session },
+      );
+
+      result = {
+        order: updated,
+        stockReleased: compensation?.stockReleased,
+        financeReversed: compensation?.financeReversed,
+        duplicate: compensation?.duplicate,
+      };
+    }, {
+      readConcern: { level: "snapshot" },
+      writeConcern: { w: "majority" },
+    });
+  } finally {
+    session.endSession();
+  }
+
+  const canonicalOrderId = result?.order?.orderId || orderIdString;
+  if (canonicalOrderId) {
+    clearOrderTracking(canonicalOrderId).catch(() => {});
+  }
+
+  return result;
 }

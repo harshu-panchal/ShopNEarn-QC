@@ -1,0 +1,37 @@
+# Cache + SPA-fallback rules for the shopnearn.in frontend.
+#
+# Why: after every deploy the hashed files in /assets/ are replaced. The
+# current nginx config rewrites EVERY missing path (including deleted
+# /assets/*.js chunks) to index.html with HTTP 200, so browsers receive
+# HTML where they expected JavaScript -> "Failed to fetch dynamically
+# imported module". index.html is also served without Cache-Control, so
+# browsers may keep a stale copy that references deleted chunks.
+#
+# Apply these location blocks inside the existing `server { ... }` block
+# that serves the frontend build (adjust `root` to the real dist path),
+# then reload nginx: `sudo nginx -t && sudo systemctl reload nginx`.
+
+# 1. Hashed build assets: safe to cache forever, but a missing file must
+#    be a real 404 — never the SPA fallback.
+location /assets/ {
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    try_files $uri =404;
+}
+
+# 2. The push service worker must always be revalidated.
+location = /firebase-messaging-sw.js {
+    add_header Cache-Control "no-cache";
+    try_files $uri =404;
+}
+
+# 3. SPA entry + fallback: index.html must always be revalidated so a new
+#    deploy is picked up immediately ("no-cache" = revalidate, not "never
+#    store"; unchanged files still answer 304).
+location = /index.html {
+    add_header Cache-Control "no-cache";
+}
+
+location / {
+    add_header Cache-Control "no-cache";
+    try_files $uri /index.html;
+}

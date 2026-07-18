@@ -41,6 +41,11 @@ const stockHistorySchema = new mongoose.Schema(
             trim: true,
             default: null,
         },
+        idempotencyKey: {
+            type: String,
+            trim: true,
+            default: null,
+        },
     },
     { timestamps: true }
 );
@@ -49,5 +54,14 @@ stockHistorySchema.index({ product: 1, seller: 1, createdAt: -1 });
 stockHistorySchema.index({ order: 1 });
 stockHistorySchema.index({ type: 1 });
 stockHistorySchema.index({ seller: 1, type: 1, createdAt: -1 });
+stockHistorySchema.index(
+    { idempotencyKey: 1 },
+    {
+        unique: true,
+        partialFilterExpression: {
+            idempotencyKey: { $type: "string" },
+        },
+    },
+);
 
 export default mongoose.model("StockHistory", stockHistorySchema);

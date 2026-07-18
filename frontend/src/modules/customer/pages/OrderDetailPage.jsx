@@ -1125,11 +1125,13 @@ const OrderDetailPage = () => {
           transition={{ delay: 0.35 }}
           className="grid grid-cols-2 gap-3"
         >
-          <button
-            onClick={() => setShowInvoice(true)}
-            className="py-3.5 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2 text-sm shadow-sm hover:shadow-md active:scale-[0.98]">
-            <Download size={18} /> Invoice
-          </button>
+          {!order?.isGroupSummary && Array.isArray(order?.items) && order.items.length > 0 && (
+            <button
+              onClick={() => setShowInvoice(true)}
+              className="py-3.5 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2 text-sm shadow-sm hover:shadow-md active:scale-[0.98]">
+              <Download size={18} /> Invoice
+            </button>
+          )}
           <button
             onClick={() => setShowHelp(true)}
             className="py-3.5 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2 text-sm shadow-sm hover:shadow-md active:scale-[0.98]">

@@ -146,6 +146,15 @@ const settingSchema = new mongoose.Schema(
             default: 30,
             min: 0,
         },
+        /**
+         * Cart product-subtotal at/above which customer delivery fee is waived.
+         * 0 disables the promotion (backward-compatible default).
+         */
+        freeDeliveryThreshold: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
         handlingFeeStrategy: {
             type: String,
             enum: ALL_HANDLING_FEE_STRATEGIES,

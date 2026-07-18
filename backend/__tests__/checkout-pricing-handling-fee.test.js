@@ -23,6 +23,40 @@ jest.unstable_mockModule("../app/models/category.js", () => ({
   },
 }));
 
+jest.unstable_mockModule("../app/models/seller.js", () => ({
+  default: {
+    countDocuments: jest.fn().mockResolvedValue(0),
+    findById: jest.fn().mockImplementation(() => ({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue({
+        _id: "seller-a",
+        location: null,
+      }),
+      session: jest.fn().mockReturnThis(),
+    })),
+  },
+}));
+
+jest.unstable_mockModule("../app/services/mlm/mlmConfigService.js", () => ({
+  getMlmConfig: jest.fn().mockResolvedValue({ homeShoppingProductId: null }),
+}));
+
+jest.unstable_mockModule("../app/services/franchise/franchiseCatalogService.js", () => ({
+  cartIsHubOnly: jest.fn().mockResolvedValue(false),
+}));
+
+jest.unstable_mockModule("../app/services/franchise/franchiseConfigService.js", () => ({
+  getHubSellerId: jest.fn().mockResolvedValue(null),
+}));
+
+jest.unstable_mockModule("../app/services/franchise/franchiseOrderRoutingService.js", () => ({
+  resolveFranchisePartner: jest.fn().mockResolvedValue(null),
+}));
+
+jest.unstable_mockModule("../app/services/finance/couponService.js", () => ({
+  computeOrderDiscount: jest.fn().mockResolvedValue(null),
+}));
+
 jest.unstable_mockModule("../app/services/finance/financeSettingsService.js", () => ({
   getOrCreateFinanceSettings: mockGetOrCreateFinanceSettings,
 }));
@@ -48,6 +82,7 @@ describe("checkout pricing snapshot handling fee", () => {
           headerId: "h1",
           sellerId: "seller-a",
           status: "active",
+          stock: 10,
           variants: [],
         },
         {
@@ -59,6 +94,7 @@ describe("checkout pricing snapshot handling fee", () => {
           headerId: "h2",
           sellerId: "seller-b",
           status: "active",
+          stock: 10,
           variants: [],
         },
       ]),
@@ -97,6 +133,7 @@ describe("checkout pricing snapshot handling fee", () => {
       incrementalKmSurcharge: 10,
       deliveryPartnerRatePerKm: 5,
       fixedDeliveryFee: 30,
+      freeDeliveryThreshold: 0,
       handlingFeeStrategy: "highest_category_fee",
       codEnabled: true,
       onlineEnabled: true,

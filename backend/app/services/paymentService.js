@@ -431,10 +431,13 @@ async function handleOrderSideEffectsFromPaymentStatus(payment, nextStatus, reas
           orderForUpdate.workflowStatus === WORKFLOW_STATUS.CREATED &&
           orderForUpdate.status !== "cancelled"
         ) {
-          await releaseReservedStockForOrder(orderForUpdate, {
+          const releaseResult = await releaseReservedStockForOrder(orderForUpdate, {
             session,
             reason: reason || "Payment failed",
           });
+          if (releaseResult?.order?.stockReservation) {
+            orderForUpdate.stockReservation = releaseResult.order.stockReservation;
+          }
           orderForUpdate.status = "cancelled";
           orderForUpdate.orderStatus = "cancelled";
           orderForUpdate.workflowStatus = WORKFLOW_STATUS.CANCELLED;

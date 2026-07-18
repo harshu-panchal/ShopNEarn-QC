@@ -8,3 +8,4 @@
  * until a second consumer (e.g. the admin Orders page) needs it.
  */
 export { getOrderStatusVariant } from './orderStatusUtils';
+export { default as OrderPricingSummary } from './OrderPricingSummary';

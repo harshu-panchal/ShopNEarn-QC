@@ -1,8 +1,9 @@
 // Ultimate Order Intelligence Dossier
 import React, { useState, useEffect, useRef } from 'react';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
 import { useSettings } from '@core/context/SettingsContext';
+import { downloadInvoicePdf } from '@shared/utils/invoicePdf';
+import { buildInvoiceFilename } from '@shared/utils/invoiceOrderAdapter';
+import { normalizeOrderPricing } from '@shared/utils/orderPricingSummary';
 import { useParams, useNavigate } from 'react-router-dom';
 import Card from '@shared/components/ui/Card';
 import Badge from '@shared/components/ui/Badge';
@@ -132,53 +133,14 @@ const OrderDetail = () => {
     const handlePrintInvoice = async () => {
         const element = invoiceRef.current;
         if (!element) return;
-        
+
         showToast("Generating PDF Invoice...", "info");
-        
+
         try {
-            const canvas = await html2canvas(element, {
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                allowTaint: true,
-                backgroundColor: "#ffffff",
-                onclone: (clonedDoc) => {
-                    // Forcefully remove any elements or styles that might use oklch
-                    // html2canvas crashes when it encounters oklch color functions in stylesheets
-                    const styleSheets = clonedDoc.styleSheets;
-                    for (let i = 0; i < styleSheets.length; i++) {
-                        try {
-                            const rules = styleSheets[i].cssRules || styleSheets[i].rules;
-                            for (let j = rules.length - 1; j >= 0; j--) {
-                                if (rules[j].cssText && rules[j].cssText.includes('oklch')) {
-                                    styleSheets[i].deleteRule(j);
-                                }
-                            }
-                        } catch (e) {
-                            // Skip cross-origin stylesheets that we can't access
-                        }
-                    }
-                    
-                    // Also explicitly reset root variables just in case
-                    const style = clonedDoc.createElement('style');
-                    style.innerHTML = `
-                        :root {
-                            --primary: var(--primary) !important;
-                            --secondary: #64748b !important;
-                            --background: #ffffff !important;
-                            --foreground: #0f172a !important;
-                        }
-                    `;
-                    clonedDoc.head.appendChild(style);
-                }
-            });
-            const imgData = canvas.toDataURL('image/png');
-            const pdf = new jsPDF('p', 'mm', 'a4');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-            
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-            pdf.save(`Invoice_${order.orderId}.pdf`);
+            await downloadInvoicePdf(
+                element,
+                buildInvoiceFilename(order?.orderId),
+            );
             showToast("Invoice downloaded successfully", "success");
         } catch (error) {
             console.error("PDF generation failed:", error);
@@ -204,6 +166,8 @@ const OrderDetail = () => {
             </div>
         );
     }
+
+    const orderPricing = normalizeOrderPricing(order);
 
     return (
         <div className="ds-section-spacing animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
@@ -309,16 +273,48 @@ const OrderDetail = () => {
                         <div className="p-4 bg-slate-50/50 flex flex-col items-end gap-3 text-right">
                             <div className="flex items-center justify-between w-full max-w-[240px]">
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Subtotal</span>
-                                <span className="text-sm font-black text-slate-700">₹{order.pricing?.subtotal || 0}</span>
+                                <span className="text-sm font-black text-slate-700">₹{orderPricing.productSubtotal.toFixed(2)}</span>
                             </div>
                             <div className="flex items-center justify-between w-full max-w-[240px]">
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Delivery Fee</span>
-                                <span className="text-sm font-bold text-brand-600">₹{order.pricing?.deliveryFee || 0}</span>
+                                <span className="text-sm font-bold text-brand-600">
+                                    {orderPricing.deliveryFee === 0 ? 'FREE' : `₹${orderPricing.deliveryFee.toFixed(2)}`}
+                                </span>
                             </div>
+                            {orderPricing.handlingFee > 0 && (
+                                <div className="flex items-center justify-between w-full max-w-[240px]">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Handling Fee</span>
+                                    <span className="text-sm font-bold text-slate-700">₹{orderPricing.handlingFee.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {orderPricing.taxTotal > 0 && (
+                                <div className="flex items-center justify-between w-full max-w-[240px]">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tax</span>
+                                    <span className="text-sm font-bold text-slate-700">₹{orderPricing.taxTotal.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {orderPricing.tipTotal > 0 && (
+                                <div className="flex items-center justify-between w-full max-w-[240px]">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tip</span>
+                                    <span className="text-sm font-bold text-slate-700">₹{orderPricing.tipTotal.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {orderPricing.discountTotal > 0 && (
+                                <div className="flex items-center justify-between w-full max-w-[240px]">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Discount</span>
+                                    <span className="text-sm font-bold text-emerald-600">-₹{orderPricing.discountTotal.toFixed(2)}</span>
+                                </div>
+                            )}
+                            {orderPricing.walletAmount > 0 && (
+                                <div className="flex items-center justify-between w-full max-w-[240px]">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Wallet Applied</span>
+                                    <span className="text-sm font-bold text-emerald-600">-₹{orderPricing.walletAmount.toFixed(2)}</span>
+                                </div>
+                            )}
                             <div className="h-px w-full max-w-[240px] bg-slate-200 my-2" />
                             <div className="flex items-center justify-between w-full max-w-[240px]">
                                 <span className="text-xs font-black text-slate-900 uppercase tracking-tight">Total Payable</span>
-                                <span className="text-2xl font-black text-fuchsia-600">₹{order.pricing?.total || 0}</span>
+                                <span className="text-2xl font-black text-fuchsia-600">₹{orderPricing.grandTotal.toFixed(2)}</span>
                             </div>
                         </div>
                     </Card>
@@ -654,18 +650,50 @@ const OrderDetail = () => {
                                     <table width="100%" cellPadding="8" cellSpacing="0">
                                         <tr>
                                             <td align="left" style={{ fontSize: "12px", color: "#64748b", fontWeight: "700" }}>Subtotal Aggregate</td>
-                                            <td align="right" style={{ fontSize: "13px", fontWeight: "800", color: "#0f172a" }}>₹{order.pricing?.subtotal || 0}</td>
+                                            <td align="right" style={{ fontSize: "13px", fontWeight: "800", color: "#0f172a" }}>₹{orderPricing.productSubtotal.toFixed(2)}</td>
                                         </tr>
                                         <tr>
                                             <td align="left" style={{ fontSize: "12px", color: "#64748b", fontWeight: "700" }}>Logistics Cost</td>
-                                            <td align="right" style={{ fontSize: "13px", fontWeight: "800", color: "#2563eb" }}>+ ₹{order.pricing?.deliveryFee || 0}</td>
+                                            <td align="right" style={{ fontSize: "13px", fontWeight: "800", color: "#2563eb" }}>
+                                                {orderPricing.deliveryFee === 0 ? 'FREE' : `+ ₹${orderPricing.deliveryFee.toFixed(2)}`}
+                                            </td>
                                         </tr>
+                                        {orderPricing.handlingFee > 0 && (
+                                            <tr>
+                                                <td align="left" style={{ fontSize: "12px", color: "#64748b", fontWeight: "700" }}>Handling Fee</td>
+                                                <td align="right" style={{ fontSize: "13px", fontWeight: "800", color: "#0f172a" }}>+ ₹{orderPricing.handlingFee.toFixed(2)}</td>
+                                            </tr>
+                                        )}
+                                        {orderPricing.taxTotal > 0 && (
+                                            <tr>
+                                                <td align="left" style={{ fontSize: "12px", color: "#64748b", fontWeight: "700" }}>Tax</td>
+                                                <td align="right" style={{ fontSize: "13px", fontWeight: "800", color: "#0f172a" }}>+ ₹{orderPricing.taxTotal.toFixed(2)}</td>
+                                            </tr>
+                                        )}
+                                        {orderPricing.tipTotal > 0 && (
+                                            <tr>
+                                                <td align="left" style={{ fontSize: "12px", color: "#64748b", fontWeight: "700" }}>Tip</td>
+                                                <td align="right" style={{ fontSize: "13px", fontWeight: "800", color: "#0f172a" }}>+ ₹{orderPricing.tipTotal.toFixed(2)}</td>
+                                            </tr>
+                                        )}
+                                        {orderPricing.discountTotal > 0 && (
+                                            <tr>
+                                                <td align="left" style={{ fontSize: "12px", color: "#64748b", fontWeight: "700" }}>Discount</td>
+                                                <td align="right" style={{ fontSize: "13px", fontWeight: "800", color: "#059669" }}>− ₹{orderPricing.discountTotal.toFixed(2)}</td>
+                                            </tr>
+                                        )}
+                                        {orderPricing.walletAmount > 0 && (
+                                            <tr>
+                                                <td align="left" style={{ fontSize: "12px", color: "#64748b", fontWeight: "700" }}>Wallet Applied</td>
+                                                <td align="right" style={{ fontSize: "13px", fontWeight: "800", color: "#059669" }}>− ₹{orderPricing.walletAmount.toFixed(2)}</td>
+                                            </tr>
+                                        )}
                                         <tr>
                                             <td colSpan="2" style={{ padding: "12px 0" }}><div style={{ height: "1px", backgroundColor: "#e2e8f0" }}></div></td>
                                         </tr>
                                         <tr>
                                             <td align="left" style={{ fontSize: "15px", fontWeight: "900", color: "#0f172a" }}>Grand Total</td>
-                                            <td align="right" style={{ fontSize: "24px", fontWeight: "900", color: "#2563eb" }}>₹{order.pricing?.total || 0}</td>
+                                            <td align="right" style={{ fontSize: "24px", fontWeight: "900", color: "#2563eb" }}>₹{orderPricing.grandTotal.toFixed(2)}</td>
                                         </tr>
                                     </table>
                                 </td>

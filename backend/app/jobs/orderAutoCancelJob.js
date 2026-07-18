@@ -6,7 +6,10 @@ import {
   processDeliveryTimeoutJob,
   processReturnPickupTimeoutJob,
 } from "../services/orderWorkflowService.js";
-import { compensateOrderCancellation } from "../services/orderCompensation.js";
+import {
+  cancelAndCompensateOrder,
+  compensateOrderCancellation,
+} from "../services/orderCompensation.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
 import logger from "../services/logger.js";
@@ -108,25 +111,24 @@ const autoCancelExpiredOrders = async () => {
 
     for (const row of paymentExpiredOrders) {
       try {
-        const updated = await Order.findOneAndUpdate(
-          {
+        const cancelled = await cancelAndCompensateOrder({
+          filter: {
             _id: row._id,
             workflowStatus: WORKFLOW_STATUS.CREATED,
             paymentStatus: { $ne: "PAID" },
           },
-          {
-            $set: {
-              workflowStatus: WORKFLOW_STATUS.CANCELLED,
-              status: "cancelled",
-              orderStatus: "cancelled",
-              cancelledBy: "system",
-              cancelReason: "Payment timeout",
-            },
+          cancellationPatch: {
+            workflowStatus: WORKFLOW_STATUS.CANCELLED,
+            status: "cancelled",
+            orderStatus: "cancelled",
+            cancelledBy: "system",
+            cancelReason: "Payment timeout",
           },
-          { new: true },
-        );
+          reason: "Payment timeout",
+          orderIdString: row.orderId,
+        });
+        const updated = cancelled?.order;
         if (updated) {
-          await compensateOrderCancellation(updated, updated.orderId);
           emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
             orderId: updated.orderId,
             customerId: updated.customer,
@@ -137,6 +139,7 @@ const autoCancelExpiredOrders = async () => {
           });
         }
       } catch (err) {
+        if (err?.statusCode === 409) continue;
         logger.error('payment timeout cancellation failed', {
           jobName: 'orderAutoCancelJob',
           orderId: row.orderId,
@@ -155,30 +158,44 @@ const autoCancelExpiredOrders = async () => {
     });
 
     for (const order of legacyExpired) {
-      order.status = "cancelled";
-      order.cancelledBy = "system";
-      order.cancelReason = "Seller timeout (60s)";
-      await order.save();
-
+      let updated = null;
       try {
-        await compensateOrderCancellation(order, order.orderId);
-      } catch (e) {
-        logger.error('legacy compensation failed', {
-          jobName: 'orderAutoCancelJob',
-          orderId: order.orderId,
-          error: e.message
+        const cancelled = await cancelAndCompensateOrder({
+          filter: {
+            _id: order._id,
+            status: "pending",
+          },
+          cancellationPatch: {
+            status: "cancelled",
+            cancelledBy: "system",
+            cancelReason: "Seller timeout (60s)",
+          },
+          reason: "Seller timeout (60s)",
+          orderIdString: order.orderId,
         });
+        updated = cancelled?.order;
+      } catch (e) {
+        if (e?.statusCode !== 409) {
+          logger.error('legacy compensation failed', {
+            jobName: 'orderAutoCancelJob',
+            orderId: order.orderId,
+            error: e.message
+          });
+        }
+        continue;
       }
 
+      if (!updated) continue;
+
       emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
-        orderId: order.orderId,
-        customerId: order.customer,
-        userId: order.customer,
-        sellerId: order.seller,
+        orderId: updated.orderId,
+        customerId: updated.customer,
+        userId: updated.customer,
+        sellerId: updated.seller,
         customerMessage:
           "Your order was cancelled because it was not accepted in time.",
         sellerMessage:
-          `Order #${order.orderId} was cancelled because it was not accepted in time.`,
+          `Order #${updated.orderId} was cancelled because it was not accepted in time.`,
       });
     }
 
