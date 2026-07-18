@@ -99,7 +99,6 @@ export async function buildBinaryTreeBottomUp({ rootMembership, depthLeft }) {
         connectFromField: "userId",
         connectToField: "binaryParentId",
         as: "descendants",
-        maxDepth: 64,
       },
     },
   ]);
@@ -327,8 +326,6 @@ export async function classifyDirectReferralsByLegUnderRoot({
         connectFromField: "userId",
         connectToField: "binaryParentId",
         as: "descendants",
-        // Bounded depth to prevent massive payload walks
-        maxDepth: 64,
       },
     },
     {

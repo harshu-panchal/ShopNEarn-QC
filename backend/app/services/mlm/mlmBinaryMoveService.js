@@ -71,7 +71,6 @@ async function collectBinarySubtreeUserIds(rootUserId, { session } = {}) {
         connectFromField: "userId",
         connectToField: "binaryParentId",
         as: "descendants",
-        maxDepth: 64,
       },
     },
   ]).session(session || null);

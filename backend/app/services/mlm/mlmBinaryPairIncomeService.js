@@ -126,7 +126,9 @@ export async function countActivePlanAInBinarySubtree(rootUserId, { session } = 
         connectFromField: "userId",
         connectToField: "binaryParentId",
         as: "descendants",
-        maxDepth: 64,
+        // No maxDepth: production trees exceed 64 levels and a depth cap
+        // silently drops deep members from leg volumes, shorting pair
+        // income for high uplines. $graphLookup is cycle-safe without it.
       },
     },
     {
@@ -230,7 +232,8 @@ async function loadActivePlanAMembersInSubtree(rootUserId, { session } = {}) {
         connectFromField: "userId",
         connectToField: "binaryParentId",
         as: "descendants",
-        maxDepth: 64,
+        // No maxDepth — must match countActivePlanAInBinarySubtree so the
+        // chronological replay sees the same member set as the live count.
       },
     },
     {

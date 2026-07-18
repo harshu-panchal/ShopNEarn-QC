@@ -126,7 +126,6 @@ async function computeBinaryDownlineStats(rootUserId) {
         connectFromField: "userId",
         connectToField: "binaryParentId",
         as: "descendants",
-        maxDepth: 64,
       },
     },
     {
@@ -1089,7 +1088,6 @@ export const getDashboardOverview = async (req, res) => {
             connectFromField: "userId",
             connectToField: "binaryParentId",
             as: "descendants",
-            maxDepth: 64,
           },
         },
         {
@@ -1610,8 +1608,6 @@ export const getMyBinaryGenealogy = async (req, res) => {
           connectFromField: "userId",
           connectToField: "binaryParentId",
           as: "descendants",
-          // Bounded depth to prevent massive payload walks
-          maxDepth: 64,
         },
       },
     ]);
@@ -2068,6 +2064,16 @@ function extractSignupSponsorReferralObjectId(row) {
   return null;
 }
 
+/** Member whose activation completed this binary pair (trigger / source). */
+function extractPairMatchTriggerUserId(row) {
+  const meta = row.metadata || {};
+  const candidate = meta.triggerUserId || meta.sourceUserId;
+  if (candidate && mongoose.Types.ObjectId.isValid(String(candidate))) {
+    return String(candidate);
+  }
+  return null;
+}
+
 async function enrichWalletHistoryWithReferralDetails(items) {
   const signupReferralIds = [
     ...new Set(
@@ -2094,7 +2100,26 @@ async function enrichWalletHistoryWithReferralDetails(items) {
     ),
   ];
 
-  const referralIds = [...new Set([...signupReferralIds, ...activationReferralIds])];
+  const pairMatchTriggerIds = [
+    ...new Set(
+      items
+        .filter(
+          (row) =>
+            row.type === LEDGER_TRANSACTION_TYPE.MLM_BINARY_PAIR_MATCH ||
+            row.type === LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_ACTIVATION,
+        )
+        .map((row) => extractPairMatchTriggerUserId(row))
+        .filter(Boolean),
+    ),
+  ];
+
+  const referralIds = [
+    ...new Set([
+      ...signupReferralIds,
+      ...activationReferralIds,
+      ...pairMatchTriggerIds,
+    ]),
+  ];
   if (!referralIds.length) return items;
 
   const users = await Customer.find({ _id: { $in: referralIds } })
@@ -2145,6 +2170,27 @@ async function enrichWalletHistoryWithReferralDetails(items) {
         activatedUserPhone: referral?.phone || null,
         activatedUserJoinedAt: timeline.joinedAt || referral?.createdAt || null,
         activatedUserPlanAJoinedAt: timeline.planAJoinedAt || null,
+      },
+    };
+  }).map((row) => {
+    if (
+      row.type !== LEDGER_TRANSACTION_TYPE.MLM_BINARY_PAIR_MATCH &&
+      row.type !== LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_ACTIVATION
+    ) {
+      return row;
+    }
+    const triggerUserId = extractPairMatchTriggerUserId(row);
+    if (!triggerUserId) return row;
+    const member = userById.get(triggerUserId);
+    if (!member) return row;
+    return {
+      ...row,
+      metadata: {
+        ...(row.metadata || {}),
+        triggerUserId,
+        triggerMemberName: member.name || "Member",
+        triggerMemberPublicId: member.userId || "",
+        triggerMemberPhone: member.phone || "",
       },
     };
   });
@@ -2271,7 +2317,6 @@ async function fetchBinaryDescendantGraph(rootUserId) {
         connectFromField: "userId",
         connectToField: "binaryParentId",
         as: "descendants",
-        maxDepth: 64,
       },
     },
   ]);
@@ -2346,7 +2391,6 @@ export const getMyLegTeam = async (req, res) => {
           connectFromField: "userId",
           connectToField: "binaryParentId",
           as: "descendants",
-          maxDepth: 64,
         },
       },
     ]);

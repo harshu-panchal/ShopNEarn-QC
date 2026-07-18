@@ -27,6 +27,16 @@ const getMlmReason = (row) => {
   const meta = row?.metadata || {};
   const type = row?.type;
 
+  if (type === "MLM_BINARY_PAIR_MATCH") {
+    const pairIndex = Number(meta.pairIndex || 0);
+    const directCount = Number(meta.directCount || 0);
+    const pairIncome = Number(meta.pairIncome || row.amount || 0);
+    if (pairIndex || directCount || pairIncome) {
+      return `Reason: team pair #${pairIndex || "?"} matched; ${directCount} active directs tier => ${formatINR(pairIncome)} per pair.`;
+    }
+    return "Reason: left/right team volume formed a binary pair.";
+  }
+
   if (type === "MLM_DIRECT_REFERRAL_ACTIVATION") {
     const left = Number(meta.leftDirectCount || 0);
     const right = Number(meta.rightDirectCount || 0);
@@ -36,16 +46,6 @@ const getMlmReason = (row) => {
       return `Reason: first direct L+R pair complete (L${left}:R${right}); ${directCount} active directs tier => ${formatINR(pairIncome)}.`;
     }
     return "Reason: first direct left-right pair completed.";
-  }
-
-  if (type === "MLM_BINARY_PAIR_MATCH") {
-    const pairIndex = Number(meta.pairIndex || 0);
-    const directCount = Number(meta.directCount || 0);
-    const pairIncome = Number(meta.pairIncome || row.amount || 0);
-    if (pairIndex || directCount || pairIncome) {
-      return `Reason: team pair #${pairIndex || "?"} matched; ${directCount} active directs tier => ${formatINR(pairIncome)} per pair.`;
-    }
-    return "Reason: left/right team volume formed a binary pair.";
   }
 
   if (type === "MLM_DIRECT_REFERRAL_PER_ACTIVATION") {
@@ -269,8 +269,22 @@ const WalletHistoryPage = () => {
                         </p>
                       ) : (
                         (getMlmReason(row) || row.description) && (
-                          <p className="text-[11px] text-slate-500 line-clamp-2">
-                            {getMlmReason(row) || row.description}
+                          <p className="text-[11px] text-slate-500">
+                            <span className="line-clamp-2">
+                              {getMlmReason(row) || row.description}
+                            </span>
+                            {(row.type === "MLM_BINARY_PAIR_MATCH" ||
+                              row.type === "MLM_DIRECT_REFERRAL_ACTIVATION") &&
+                              (row.metadata?.triggerMemberName ||
+                                row.metadata?.triggerMemberPublicId) && (
+                                <span className="block font-semibold text-indigo-700 mt-0.5">
+                                  Through:{" "}
+                                  {row.metadata.triggerMemberName || "Member"}
+                                  {row.metadata.triggerMemberPublicId
+                                    ? ` · ${row.metadata.triggerMemberPublicId}`
+                                    : ""}
+                                </span>
+                              )}
                           </p>
                         )
                       )}
