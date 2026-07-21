@@ -70,6 +70,7 @@ const AdminSettings = () => {
         metaDescription: '',
         metaKeywords: '',
         keywords: [],
+        marqueeMessages: [],
         returnDeliveryCommission: 0,
         lowStockAlertsEnabled: true,
         productApproval: {
@@ -89,6 +90,7 @@ const AdminSettings = () => {
                         ...data,
                         productApproval: normalizeProductApprovalConfig(data || {}),
                         keywords: Array.isArray(data.keywords) ? data.keywords : (data.metaKeywords ? data.metaKeywords.split(',').map(k => k.trim()).filter(Boolean) : []),
+                        marqueeMessages: Array.isArray(data.marqueeMessages) ? data.marqueeMessages : [],
                         returnDeliveryCommission: data.returnDeliveryCommission ?? 0,
                     }));
                 }
@@ -108,6 +110,9 @@ const AdminSettings = () => {
             const payload = {
                 ...settings,
                 keywords: Array.isArray(settings.keywords) ? settings.keywords : (settings.metaKeywords ? settings.metaKeywords.split(',').map(k => k.trim()).filter(Boolean) : []),
+                marqueeMessages: (settings.marqueeMessages || [])
+                    .map((m) => String(m).trim())
+                    .filter(Boolean),
             };
             const res = await adminApi.updateSettings(payload);
             const updatedData = res.data?.result ?? res.data;
@@ -316,6 +321,34 @@ const AdminSettings = () => {
                                         onChange={(e) => handleInputChange('currencySymbol', e.target.value)}
                                         className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all"
                                     />
+                                </div>
+                                <div className="md:col-span-2 space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Home Marquee Messages</label>
+                                    <textarea
+                                        rows={4}
+                                        value={(settings.marqueeMessages || []).join('\n')}
+                                        onChange={(e) => handleInputChange('marqueeMessages', e.target.value.split('\n'))}
+                                        placeholder={"24/7 Delivery\nMinimum Order ₹99\nSave Big on Essentials!"}
+                                        className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all resize-none"
+                                    />
+                                    <p className="text-[10px] font-bold text-slate-400 italic">
+                                        One message per line. Shown in the scrolling ticker at the top of the customer home page.
+                                    </p>
+                                    {(settings.marqueeMessages || []).some((m) => String(m).trim()) && (
+                                        <div className="relative overflow-hidden rounded-xl bg-primary px-4 py-2">
+                                            <div className="flex items-center gap-3 text-sm font-semibold text-white whitespace-nowrap overflow-hidden">
+                                                {(settings.marqueeMessages || [])
+                                                    .map((m) => String(m).trim())
+                                                    .filter(Boolean)
+                                                    .map((m, idx) => (
+                                                        <React.Fragment key={`${m}-${idx}`}>
+                                                            <span>{m}</span>
+                                                            <span className="text-white/60">•</span>
+                                                        </React.Fragment>
+                                                    ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="md:col-span-2 rounded-2xl bg-slate-50 border border-slate-200 px-5 py-4 flex items-center justify-between gap-4">
                                     <div>

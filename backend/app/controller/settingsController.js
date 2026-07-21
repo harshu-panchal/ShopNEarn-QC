@@ -16,6 +16,7 @@ const ALLOWED_KEYS = [
   "currencySymbol",
   "currencyCode",
   "timezone",
+  "marqueeMessages",
   "logoUrl",
   "faviconUrl",
   "primaryColor",
@@ -85,6 +86,7 @@ const updateSettingsSchema = Joi.object({
   currencySymbol: Joi.string().allow("").max(10),
   currencyCode: Joi.string().allow("").max(10),
   timezone: Joi.string().allow("").max(100),
+  marqueeMessages: Joi.array().items(Joi.string().trim().max(200)).max(20),
   logoUrl: Joi.string().allow("").max(2000),
   faviconUrl: Joi.string().allow("").max(2000),
   primaryColor: Joi.string().allow("").max(50),
@@ -147,7 +149,7 @@ export const getPublicSettings = async (req, res) => {
       async () => {
         const existing = await Setting.findOne(filter)
           .select(
-            "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor companyName taxId address facebook twitter instagram linkedin youtube playStoreLink appStoreLink returnDeliveryCommission deliveryPricingMode pricingMode customerBaseDeliveryFee riderBasePayout baseDeliveryCharge baseDistanceCapacityKm incrementalKmSurcharge deliveryPartnerRatePerKm fleetCommissionRatePerKm fixedDeliveryFee handlingFeeStrategy codEnabled onlineEnabled lowStockAlertsEnabled productApproval createdAt",
+            "appName supportEmail supportPhone currencySymbol currencyCode timezone marqueeMessages logoUrl faviconUrl primaryColor secondaryColor companyName taxId address facebook twitter instagram linkedin youtube playStoreLink appStoreLink returnDeliveryCommission deliveryPricingMode pricingMode customerBaseDeliveryFee riderBasePayout baseDeliveryCharge baseDistanceCapacityKm incrementalKmSurcharge deliveryPartnerRatePerKm fleetCommissionRatePerKm fixedDeliveryFee handlingFeeStrategy codEnabled onlineEnabled lowStockAlertsEnabled productApproval createdAt",
           )
           .lean();
         return existing || null;

@@ -973,7 +973,14 @@ const MlmMemberDetail = () => {
                         pageSize={5}
                         emptyMessage="No commissions yet."
                         ulClassName="divide-y divide-slate-100 text-sm"
-                        renderItem={(row) => (
+                        renderItem={(row) => {
+                            const isDebit =
+                                row.status === 'clawed_back'
+                                || String(row.meta?.direction || '').toUpperCase() === 'DEBIT';
+                            const displayAmount = isDebit
+                                ? (Number(row.clawbackAmount) || Number(row.bonusAmount) || Number(row.cappedAmount) || 0)
+                                : (Number(row.cappedAmount) || Number(row.bonusAmount) || 0);
+                            return (
                             <li key={row._id} className="py-2 flex items-center justify-between">
                                 <div>
                                     <p className="font-semibold text-slate-800 capitalize">
@@ -981,9 +988,12 @@ const MlmMemberDetail = () => {
                                     </p>
                                     <p className="text-[11px] text-slate-500">{formatDate(row.createdAt)} · {row.status}</p>
                                 </div>
-                                <span className="font-bold text-emerald-700">+{formatINR(row.cappedAmount)}</span>
+                                <span className={`font-bold ${isDebit ? 'text-rose-700' : 'text-emerald-700'}`}>
+                                    {isDebit ? '-' : '+'}{formatINR(displayAmount)}
+                                </span>
                             </li>
-                        )}
+                            );
+                        }}
                     />
                 </Card>
 

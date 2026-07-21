@@ -13,6 +13,7 @@ import {
   ALL_MLM_PLAN_TYPES,
   ALL_MLM_WITHDRAWAL_STATUSES,
   MLM_BONUS_TYPE,
+  MLM_COMMISSION_EVENT_STATUS,
   MLM_IDEMPOTENCY_PREFIX,
   MLM_MEMBERSHIP_STATUS,
   MLM_PAYMENT_MODE,
@@ -1614,7 +1615,11 @@ export const adjustMemberWallet = async (req, res) => {
           event = await debitWallet(args);
         }
         // Audit row in MlmCommissionEvent for visibility on the
-        // member-detail page commission history.
+        // member-detail page commission history. Amounts stay non-negative
+        // (schema min: 0); debit vs credit is carried by status + meta.
+        const dir = String(direction).toUpperCase();
+        const adjAmount = Number(amount);
+        const isCredit = dir === "CREDIT";
         await MlmCommissionEvent.create(
           [
             {
@@ -1626,15 +1631,21 @@ export const adjustMemberWallet = async (req, res) => {
               level: null,
               baseAmount: 0,
               ratePercent: null,
-              bonusAmount: Number(amount),
-              cappedAmount: String(direction).toUpperCase() === "CREDIT" ? Number(amount) : -Number(amount),
+              bonusAmount: adjAmount,
+              cappedAmount: isCredit ? adjAmount : 0,
+              clawbackAmount: isCredit ? 0 : adjAmount,
               rolloverAmount: 0,
               walletBucket: args.bucket,
               ledgerEntryId: event?.ledgerEntry?._id || null,
-              status: "credited",
+              status: isCredit
+                ? MLM_COMMISSION_EVENT_STATUS.CREDITED
+                : MLM_COMMISSION_EVENT_STATUS.CLAWED_BACK,
               idempotencyKey,
               description: `Manual admin adjustment: ${reason}`,
-              meta: { adminId: req.user?.id ? String(req.user.id) : null, direction: String(direction).toUpperCase() },
+              meta: {
+                adminId: req.user?.id ? String(req.user.id) : null,
+                direction: dir,
+              },
             },
           ],
           { session },
@@ -2146,6 +2157,9 @@ export const applyMlmPayoutReportCorrection = async (req, res) => {
             ? await creditWallet(args)
             : await debitWallet(args);
 
+        // Amounts stay non-negative (schema min: 0); debit vs credit is
+        // carried by status + meta.direction / clawbackAmount.
+        const isCredit = direction === "CREDIT";
         await MlmCommissionEvent.create(
           [
             {
@@ -2155,11 +2169,14 @@ export const applyMlmPayoutReportCorrection = async (req, res) => {
               bonusType: MLM_BONUS_TYPE.MANUAL_ADJUSTMENT,
               planType: membership.planType,
               bonusAmount: amount,
-              cappedAmount: direction === "CREDIT" ? amount : -amount,
+              cappedAmount: isCredit ? amount : 0,
+              clawbackAmount: isCredit ? 0 : amount,
               rolloverAmount: 0,
               walletBucket: "earnings",
               ledgerEntryId: walletResult?.ledgerEntry?._id || null,
-              status: "credited",
+              status: isCredit
+                ? MLM_COMMISSION_EVENT_STATUS.CREDITED
+                : MLM_COMMISSION_EVENT_STATUS.CLAWED_BACK,
               idempotencyKey,
               description: `Payout report correction: ${reason}`,
               meta: {

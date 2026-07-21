@@ -44,6 +44,13 @@ const settingSchema = new mongoose.Schema(
             default: "Asia/Kolkata",
         },
 
+        // Customer storefront promo marquee (scrolling ticker on Home).
+        // Each string is one message; the UI joins them with separators.
+        marqueeMessages: {
+            type: [String],
+            default: ["24/7 Delivery", "Minimum Order ₹99", "Save Big on Essentials!"],
+        },
+
         // Branding
         logoUrl: String,
         faviconUrl: String,

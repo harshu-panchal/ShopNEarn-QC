@@ -6,6 +6,7 @@ export const DEFAULT_SETTINGS = {
   currencySymbol: "\u20B9",
   currencyCode: "INR",
   timezone: "Asia/Kolkata",
+  marqueeMessages: ["24/7 Delivery", "Minimum Order \u20B999", "Save Big on Essentials!"],
   logoUrl: "",
   faviconUrl: "",
   primaryColor: "var(--primary)",
