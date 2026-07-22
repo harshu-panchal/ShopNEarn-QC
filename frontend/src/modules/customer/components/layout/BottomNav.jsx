@@ -26,7 +26,7 @@ const BottomNav = () => {
                         className="flex-1 flex flex-col items-center justify-center h-full relative group transition-all"
                     >
                         {isActive && (
-                            <div className="absolute -inset-y-2 -inset-x-4 bg-primary/5 rounded-[20px] -z-10 transition-opacity duration-300" />
+                            <div className="absolute inset-y-2 inset-x-2 bg-primary/5 rounded-[20px] -z-10 transition-opacity duration-300" />
                         )}
 
                         <div className="flex flex-col items-center justify-center relative">

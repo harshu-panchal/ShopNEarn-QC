@@ -681,24 +681,14 @@ export const deleteNonMlmCustomer = async (req, res) => {
       );
     }
 
-    if (customer.deletedAt) {
-      return handleResponse(res, 200, "Account was already deleted", {
-        customerId: String(customer._id),
-        alreadyDeleted: true,
-      });
-    }
+    // Account existence is handled below by deleteOne, but checking here helps
+    // return early if someone double-clicks delete.
 
-    const reason = (req.body?.reason || "").toString().trim().slice(0, 240);
-    customer.deletedAt = new Date();
-    customer.deletedBy = req.user?.id || null;
-    customer.updatedBy = req.user?.id || null;
-    customer.isActive = false;
-    await customer.save();
+    await Customer.deleteOne({ _id: customer._id });
 
     console.warn(
       `[admin-delete-non-mlm] admin=${req.user?.id} -> customer=${customer._id} ` +
-        `phone=${customer.phone} userId=${customer.userId}` +
-        (reason ? ` reason=${reason}` : ""),
+        `phone=${customer.phone} userId=${customer.userId}`,
     );
 
     return handleResponse(

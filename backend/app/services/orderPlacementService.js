@@ -465,14 +465,7 @@ export async function placeOrderAtomic({
       if (walletTenderTotal <= 0) {
         throw new Error("Cannot pay a zero-value order with wallet");
       }
-      if (walletSource === "shopping" && !pricingSnapshot.isFranchiseHubCart) {
-        const err = new Error(
-          "Shopping wallet payment is only available for franchise catalog orders",
-        );
-        err.statusCode = 422;
-        err.code = "SHOPPING_WALLET_FRANCHISE_ONLY";
-        throw err;
-      }
+
       const buckets = await getCustomerSpendableBuckets(customerId, { session });
       const bucketBalance =
         walletSource === "shopping"

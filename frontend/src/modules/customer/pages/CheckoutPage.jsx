@@ -204,8 +204,7 @@ const CheckoutPage = () => {
         ? `Insufficient balance (need ₹${formatWalletBalance(orderTotal)})`
         : null;
 
-    // Pay Online + Earning Wallet for all carts; Shopping Wallet only for
-    // franchise / hub catalog orders (ordinary seller carts hide it).
+    // Pay Online + Earning Wallet + Shopping Wallet for all carts.
     return [
       ...(settings?.onlineEnabled === false
         ? []
@@ -217,21 +216,17 @@ const CheckoutPage = () => {
               sublabel: "UPI / Cards / NetBanking",
             },
           ]),
-      ...(isFranchiseHubCart
-        ? [
-            {
-              id: "shopping_wallet",
-              label: "Shopping Wallet",
-              icon: ShoppingBag,
-              sublabel:
-                shoppingBalance > 0
-                  ? `Available balance: ₹${formatWalletBalance(shoppingBalance)}`
-                  : "No balance available",
-              disabled: shoppingWalletDisabled,
-              disabledReason: insufficientReason(shoppingWalletDisabled),
-            },
-          ]
-        : []),
+      {
+        id: "shopping_wallet",
+        label: "Shopping Wallet",
+        icon: ShoppingBag,
+        sublabel:
+          shoppingBalance > 0
+            ? `Available balance: ₹${formatWalletBalance(shoppingBalance)}`
+            : "No balance available",
+        disabled: shoppingWalletDisabled,
+        disabledReason: insufficientReason(shoppingWalletDisabled),
+      },
       {
         id: "earning_wallet",
         label: "Earning Wallet",

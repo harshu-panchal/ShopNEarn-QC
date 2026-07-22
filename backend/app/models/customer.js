@@ -272,36 +272,7 @@ const userSchema = new mongoose.Schema(
 
         lastLogin: Date,
 
-        /*
-         * Soft-delete triad (per soft-delete-cascade-pattern skill).
-         *
-         * `deletedAt` is the tombstone marker; the pre('find') hook
-         * below filters tombstoned customers out of every standard
-         * read so soft-deleted accounts vanish from login, profile
-         * lookups, admin lists, etc. Admin paths that need to see
-         * tombstones (audit, restore) opt in explicitly via
-         * `Customer.find({ __includeDeleted: true })`.
-         *
-         * `deletedBy` carries the Admin _id that initiated the
-         * tombstone for traceability; `updatedBy` mirrors the
-         * MlmMembership pattern so multi-write flows can stamp the
-         * acting admin without inventing a per-model audit log.
-         *
-         * Triggered by `mlmMemberSoftDeleteService.softDeleteMlmMember`
-         * which also tombstones the linked MlmMembership and rewires
-         * the binary tree.
-         */
-        deletedAt: { type: Date, default: null, index: true },
-        deletedBy: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "Admin",
-            default: null,
-        },
-        updatedBy: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "Admin",
-            default: null,
-        },
+        // Soft-delete removed as per request. Accounts are now hard-deleted.
     },
     {
         timestamps: true,
@@ -309,12 +280,10 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ role: 1, isActive: 1 });
-userSchema.index({ deletedAt: 1, isActive: 1 });
 userSchema.index(
     { phone: 1 },
     {
-        unique: true,
-        partialFilterExpression: { deletedAt: null }
+        unique: true
     }
 );
 
@@ -325,24 +294,7 @@ userSchema.pre("validate", function(next) {
     next();
 });
 
-/*
- * Soft-delete auto-filter. Mirrors the MlmMembership hook so every
- * `Customer.find/findOne/findById` call automatically scopes to live
- * rows. Admin reads that need tombstones pass `__includeDeleted: true`
- * in their filter and the hook strips the marker before delegating.
- */
-userSchema.pre(/^find/, function preFindFilterSoftDeletedCustomer(next) {
-    const conditions = this.getFilter() || {};
-    if (conditions.__includeDeleted) {
-        delete conditions.__includeDeleted;
-        this.setQuery(conditions);
-        return next();
-    }
-    if (!Object.prototype.hasOwnProperty.call(conditions, "deletedAt")) {
-        this.where({ deletedAt: null });
-    }
-    next();
-});
+
 
 // Phase 4 P4-8 — reverse virtual to the canonical Wallet document.
 //

@@ -273,18 +273,7 @@ const mlmMembershipSchema = new mongoose.Schema(
       default: () => new Map(),
     },
 
-    // Soft-delete (per soft-delete-cascade-pattern skill)
-    deletedAt: { type: Date, default: null, index: true },
-    deletedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Admin",
-      default: null,
-    },
-    updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Admin",
-      default: null,
-    },
+    // Soft-delete removed as per request. Accounts are now hard-deleted.
 
     meta: { type: Object, default: {} },
   },
@@ -293,22 +282,9 @@ const mlmMembershipSchema = new mongoose.Schema(
 
 // Composite indexes for common queries.
 mlmMembershipSchema.index({ sponsorId: 1, planType: 1 });
-mlmMembershipSchema.index({ status: 1, planType: 1, deletedAt: 1 });
+mlmMembershipSchema.index({ status: 1, planType: 1 });
 mlmMembershipSchema.index({ binaryParentId: 1, binaryPosition: 1 });
 
-// Soft-delete auto-filter (admin reads with `.find({ __includeDeleted: true })`
-// can opt in explicitly via `MlmMembership.find(...).setOptions({...})`).
-mlmMembershipSchema.pre(/^find/, function preFindFilterSoftDeleted(next) {
-  const conditions = this.getFilter() || {};
-  if (conditions.__includeDeleted) {
-    delete conditions.__includeDeleted;
-    this.setQuery(conditions);
-    return next();
-  }
-  if (!Object.prototype.hasOwnProperty.call(conditions, "deletedAt")) {
-    this.where({ deletedAt: null });
-  }
-  next();
-});
+
 
 export default mongoose.model("MlmMembership", mlmMembershipSchema);

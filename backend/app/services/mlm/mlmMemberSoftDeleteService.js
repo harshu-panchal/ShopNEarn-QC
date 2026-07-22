@@ -148,14 +148,9 @@ function buildChildrenByParentMap(descendants, deletedMembershipId) {
   return map;
 }
 
-/**
- * Idempotency guard for re-runs (in case an admin double-clicks).
- * Returns the already-tombstoned membership so the controller can
- * return 200 with a clear "already deleted" payload.
- */
 async function loadMembershipIncludingDeleted(membershipId, { session }) {
   return MlmMembership.findOne(
-    { _id: membershipId, __includeDeleted: true },
+    { _id: membershipId },
     null,
     { session },
   );
@@ -191,13 +186,7 @@ export async function softDeleteMlmMember({
       if (!target) {
         throw makeError("Member not found", 404, "MEMBERSHIP_NOT_FOUND");
       }
-      if (target.deletedAt) {
-        summary = {
-          alreadyDeleted: true,
-          membershipId: String(target._id),
-        };
-        return;
-      }
+      // Soft delete guard removed. If it's not found, it's already deleted.
       const targetUserId = target.userId;
 
       // ---------- STEP 2 — collect tree neighbours ----------
@@ -435,32 +424,10 @@ export async function softDeleteMlmMember({
         withdrawalsCancelled.push(String(w._id));
       }
 
-      // ---------- STEP 9 — tombstone the membership and customer ----------
+      // ---------- STEP 9 — hard delete the membership and customer ----------
       const now = new Date();
-      target.deletedAt = now;
-      target.deletedBy = adminId;
-      target.updatedBy = adminId;
-      await target.save({ session });
-
-      // `Customer.updateOne` isn't matched by the `/^find/` soft-
-      // delete pre-hook, so the filter goes through as-is. We're
-      // guarded against the "already tombstoned" case by the
-      // `target.deletedAt` check above, so a plain `_id` match is
-      // safe and correctly stamps the customer row even on the
-      // first run.
-      await Customer.updateOne(
-        { _id: targetUserId },
-        {
-          $set: {
-            deletedAt: now,
-            deletedBy: adminId,
-            updatedBy: adminId,
-            isActive: false,
-            "mlm.active": false,
-          },
-        },
-        { session },
-      );
+      await MlmMembership.deleteOne({ _id: target._id }, { session });
+      await Customer.deleteOne({ _id: targetUserId }, { session });
 
       // Keep `Customer.mlm` projection consistent for any populated
       // reads that race after the transaction commits.
