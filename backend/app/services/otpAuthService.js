@@ -164,6 +164,18 @@ export async function issueCustomerOtp({
       err.code = "ACCOUNT_NOT_FOUND";
       throw err;
     }
+    if (customer.isActive === false) {
+      otpAuditLog("customer_otp_login_rejected_blocked", {
+        phone: maskPhone(phone),
+        ipAddress,
+      });
+      const err = new Error(
+        "Your account has been blocked by an administrator.",
+      );
+      err.statusCode = 403;
+      err.code = "ACCOUNT_BLOCKED";
+      throw err;
+    }
     if (!customer.isVerified) {
       otpAuditLog("customer_otp_login_rejected_unverified", {
         phone: maskPhone(phone),

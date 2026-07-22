@@ -366,6 +366,11 @@ export const loginWithPassword = async (req, res) => {
             if (!candidate || !candidate.isVerified || !candidate.password) {
                 continue;
             }
+            if (candidate.isActive === false) {
+                return handleResponse(res, 403, "Your account has been blocked by an administrator.", {
+                    code: "ACCOUNT_BLOCKED",
+                });
+            }
             // eslint-disable-next-line no-await-in-loop -- candidate
             // bcrypt comparisons run sequentially; the loop is short
             // (currently always at most one iteration).
