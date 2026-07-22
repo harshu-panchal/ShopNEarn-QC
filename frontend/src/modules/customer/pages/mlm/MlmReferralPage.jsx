@@ -237,6 +237,9 @@ const MlmReferralPage = () => {
                                             <div className="min-w-0 flex-1">
                                                 <p className="text-sm font-semibold text-slate-900 truncate">{r.name || 'New member'}</p>
                                                 <MemberJoinedSubtitle joinedAt={r.joinedAt} className="text-[11px] text-slate-500 truncate" />
+                                                {r.status === 'active' && r.activatedAt && (
+                                                    <MemberJoinedSubtitle joinedAt={r.activatedAt} prefix="Activated " className="text-[10px] text-emerald-600/90 truncate font-medium mt-0.5" />
+                                                )}
                                                 <p className="text-[11px] text-slate-500 truncate flex items-center gap-1.5 flex-wrap mt-0.5">
                                                     {(r.publicUserId || r.referralCode) && (
                                                         <span className={r.status === 'active' ? 'text-emerald-600 font-bold' : ''}>

@@ -97,6 +97,7 @@ const MlmProfilePage = () => {
     const [formData, setFormData] = useState({
         name: '',
         email: '',
+        address: '',
         accountHolderName: '',
         accountNumber: '',
         ifsc: '',
@@ -121,6 +122,7 @@ const MlmProfilePage = () => {
                 setFormData({
                     name: user?.name || '',
                     email: user?.email || '',
+                    address: user?.address || '',
                     accountHolderName: memData?.payoutBeneficiary?.accountHolderName || '',
                     accountNumber: memData?.payoutBeneficiary?.accountNumber || '',
                     ifsc: memData?.payoutBeneficiary?.ifsc || '',
@@ -155,7 +157,8 @@ const MlmProfilePage = () => {
 
             await customerApi.updateProfile({
                 name: formData.name,
-                email: formData.email
+                email: formData.email,
+                address: formData.address
             });
 
             let aadhaarImageUrl = formData.aadhaarImage;
@@ -247,6 +250,7 @@ const MlmProfilePage = () => {
                         <InfoRow label="Email Address" value={user?.email} name="email" type="email" editable isEditing={isEditing} formValue={formData.email} onChange={handleInputChange} />
                         <InfoRow label="Phone Number" value={user?.phone} isEditing={isEditing} />
                         <InfoRow label="Referral Code" value={membership?.referralCode} isEditing={isEditing} />
+                        <InfoRow label="Address" value={user?.address} name="address" editable isEditing={isEditing} formValue={formData.address} onChange={handleInputChange} />
                     </div>
                 </section>
 

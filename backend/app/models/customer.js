@@ -143,6 +143,12 @@ const userSchema = new mongoose.Schema(
             default: "user",
         },
 
+        address: {
+            type: String,
+            trim: true,
+            default: "",
+        },
+
         isVerified: {
             type: Boolean,
             default: false,

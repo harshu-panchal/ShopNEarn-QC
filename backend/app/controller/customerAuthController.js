@@ -532,16 +532,17 @@ export const getCustomerProfile = async (req, res) => {
 ================================ */
 export const updateCustomerProfile = async (req, res) => {
     try {
-        const { name, email, addresses, password } = req.body;
+        const { name, email, addresses, address, password } = req.body;
 
         const customer = await Customer.findById(req.user.id);
         if (!customer) {
             return handleResponse(res, 404, "Customer not found");
         }
 
-        if (name) customer.name = name;
-        if (email) customer.email = email;
-        if (addresses) customer.addresses = addresses;
+        if (name !== undefined) customer.name = name;
+        if (email !== undefined) customer.email = email;
+        if (addresses !== undefined) customer.addresses = addresses;
+        if (address !== undefined) customer.address = address;
         
         if (password && password.trim() !== "") {
             customer.password = await bcrypt.hash(password.trim(), BCRYPT_ROUNDS);

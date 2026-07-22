@@ -562,6 +562,7 @@ export const getMyDirectReferrals = async (req, res) => {
           referralCode: m.referralCode,
           publicUserId: customer?.userId || m.referralCode || null,
           joinedAt: customer?.createdAt || m.createdAt || null,
+          activatedAt: m.planAJoinedAt || null,
           status: m.status,
           planType: m.planType,
           directReferralsCount: m.directReferralsCount || 0,
