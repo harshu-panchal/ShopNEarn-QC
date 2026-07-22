@@ -165,7 +165,7 @@ async function computeBinaryDownlineStats(rootUserId) {
   for (const d of descendants) {
     let cursor = String(d.userId);
     let legUnderRoot = null;
-    for (let i = 0; i < 64; i += 1) {
+    for (let i = 0; i < 100000; i += 1) {
       const link = parentLinkByUser.get(cursor);
       if (!link || !link.parent) break;
       if (link.parent === rootKey) {
@@ -540,6 +540,9 @@ export const getMyDirectReferrals = async (req, res) => {
     const list = await getDirectReferrals(userId, {
       limit: parseInt(req.query.limit, 10) || 50,
     });
+
+    const { parentLinkByUser } = await fetchBinaryDescendantGraph(userId);
+
     const populated = await Promise.all(
       list.map(async (m) => {
         const customer = await mongoose
@@ -564,6 +567,7 @@ export const getMyDirectReferrals = async (req, res) => {
           directReferralsCount: m.directReferralsCount || 0,
           lifetimeEarnings:
             (m.lifetimePlanAEarnings || 0) + (m.lifetimePlanBEarnings || 0),
+          position: resolveLegUnderRootFromLinks(m.userId, userId, parentLinkByUser) || m.binaryPosition || null,
         };
       }),
     );
@@ -1126,7 +1130,7 @@ export const getDashboardOverview = async (req, res) => {
     for (const d of descendants) {
       let cursor = String(d.userId);
       let legUnderRoot = null;
-      for (let i = 0; i < 64; i++) {
+      for (let i = 0; i < 100000; i++) {
         const link = parentLinkByUser.get(cursor);
         if (!link || !link.parent) break;
         if (link.parent === String(userObjectId)) {
@@ -2334,7 +2338,7 @@ async function fetchBinaryDescendantGraph(rootUserId) {
 function resolveLegUnderRootFromLinks(memberUserId, rootUserId, parentLinkByUser) {
   let cursor = String(memberUserId);
   const rootKey = String(rootUserId);
-  for (let i = 0; i < 64; i += 1) {
+  for (let i = 0; i < 100000; i += 1) {
     const link = parentLinkByUser.get(cursor);
     if (!link || !link.parent) return null;
     if (link.parent === rootKey) return link.position;
@@ -2609,17 +2613,28 @@ export const getMyLevelTeam = async (req, res) => {
     const total = filteredMembers.length;
     const paginated = filteredMembers.slice((page - 1) * limit, page * limit);
 
-    const userById =
-      userByIdPrefetched || (await loadCustomerRowsForMembers(paginated));
+    const relatedUserIds = new Set();
+    for (const m of paginated) {
+      relatedUserIds.add(String(m.userId));
+      if (m.sponsorId) relatedUserIds.add(String(m.sponsorId));
+    }
+
+    let userById = userByIdPrefetched;
+    if (!userById || relatedUserIds.size > paginated.length) {
+       userById = await loadCustomerRowsForUserIds([...relatedUserIds]);
+    }
 
     const items = paginated.map((m) => {
       const u = userById.get(String(m.userId));
+      const sponsor = m.sponsorId ? userById.get(String(m.sponsorId)) : null;
       return {
         userId: m.userId,
         name: u?.name || null,
         phone: u?.phone || null,
         referralCode: m.referralCode,
         publicUserId: u?.userId || m.referralCode || null,
+        sponsorName: sponsor?.name || null,
+        sponsorPublicUserId: sponsor?.userId || null,
         status: m.status,
         planType: m.planType,
         joinedAt: u?.createdAt || m.createdAt || null,

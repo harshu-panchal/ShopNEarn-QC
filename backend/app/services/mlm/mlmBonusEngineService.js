@@ -943,8 +943,9 @@ export async function computeAndCreditRepurchaseBonusChain({
   const order = await Order.findById(orderId).session(session);
   if (!order) return [];
 
-  const grandTotal = roundCurrency(order.paymentBreakdown?.grandTotal || 0);
-  if (grandTotal <= 0) return [];
+  const pb = order.paymentBreakdown || {};
+  const baseAmount = roundCurrency((pb.grandTotal || 0) + (pb.walletAmount || 0));
+  if (baseAmount <= 0) return [];
 
   // Walk the upline. We use `getUplineChain` which already returns
   // ACTIVE memberships in level order [L1, L2, ...].
@@ -960,7 +961,7 @@ export async function computeAndCreditRepurchaseBonusChain({
     const recipient = upline[i];
     if (recipient.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) continue;
 
-    const bonusAmount = roundCurrency((grandTotal * Number(ratePercent)) / 100);
+    const bonusAmount = roundCurrency((baseAmount * Number(ratePercent)) / 100);
     if (bonusAmount <= 0) continue;
 
     const idempotencyKey = `${MLM_IDEMPOTENCY_PREFIX.REPURCHASE_BONUS}-${order._id}-${recipient.userId}-L${level}`;
@@ -1352,8 +1353,9 @@ export async function computeAndCreditHomeShoppingCommissions({
   const order = await Order.findById(orderId).session(session);
   if (!order || !order.isHomeShoppingOrder) return [];
 
-  const grandTotal = roundCurrency(order.paymentBreakdown?.grandTotal || 0);
-  if (grandTotal <= 0) return [];
+  const pb = order.paymentBreakdown || {};
+  const baseAmount = roundCurrency((pb.grandTotal || 0) + (pb.walletAmount || 0));
+  if (baseAmount <= 0) return [];
 
   const cfg = await getMlmConfig();
   const hs = cfg.homeShoppingCommissions || {};
@@ -1374,7 +1376,7 @@ export async function computeAndCreditHomeShoppingCommissions({
     if (!recipient) continue;
     if (recipient.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) continue;
 
-    const bonusAmount = roundCurrency((grandTotal * ratePercent) / 100);
+    const bonusAmount = roundCurrency((baseAmount * ratePercent) / 100);
     if (bonusAmount <= 0) continue;
 
     const idempotencyKey = `${prefix}-${order._id}-${recipient.userId}-L${level}`;

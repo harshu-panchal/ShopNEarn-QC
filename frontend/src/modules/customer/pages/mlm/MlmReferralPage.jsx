@@ -237,14 +237,22 @@ const MlmReferralPage = () => {
                                             <div className="min-w-0 flex-1">
                                                 <p className="text-sm font-semibold text-slate-900 truncate">{r.name || 'New member'}</p>
                                                 <MemberJoinedSubtitle joinedAt={r.joinedAt} className="text-[11px] text-slate-500 truncate" />
-                                                <p className="text-[11px] text-slate-500 truncate">
+                                                <p className="text-[11px] text-slate-500 truncate flex items-center gap-1.5 flex-wrap mt-0.5">
                                                     {(r.publicUserId || r.referralCode) && (
-                                                        <>
+                                                        <span className={r.status === 'active' ? 'text-emerald-600 font-bold' : ''}>
                                                             {r.publicUserId || r.referralCode}
-                                                            {' · '}
+                                                        </span>
+                                                    )}
+                                                    <span className="text-slate-300">•</span>
+                                                    <span>{referralPlanLabel(r)}</span>
+                                                    {r.position && (
+                                                        <>
+                                                            <span className="text-slate-300">•</span>
+                                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${r.position === 'L' ? 'bg-indigo-50 text-indigo-700' : r.position === 'R' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                                {r.position === 'L' ? 'Left Leg' : r.position === 'R' ? 'Right Leg' : r.position}
+                                                            </span>
                                                         </>
                                                     )}
-                                                    {referralPlanLabel(r)}
                                                 </p>
                                             </div>
                                             <div className="text-right shrink-0">

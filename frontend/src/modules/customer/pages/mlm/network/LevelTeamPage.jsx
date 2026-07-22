@@ -177,6 +177,7 @@ const LevelTeamPage = () => {
                             <thead>
                                 <tr className="border-b border-slate-100 bg-slate-50/50">
                                     <th className="px-5 py-4 font-semibold text-slate-500 uppercase tracking-wider text-[11px]">Member</th>
+                                    <th className="px-5 py-4 font-semibold text-slate-500 uppercase tracking-wider text-[11px]">Sponsor</th>
                                     <th className="px-5 py-4 font-semibold text-slate-500 uppercase tracking-wider text-[11px]">Level</th>
                                     <th className="px-5 py-4 font-semibold text-slate-500 uppercase tracking-wider text-[11px]">Status</th>
                                     <th className="px-5 py-4 font-semibold text-slate-500 uppercase tracking-wider text-[11px] text-right">Joined</th>
@@ -185,11 +186,11 @@ const LevelTeamPage = () => {
                             <tbody className="divide-y divide-slate-100">
                                 {loading ? (
                                     <tr>
-                                        <td colSpan={4} className="px-5 py-12 text-center text-slate-500">Loading team...</td>
+                                        <td colSpan={5} className="px-5 py-12 text-center text-slate-500">Loading team...</td>
                                     </tr>
                                 ) : team.length === 0 ? (
                                     <tr>
-                                        <td colSpan={4} className="px-5 py-12 text-center text-slate-500">
+                                        <td colSpan={5} className="px-5 py-12 text-center text-slate-500">
                                             No members found{level !== 'ALL' ? ` at Level ${level}` : ''}.
                                         </td>
                                     </tr>
@@ -200,6 +201,10 @@ const LevelTeamPage = () => {
                                                 <div className="font-semibold text-slate-900">{row.name || 'Unknown'}</div>
                                                 <div className="text-xs text-slate-500 font-mono mt-0.5">{row.publicUserId || row.referralCode}</div>
                                                 <MemberJoinedSubtitle joinedAt={row.joinedAt} className="text-[10px] text-slate-400 mt-0.5" />
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="font-semibold text-slate-900">{row.sponsorName || '—'}</div>
+                                                <div className="text-xs text-slate-500 font-mono mt-0.5">{row.sponsorPublicUserId || '—'}</div>
                                             </td>
                                             <td className="px-5 py-4">
                                                 <div className="inline-flex items-center justify-center min-w-[2rem] h-6 px-2 rounded-full bg-slate-100 text-xs font-bold text-slate-700">
