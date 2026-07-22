@@ -45,6 +45,8 @@ import MlmUpgradePayment from "../../models/mlmUpgradePayment.js";
 import Customer from "../../models/customer.js";
 import { PAYMENT_STATUS } from "../../constants/payment.js";
 import { creditWallet, debitWallet } from "../../services/finance/walletService.js";
+import { resolveAdminAccess } from "../../services/admin/adminRbacService.js";
+import { getIO } from "../../socket/socketManager.js";
 import { invalidate } from "../../services/cacheService.js";
 import {
   getMembershipByUserId,
@@ -1054,6 +1056,85 @@ export const deactivateMember = async (req, res) => {
       res,
       error.statusCode || 500,
       error.message || "Failed to deactivate member",
+    );
+  }
+};
+
+/**
+ * POST /api/admin/mlm/members/:id/toggle-block
+ * Toggles a member between ACTIVE and SUSPENDED status.
+ * Also toggles the underlying Customer's `isActive` flag to allow/block login.
+ */
+export const toggleBlockMember = async (req, res) => {
+  try {
+    const membership = await MlmMembership.findById(req.params.id).populate("userId");
+    if (!membership) return handleResponse(res, 404, "Member not found");
+    if (membership.deletedAt) {
+      return handleResponse(
+        res,
+        410,
+        "Member is soft-deleted; restore them before changing status.",
+        { code: "MEMBERSHIP_DELETED" },
+      );
+    }
+
+    const isCurrentlySuspended = membership.status === MLM_MEMBERSHIP_STATUS.SUSPENDED;
+    const newStatus = isCurrentlySuspended ? MLM_MEMBERSHIP_STATUS.ACTIVE : MLM_MEMBERSHIP_STATUS.SUSPENDED;
+    const reason = String(req.body?.reason || "").trim().slice(0, 240);
+
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        membership.status = newStatus;
+        membership.updatedBy = req.user?.id || null;
+        await membership.save({ session });
+        
+        // Block/unblock customer login
+        if (membership.userId) {
+           const user = await Customer.findById(membership.userId._id || membership.userId);
+           if (user) {
+               user.isActive = isCurrentlySuspended;
+               await user.save({ session });
+
+               if (!user.isActive) {
+                   try {
+                       const io = getIO();
+                       io.to(`customer:${user._id}`).emit('force_logout', { 
+                           reason: 'Your account has been blocked by an administrator.' 
+                       });
+                   } catch (err) {
+                       console.warn('[admin-toggle-block] failed to emit force_logout:', err.message);
+                   }
+               }
+           }
+        }
+
+        await syncCustomerMlmProjection(membership.userId?._id || membership.userId, { session });
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    try {
+      await invalidate(`/admin/mlm/members`);
+      await invalidate(`/admin/mlm/members/${req.params.id}`);
+    } catch (_) {
+      /* non-fatal */
+    }
+
+    console.warn(
+      `[admin-toggle-block] admin=${req.user?.id} -> membership=${req.params.id} newStatus=${newStatus} reason="${reason || "(none)"}"`,
+    );
+
+    return handleResponse(res, 200, isCurrentlySuspended ? "Member unblocked successfully" : "Member blocked successfully", {
+      membershipId: String(membership._id),
+      status: membership.status,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message || "Failed to toggle member block status",
     );
   }
 };

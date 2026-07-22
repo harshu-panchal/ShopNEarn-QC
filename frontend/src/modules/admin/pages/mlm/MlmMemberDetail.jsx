@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw, Eye, EyeOff, Copy, LogIn, Trash2, X, Pencil, PauseCircle, Move } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw, Eye, EyeOff, Copy, LogIn, Trash2, X, Pencil, PauseCircle, Move, Ban, Unlock } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
 import GenealogyTreeCanvas from '@shared/components/mlm/GenealogyTreeCanvas';
 import MemberJoinedSubtitle from '@shared/components/mlm/MemberJoinedSubtitle';
@@ -108,6 +108,11 @@ const MlmMemberDetail = () => {
     const [deactivateModalOpen, setDeactivateModalOpen] = useState(false);
     const [deactivateReason, setDeactivateReason] = useState('');
     const [deactivating, setDeactivating] = useState(false);
+
+    // Block/Unblock modal state.
+    const [blockModalOpen, setBlockModalOpen] = useState(false);
+    const [blockReason, setBlockReason] = useState('');
+    const [blocking, setBlocking] = useState(false);
 
     const load = async () => {
         setLoading(true);
@@ -392,6 +397,43 @@ const MlmMemberDetail = () => {
             setDeactivating(false);
         }
     };
+
+    /**
+     * Toggles a member between active and suspended (blocked), 
+     * which also toggles their customer login access.
+     */
+    const handleToggleBlock = async () => {
+        if (blocking) return;
+        const memberName = data?.membership?.userId?.name || 'this member';
+        const isCurrentlySuspended = data?.membership?.status === 'suspended';
+        
+        setBlocking(true);
+        try {
+            const res = await adminMlmApi.toggleBlockMember(id, {
+                reason: blockReason.trim() || undefined,
+            });
+            const result = res.data?.result ?? res.data?.data ?? {};
+            
+            if (isCurrentlySuspended) {
+                toast.success(`${memberName} has been unblocked.`);
+            } else {
+                toast.success(`${memberName} has been blocked and cannot log in.`);
+            }
+            
+            setBlockModalOpen(false);
+            setBlockReason('');
+            await load();
+        } catch (err) {
+            toast.error(
+                err?.response?.data?.message ||
+                err?.message ||
+                'Failed to change block status',
+            );
+        } finally {
+            setBlocking(false);
+        }
+    };
+
 
     /**
      * Soft-delete the current member. Promotes the larger subtree
@@ -739,6 +781,24 @@ const MlmMemberDetail = () => {
                     >
                         <Trash2 size={14} />
                         Soft delete
+                    </button>
+                    {/* Block/Unblock action — toggles MLM suspended status and Customer login */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setBlockReason('');
+                            setBlockModalOpen(true);
+                        }}
+                        disabled={blocking || m.status === 'terminated'}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors shadow-sm text-white ${
+                            m.status === 'suspended'
+                                ? 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300'
+                                : 'bg-red-600 hover:bg-red-700 disabled:bg-red-300'
+                        }`}
+                        title={m.status === 'suspended' ? 'Unblock this member' : 'Block this member from MLM and login'}
+                    >
+                        {m.status === 'suspended' ? <Unlock size={14} /> : <Ban size={14} />}
+                        {m.status === 'suspended' ? 'Unblock' : 'Block'}
                     </button>
                 </div>
             </div>
@@ -1460,6 +1520,73 @@ const MlmMemberDetail = () => {
                 </div>
             )}
 
+            {/* Block/Unblock Modal */}
+            {blockModalOpen && (
+                <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between p-4 border-b border-slate-100">
+                            <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                                {m.status === 'suspended' ? <Unlock className="text-emerald-500" size={20} /> : <Ban className="text-red-500" size={20} />}
+                                {m.status === 'suspended' ? 'Unblock Member' : 'Block Member'}
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => setBlockModalOpen(false)}
+                                className="text-slate-400 hover:text-slate-600 transition-colors p-1"
+                                disabled={blocking}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            <div className={`p-4 rounded-xl border ${m.status === 'suspended' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'} text-sm`}>
+                                {m.status === 'suspended' ? (
+                                    <p>Are you sure you want to <strong>unblock</strong> {u.name}? They will regain access to their account and MLM activities.</p>
+                                ) : (
+                                    <p>Are you sure you want to <strong>block</strong> {u.name}? Their MLM membership will be suspended and they will not be able to log in to the application.</p>
+                                )}
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                                    Reason (optional)
+                                </label>
+                                <textarea
+                                    value={blockReason}
+                                    onChange={(e) => setBlockReason(e.target.value)}
+                                    placeholder={m.status === 'suspended' ? 'Why are they being unblocked?' : 'Why are they being blocked?'}
+                                    className="w-full border-slate-200 rounded-lg shadow-sm text-sm p-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[80px]"
+                                    disabled={blocking}
+                                />
+                                <p className="text-[10px] text-slate-500 mt-1">Logged in the system audit trail.</p>
+                            </div>
+                        </div>
+                        <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setBlockModalOpen(false)}
+                                disabled={blocking}
+                                className="px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-900 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleToggleBlock}
+                                disabled={blocking}
+                                className={`inline-flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-bold text-white transition-colors shadow-sm ${
+                                    m.status === 'suspended'
+                                        ? 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300'
+                                        : 'bg-red-600 hover:bg-red-700 disabled:bg-red-300'
+                                }`}
+                            >
+                                {blocking ? <Loader2 size={16} className="animate-spin" /> : (m.status === 'suspended' ? <Unlock size={16} /> : <Ban size={16} />)}
+                                {blocking ? 'Processing…' : (m.status === 'suspended' ? 'Confirm Unblock' : 'Confirm Block')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <MoveMemberWizard
                 open={moveWizardOpen}
                 onClose={() => {
@@ -1628,6 +1755,8 @@ const PaginatedList = ({
                     </div>
                 </div>
             )}
+
+
         </div>
     );
 };

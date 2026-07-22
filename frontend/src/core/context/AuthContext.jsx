@@ -13,6 +13,8 @@ import {
     clearOnLogout,
     STORAGE_KEYS,
 } from '@core/utils/storage';
+import { getOrderSocket } from '@core/services/orderSocket';
+import { toast } from 'sonner';
 
 const AuthContext = createContext(undefined);
 
@@ -70,6 +72,28 @@ export const AuthProvider = ({ children }) => {
             document.removeEventListener('visibilitychange', syncStoredTokens);
         };
     }, []);
+
+    // Listen for force_logout socket events to log the user out immediately if they are blocked
+    useEffect(() => {
+        if (!token) return;
+
+        const socket = getOrderSocket(token);
+        if (!socket) return;
+
+        const handleForceLogout = (payload) => {
+            console.warn('[auth] Force logout event received:', payload);
+            if (payload?.reason) {
+                toast.error(payload.reason);
+            }
+            logout();
+        };
+
+        socket.on('force_logout', handleForceLogout);
+        return () => {
+            socket.off('force_logout', handleForceLogout);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token]);
 
     // Register FCM token after login (non-blocking).
     useEffect(() => {

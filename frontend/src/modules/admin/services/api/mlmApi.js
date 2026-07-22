@@ -109,6 +109,15 @@ export const adminMlmApi = {
             data || {},
         ),
 
+    /**
+     * Block or unblock a member. Blocked members are suspended from MLM and their Customer login is disabled.
+     */
+    toggleBlockMember: (membershipId, data) =>
+        axiosInstance.post(
+            `/admin/mlm/members/${membershipId}/toggle-block`,
+            data || {},
+        ),
+
     listWithdrawals: (params) =>
         axiosInstance.get('/admin/mlm/withdrawals', { params }),
     approveWithdrawal: (id, data) =>

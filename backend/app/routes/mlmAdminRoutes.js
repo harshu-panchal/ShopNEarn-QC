@@ -8,6 +8,7 @@ import {
   approveWithdrawal,
   createMilestoneRule,
   deactivateMember,
+  toggleBlockMember,
   deleteMilestoneRule,
   getMlmDashboard,
   getMlmMemberDetail,
@@ -63,6 +64,7 @@ router.post("/members/:id/soft-delete", ...adminPermissionGuard("mlm:adjust"), s
 router.post("/customers/:customerId/delete-non-member", ...adminPermissionGuard("customers:view"), deleteNonMlmCustomer);
 router.patch("/members/:id/profile", ...adminPermissionGuard("mlm:adjust"), updateMemberProfile);
 router.post("/members/:id/deactivate", ...adminPermissionGuard("mlm:approve"), deactivateMember);
+router.post("/members/:id/toggle-block", ...adminPermissionGuard("mlm:approve"), toggleBlockMember);
 
 router.get("/withdrawals", ...adminPermissionGuard("mlm:view"), listAdminWithdrawals);
 router.post("/withdrawals/:id/approve", ...adminPermissionGuard("mlm:approve"), approveWithdrawal);
