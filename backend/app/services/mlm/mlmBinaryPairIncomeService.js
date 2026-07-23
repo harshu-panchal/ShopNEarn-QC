@@ -7,7 +7,7 @@ import {
   MLM_MEMBERSHIP_STATUS,
   MLM_PLAN_TYPE,
 } from "../../constants/mlm.js";
-import { getMlmConfig, resolvePlanABonusWalletBucket } from "./mlmConfigService.js";
+import { getMlmConfig, resolvePlanABonusWalletBucket, getPlanAPairBonusForPairIndex } from "./mlmConfigService.js";
 import { getMembershipByUserId } from "./mlmMembershipService.js";
 import { creditBonusToEarningsWallet } from "./mlmBonusEngineService.js";
 import { MLM_IDEMPOTENCY_PREFIX } from "../../constants/mlm.js";
@@ -373,7 +373,7 @@ export async function getBinaryPairIncomePreview(membership, { session } = {}) {
   const cfg = await getMlmConfig();
   const directCount = await countActivePlanADirects(membership.userId, { session });
   const isTopup = Boolean(membership.binaryTopupMember);
-  const { pairIncome, dailyPairCap } = resolvePairIncomeConfig(cfg, directCount, isTopup);
+  const { dailyPairCap } = resolvePairIncomeConfig(cfg, directCount, isTopup);
 
   const hasSnapshot =
     membership.leftLegTeamActiveCount != null
@@ -394,8 +394,16 @@ export async function getBinaryPairIncomePreview(membership, { session } = {}) {
     0,
   );
 
+  const nextPairIndex = pairsCompleted + 1;
+  let nextPairBonusAmount = 0;
+  if (isTopup) {
+    nextPairBonusAmount = Number(cfg.binaryTopupPairIncome?.pairIncome) || 550;
+  } else {
+    nextPairBonusAmount = await getPlanAPairBonusForPairIndex(nextPairIndex);
+  }
+
   return {
-    nextPairBonusAmount: pairIncome,
+    nextPairBonusAmount,
     dailyPairCap,
     activePlanADirectCount: directCount,
     isTopup,
@@ -468,9 +476,9 @@ export async function computeAndCreditBinaryTeamPairIncome({
 
   const directCount = await countActivePlanADirects(sponsorUserId, { session });
   const isTopup = Boolean(sponsor.binaryTopupMember);
-  const { pairIncome, dailyPairCap } = resolvePairIncomeConfig(cfg, directCount, isTopup);
+  const { pairIncome: defaultPairIncome, dailyPairCap } = resolvePairIncomeConfig(cfg, directCount, isTopup);
 
-  if (pairIncome <= 0 || dailyPairCap <= 0) return [];
+  if (dailyPairCap <= 0) return [];
 
   const today = todayIstDateString();
   const tracker = sponsor.binaryDailyPairTracker || {};
@@ -492,20 +500,27 @@ export async function computeAndCreditBinaryTeamPairIncome({
       continue;
     }
 
+    let currentPairIncome = defaultPairIncome;
+    if (!isTopup) {
+      currentPairIncome = await getPlanAPairBonusForPairIndex(pairIndex);
+    }
+
+    if (currentPairIncome <= 0) continue;
+
     const idempotencyKey = `${MLM_IDEMPOTENCY_PREFIX.BINARY_PAIR_MATCH}-${sponsorUserId}-P${pairIndex}`;
 
     const event = await creditBonusToEarningsWallet({
       recipientUserId: sponsorUserId,
       bonusType: MLM_BONUS_TYPE.BINARY_PAIR_MATCH,
       planType: MLM_PLAN_TYPE.A,
-      bonusAmount: pairIncome,
+      bonusAmount: currentPairIncome,
       level: null,
       baseAmount: 0,
       ratePercent: null,
       sourceUserId: triggerUserId,
       sourceOrderId: null,
       bucket: bonusBucket,
-      description: `Binary pair #${pairIndex} team match (₹${pairIncome})`,
+      description: `Binary pair #${pairIndex} team match (₹${currentPairIncome})`,
       meta: {
         pairIndex,
         matchingMode: "team",
@@ -515,7 +530,7 @@ export async function computeAndCreditBinaryTeamPairIncome({
         leftTeamActive: leftActive,
         rightTeamActive: rightActive,
         directCount,
-        pairIncome,
+        pairIncome: currentPairIncome,
         dailyPairCap,
         isTopup,
         leftBalance: calculateBinaryPairs(leftActive, rightActive).leftBalance,

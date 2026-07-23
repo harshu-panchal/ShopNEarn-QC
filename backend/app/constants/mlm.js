@@ -297,18 +297,21 @@ export const MLM_DEFAULTS = Object.freeze({
     { atDirectCount: 5, bonusAmount: 300, planRequired: MLM_PLAN_TYPE.A },
   ],
 
-  // Deprecated per-pair-index tiers (superseded by binaryPairIncomeTiers).
+  // Per-pair-index tiers for pair match bonus.
   planAPairBonusTiers: [
-    { pairIndex: 1, bonusAmount: 200 },
-    { pairIndex: 2, bonusAmount: 350 },
+    { pairIndex: 1, bonusAmount: 250 },
+    { pairIndex: 2, bonusAmount: 250 },
     { pairIndex: 3, bonusAmount: 300 },
-    { pairIndex: 4, bonusAmount: 250 },
+    { pairIndex: 4, bonusAmount: 300 },
+    { pairIndex: 5, bonusAmount: 400 },
+    { pairIndex: 6, bonusAmount: 400 },
+    { pairIndex: 7, bonusAmount: 400 },
   ],
   // Pair index after which `planAPairBonusFixedAmount` applies. Set to
   // 0 to apply the fixed amount to ALL pairs not explicitly listed in
-  // `planAPairBonusTiers`. Default 4 means: pairs 5, 6, 7, ... pay the
+  // `planAPairBonusTiers`. Default 7 means: pairs 8, 9, 10, ... pay the
   // fixed amount.
-  planAPairBonusFixedAfterPair: 4,
+  planAPairBonusFixedAfterPair: 7,
   // Fixed bonus paid for every pair beyond `planAPairBonusFixedAfterPair`
   // when the pair index is not explicitly listed in
   // `planAPairBonusTiers`. Set to 0 to disable fixed-mode payouts.

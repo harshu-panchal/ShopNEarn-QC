@@ -13,7 +13,8 @@
     "test:finance-flow": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --testPathPatterns=finance-.*\\.test\\.js",
     "test:finance-e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --detectOpenHandles --testPathPatterns=finance-api-e2e\\.test\\.js",
     "test:franchise-integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --detectOpenHandles --testPathPatterns=franchise-integration\\.test\\.js",
-    "test:delivery-broadcast": "node scripts/test-delivery-broadcast-flow.js"
+    "test:delivery-broadcast": "node scripts/test-delivery-broadcast-flow.js",
+    "query": "node query.js"
   },
   "jest": {
     "testEnvironment": "node",
