@@ -55,6 +55,9 @@ const MlmSettings = () => {
       // Only send writable fields; the backend will strip unknowns.
       const payload = {
         enabled: !!cfg.enabled,
+        signupBonusEnabled: !!cfg.signupBonusEnabled,
+        signupBonusSelfAmount: Number(cfg.signupBonusSelfAmount) || 0,
+        signupBonusSponsorAmount: Number(cfg.signupBonusSponsorAmount) || 0,
         signupRequiresReferralCode: cfg.signupRequiresReferralCode !== false,
         joiningPackagePrice: Number(cfg.joiningPackagePrice) || 0,
         joiningPackageShoppingWalletCredit:
@@ -185,6 +188,29 @@ const MlmSettings = () => {
             before sending an SMS. Toggle OFF only to bootstrap the very first
             member of the system, then turn it back ON.
           </p>
+        </div>
+      </Section>
+
+      <Section title="Signup Bonus">
+        <Toggle
+          label="Signup Bonus Enabled"
+          value={cfg.signupBonusEnabled}
+          onChange={(v) => setCfg({ ...cfg, signupBonusEnabled: v })}
+        />
+        <p className="text-xs text-slate-500 mt-2 mb-4">
+          When enabled, new users get a bonus on signup, and their sponsor (referrer) gets a bonus when the new user activates.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <NumField
+            label="Self Bonus Amount (₹)"
+            value={cfg.signupBonusSelfAmount}
+            onChange={(v) => setCfg({ ...cfg, signupBonusSelfAmount: v })}
+          />
+          <NumField
+            label="Sponsor Bonus Amount (₹)"
+            value={cfg.signupBonusSponsorAmount}
+            onChange={(v) => setCfg({ ...cfg, signupBonusSponsorAmount: v })}
+          />
         </div>
       </Section>
 

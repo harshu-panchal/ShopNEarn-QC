@@ -22,6 +22,9 @@ export const createWithdrawalRequestSchema = Joi.object({
 
 export const updateMlmSettingsSchema = Joi.object({
   enabled: Joi.boolean(),
+  signupBonusEnabled: Joi.boolean(),
+  signupBonusSelfAmount: Joi.number().min(0),
+  signupBonusSponsorAmount: Joi.number().min(0),
   signupRequiresReferralCode: Joi.boolean(),
   joiningPackagePrice: Joi.number().min(0),
   joiningPackageShoppingWalletCredit: Joi.number().min(0),

@@ -200,6 +200,20 @@ const settingSchema = new mongoose.Schema(
                 type: Boolean,
                 default: MLM_DEFAULTS.enabled,
             },
+            signupBonusEnabled: {
+                type: Boolean,
+                default: MLM_DEFAULTS.signupBonusEnabled,
+            },
+            signupBonusSelfAmount: {
+                type: Number,
+                default: MLM_DEFAULTS.signupBonusSelfAmount,
+                min: 0,
+            },
+            signupBonusSponsorAmount: {
+                type: Number,
+                default: MLM_DEFAULTS.signupBonusSponsorAmount,
+                min: 0,
+            },
             // Hard requirement: when true, new customer signup is
             // gated on a valid sponsor referral code. Default true.
             // Admins toggle off only to bootstrap the very first member
