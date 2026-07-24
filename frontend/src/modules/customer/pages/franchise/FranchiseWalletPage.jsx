@@ -165,12 +165,23 @@ const FranchiseWalletPage = () => {
                       className="mt-1.5 w-full border border-slate-200 rounded-xl px-4 py-3 text-lg font-bold"
                     />
                   </label>
+                  {!profile?.partner?.hasCompletedFirstTopup && (
+                    <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs text-purple-900 flex items-start gap-2">
+                      <TrendingUp className="text-purple-600 shrink-0 mt-0.5" size={16} />
+                      <div>
+                        <p className="font-bold text-purple-950">1st Top-Up Direct Product Allocation</p>
+                        <p className="text-purple-800 mt-0.5">
+                          For your first top-up, Admin will directly select & dispatch products to you equal to your 2× credit value instead of cash wallet credit.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   {depositAmount > 0 && (
                     <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
                       <TrendingUp className="text-emerald-600 shrink-0" size={20} />
                       <div>
                         <p className="text-xs text-emerald-800 font-semibold uppercase tracking-wide">
-                          Expected credit after approval
+                          Expected product value / credit after approval
                         </p>
                         <p className="text-xl font-black text-emerald-900">{formatINR(expectedCredit)}</p>
                       </div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search, ShoppingCart, Minus, Plus, Wallet, RefreshCcw } from "lucide-react";
+import { Search, ShoppingCart, Minus, Plus, Wallet, RefreshCcw, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 import { franchiseApi } from "../../services/franchiseApi";
 import FranchiseMlmHeader from "./FranchiseMlmHeader";
@@ -18,6 +18,7 @@ const FranchiseCatalogPage = () => {
   const [items, setItems] = useState([]);
   const [hubName, setHubName] = useState("Harsh's Hub");
   const [walletBalance, setWalletBalance] = useState(0);
+  const [hasCompletedFirstTopup, setHasCompletedFirstTopup] = useState(true);
   const [cart, setCart] = useState({});
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -35,6 +36,7 @@ const FranchiseCatalogPage = () => {
       setHubName(catalog?.hubShopDisplayName || "Harsh's Hub");
       const me = meRes.data?.result ?? meRes.data?.data;
       setWalletBalance(me?.wallet?.availableBalance || 0);
+      setHasCompletedFirstTopup(me?.partner?.hasCompletedFirstTopup ?? true);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to load catalog");
     } finally {
@@ -47,6 +49,9 @@ const FranchiseCatalogPage = () => {
   }, []);
 
   const setQty = (productId, delta) => {
+    if (!hasCompletedFirstTopup) {
+      return toast.info("For your 1st top-up, products are directly selected & sent by Admin.");
+    }
     const product = items.find((p) => String(p._id) === String(productId));
     if (!product) return;
 
@@ -84,6 +89,9 @@ const FranchiseCatalogPage = () => {
   const canAfford = walletBalance >= cartTotal && cartTotal > 0;
 
   const purchase = async () => {
+    if (!hasCompletedFirstTopup) {
+      return toast.error("For your 1st top-up, products are directly selected & sent by Admin.");
+    }
     if (!cartLines.length) return toast.error("Add items to cart");
     if (!canAfford) return toast.error("Insufficient wallet balance");
     setPurchasing(true);
@@ -128,13 +136,26 @@ const FranchiseCatalogPage = () => {
           </button>
         }
       >
+        {!hasCompletedFirstTopup && (
+          <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200 text-purple-900 text-xs sm:text-sm flex items-start gap-3 shadow-xs mb-2">
+            <PackageCheck className="text-purple-600 flex-shrink-0 mt-0.5" size={20} />
+            <div>
+              <p className="font-bold text-purple-950">First Top-Up Notice</p>
+              <p className="mt-0.5 text-purple-800">
+                For your first top-up, products are directly selected and dispatched to you by Admin upon top-up approval.
+                Self-purchasing stock from the catalog will open after your first top-up is completed.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <FranchiseStatCard label="Wallet balance" value={formatINR(walletBalance)} tone="indigo" />
           <FranchiseStatCard label="Cart total" value={formatINR(cartTotal)} tone="amber" />
           <FranchiseStatCard
             label="Items in cart"
             value={cartCount}
-            hint={canAfford ? "Ready to purchase" : cartTotal > 0 ? "Top up wallet if needed" : "Add products below"}
+            hint={!hasCompletedFirstTopup ? "Admin managed for 1st topup" : canAfford ? "Ready to purchase" : cartTotal > 0 ? "Top up wallet if needed" : "Add products below"}
             tone={canAfford ? "emerald" : "slate"}
           />
         </div>
@@ -189,7 +210,7 @@ const FranchiseCatalogPage = () => {
                       <button
                         type="button"
                         onClick={() => setQty(p._id, -1)}
-                        disabled={qty === 0}
+                        disabled={qty === 0 || !hasCompletedFirstTopup}
                         className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center disabled:opacity-40"
                       >
                         <Minus size={14} />
@@ -198,7 +219,7 @@ const FranchiseCatalogPage = () => {
                       <button
                         type="button"
                         onClick={() => setQty(p._id, 1)}
-                        disabled={isOutOfStock || atStockLimit}
+                        disabled={isOutOfStock || atStockLimit || !hasCompletedFirstTopup}
                         className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <Plus size={14} />

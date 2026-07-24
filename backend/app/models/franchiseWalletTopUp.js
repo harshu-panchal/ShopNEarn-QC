@@ -51,6 +51,21 @@ const franchiseWalletTopUpSchema = new mongoose.Schema(
     rejectionReason: { type: String, default: "" },
     creditLedgerRef: { type: String, default: "" },
     idempotencyKey: { type: String, default: undefined },
+    isFirstTopup: { type: Boolean, default: false, index: true },
+    allocatedItems: [
+      {
+        productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
+        name: { type: String, default: "" },
+        quantity: { type: Number, required: true },
+        unitPrice: { type: Number, required: true },
+        lineTotal: { type: Number, required: true },
+      },
+    ],
+    adminStockOrderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Order",
+      default: null,
+    },
   },
   { timestamps: true },
 );

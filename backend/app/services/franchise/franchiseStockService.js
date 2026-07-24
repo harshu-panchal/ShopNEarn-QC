@@ -58,6 +58,15 @@ export async function purchaseFranchiseStock({
     throw err;
   }
 
+  if (!partner.hasCompletedFirstTopup) {
+    const err = new Error(
+      "First top-up must be fulfilled by Admin. Self-purchasing stock is available after your first top-up is completed.",
+    );
+    err.statusCode = 400;
+    err.code = "FIRST_TOPUP_PENDING_ADMIN_SELECTION";
+    throw err;
+  }
+
   const catalog = await listHubCatalogProducts({ limit: 500 });
   const hubProductIds = new Set(catalog.items.map((p) => String(p._id)));
 

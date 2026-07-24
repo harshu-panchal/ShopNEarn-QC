@@ -73,6 +73,11 @@ const franchisePartnerSchema = new mongoose.Schema(
       ref: "Admin",
       default: null,
     },
+    hasCompletedFirstTopup: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   { timestamps: true },
 );

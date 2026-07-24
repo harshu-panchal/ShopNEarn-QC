@@ -70,6 +70,7 @@ export const getFranchiseMe = async (req, res) => {
             state: partner.state || "",
             registeredAt: partner.registeredAt,
             displayName: partner.displayName,
+            hasCompletedFirstTopup: !!partner.hasCompletedFirstTopup,
           }
         : null,
       wallet,

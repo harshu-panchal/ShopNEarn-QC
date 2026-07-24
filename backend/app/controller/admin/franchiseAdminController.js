@@ -126,6 +126,7 @@ export const approveTopUp = async (req, res) => {
       topUpId: req.params.id,
       adminId: req.user?.id,
       adminRemarks: req.body?.adminRemarks,
+      items: req.body?.items || [],
     });
     return handleResponse(res, 200, "Top-up approved", result);
   } catch (error) {
