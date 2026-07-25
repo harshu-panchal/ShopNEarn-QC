@@ -12,7 +12,7 @@ import {
   formatINR,
   formatDate,
 } from "./franchiseAdminShared";
-import { getAvailableStock } from "@/core/utils/productStock";
+import { getAvailableStock, getProductSellingPrice, getProductMrp } from "@/core/utils/productStock";
 
 const STATUS_FILTERS = [
   { value: "pending_review", label: "Pending" },
@@ -121,7 +121,7 @@ const FranchiseTopUps = () => {
       .filter(([, qty]) => qty > 0)
       .map(([productId, quantity]) => {
         const product = catalog.find((p) => String(p._id) === productId);
-        const unitPrice = Number(product?.price) || 0;
+        const unitPrice = getProductSellingPrice(product);
         return { productId, quantity, product, unitPrice, lineTotal: unitPrice * quantity, name: product?.name || "" };
       });
   }, [cart, catalog]);
@@ -419,6 +419,9 @@ const FranchiseTopUps = () => {
                   const qty = cart[p._id] || 0;
                   const available = getAvailableStock(p, "");
                   const isOutOfStock = available <= 0;
+                  const sellingPrice = getProductSellingPrice(p);
+                  const mrp = getProductMrp(p);
+                  const hasDiscount = mrp > sellingPrice;
                   return (
                     <div
                       key={p._id}
@@ -433,7 +436,12 @@ const FranchiseTopUps = () => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-slate-900 text-xs truncate">{p.name}</p>
-                        <p className="text-sm font-black text-purple-700 mt-0.5">{formatINR(p.price)}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <p className="text-sm font-black text-purple-700">{formatINR(sellingPrice)}</p>
+                          {hasDiscount && (
+                            <p className="text-xs text-slate-400 line-through font-medium">{formatINR(mrp)}</p>
+                          )}
+                        </div>
                         <p className="text-[10px] font-medium text-slate-500">
                           {isOutOfStock ? (
                             <span className="text-rose-600 font-bold">Out of stock</span>

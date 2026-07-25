@@ -58,6 +58,7 @@ import {
 } from "../../services/mlm/mlmMembershipService.js";
 import { drainAllPendingPlanABonuses } from "../../services/mlm/mlmPairBonusCooldownReleaseService.js";
 import { softDeleteMlmMember } from "../../services/mlm/mlmMemberSoftDeleteService.js";
+import { createMemberInBinarySlot } from "../../services/mlm/mlmManualSlotPlacementService.js";
 import { verifyMlmMemberWallet } from "../../jobs/mlmWalletLedgerVerifierJob.js";
 import { USER_ID_PATTERN } from "../../utils/userIdGenerator.js";
 import { normalizePhoneNumber } from "../../utils/phone.js";

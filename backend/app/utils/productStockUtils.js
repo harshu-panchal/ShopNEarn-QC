@@ -75,3 +75,35 @@ export function assertHydratedItemsStock(hydratedItems = [], productMap = new Ma
     throw err;
   }
 }
+
+export function resolveSellingPrice(product, variantSku = "") {
+  if (!product) return 0;
+  const normalized = String(variantSku || "").trim();
+  if (normalized && Array.isArray(product.variants)) {
+    const hit = findVariantBySkuOrName(product.variants, normalized);
+    if (hit) {
+      const vsp = Number(hit.salePrice);
+      const vp = Number(hit.price);
+      if (!isNaN(vsp) && vsp > 0) return vsp;
+      if (!isNaN(vp) && vp > 0) return vp;
+    }
+  }
+
+  if (Array.isArray(product.variants) && product.variants.length > 0) {
+    const v = product.variants.find((item) => Number(item?.salePrice) > 0) ||
+              product.variants.find((item) => Number(item?.price) > 0) ||
+              product.variants[0];
+    if (v) {
+      const vsp = Number(v.salePrice);
+      const vp = Number(v.price);
+      if (!isNaN(vsp) && vsp > 0) return vsp;
+      if (!isNaN(vp) && vp > 0) return vp;
+    }
+  }
+
+  const sp = Number(product.salePrice);
+  if (!isNaN(sp) && sp > 0) return sp;
+
+  const mrp = Number(product.price);
+  return (!isNaN(mrp) && mrp > 0) ? mrp : 0;
+}

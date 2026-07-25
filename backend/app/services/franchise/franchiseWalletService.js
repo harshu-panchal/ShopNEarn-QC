@@ -15,6 +15,7 @@ import { listHubCatalogProducts } from "./franchiseCatalogService.js";
 import {
   buildInsufficientStockMessage,
   resolveAvailableStock,
+  resolveSellingPrice,
 } from "../../utils/productStockUtils.js";
 import {
   createTransferGroupId,
@@ -153,7 +154,7 @@ export async function approveFranchiseWalletTopUp({ topUpId, adminId, adminRemar
             err.code = "INSUFFICIENT_STOCK";
             throw err;
           }
-          const unitPrice = Number(product.price) || 0;
+          const unitPrice = resolveSellingPrice(product);
           const lineTotal = unitPrice * qty;
           totalCost += lineTotal;
           lineItems.push({ productId, qty, unitPrice, lineTotal, name: product.name });
