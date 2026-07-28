@@ -15,6 +15,7 @@ export const FRANCHISE_TRANSACTION_CATEGORIES = [
   { value: "topup", label: "Wallet Top-ups" },
   { value: "stock", label: "Stock Purchases" },
   { value: "orders", label: "Customer Orders" },
+  { value: "pos", label: "POS Sales" },
   { value: "adjustment", label: "Adjustments" },
 ];
 
@@ -46,7 +47,15 @@ function customerOrderQuery(franchisePartnerId) {
   return {
     franchisePartnerId,
     isFranchiseStockOrder: { $ne: true },
+    isFranchisePosSale: { $ne: true },
     paymentStatus: { $ne: ORDER_PAYMENT_STATUS.CREATED },
+  };
+}
+
+function posOrderQuery(franchisePartnerId) {
+  return {
+    franchisePartnerId,
+    isFranchisePosSale: true,
   };
 }
 
@@ -103,25 +112,29 @@ function formatTopUpRow(topUp) {
 }
 
 function formatOrderRow(order) {
+  const isPos = !!order.isFranchisePosSale;
   return {
     id: `order-${order._id}`,
-    source: "customer_order",
-    type: "FRANCHISE_CUSTOMER_ORDER",
+    source: isPos ? "pos_sale" : "customer_order",
+    type: isPos ? "FRANCHISE_POS_SALE" : "FRANCHISE_CUSTOMER_ORDER",
     direction: "NEUTRAL",
     amount: orderTotalAmount(order),
-    status: order.franchiseStatus || "pending",
-    description: `Customer order ${order.orderId}`,
+    status: isPos ? "completed" : order.franchiseStatus || "pending",
+    description: isPos ? `POS sale ${order.orderId}` : `Customer order ${order.orderId}`,
     reference: order.orderId,
     orderId: String(order._id),
     orderNumber: order.orderId,
     balanceBefore: null,
     balanceAfter: null,
     metadata: {
-      customerName: order.customer?.name || null,
-      paymentMode: order.paymentMode || null,
+      customerName: isPos
+        ? order.posBuyer?.name || null
+        : order.customer?.name || null,
+      paymentMode: isPos ? order.posPaymentMethod : order.paymentMode || null,
       paymentStatus: order.paymentStatus || null,
       itemCount: order.items?.length || 0,
       franchiseStatus: order.franchiseStatus || "pending",
+      posPaymentMethod: order.posPaymentMethod || null,
     },
     createdAt: order.createdAt,
   };
@@ -219,6 +232,27 @@ async function listOrderTransactions(franchisePartnerId, { page, limit }) {
       .limit(safeLimit)
       .populate("customer", "name phone")
       .lean(),
+    Order.countDocuments(query),
+  ]);
+
+  return {
+    items: orders.map(formatOrderRow),
+    page: safePage,
+    limit: safeLimit,
+    total,
+    totalPages: Math.ceil(total / safeLimit) || 1,
+    categories: FRANCHISE_TRANSACTION_CATEGORIES,
+  };
+}
+
+async function listPosOrderTransactions(franchisePartnerId, { page, limit }) {
+  const safePage = Math.max(parseInt(page, 10) || 1, 1);
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 25, 1), 100);
+  const skip = (safePage - 1) * safeLimit;
+  const query = posOrderQuery(franchisePartnerId);
+
+  const [orders, total] = await Promise.all([
+    Order.find(query).sort({ createdAt: -1 }).skip(skip).limit(safeLimit).lean(),
     Order.countDocuments(query),
   ]);
 
@@ -339,6 +373,10 @@ export async function listFranchiseTransactionHistory(
 
   if (normalizedCategory === "orders") {
     return listOrderTransactions(franchisePartnerId, { page, limit });
+  }
+
+  if (normalizedCategory === "pos") {
+    return listPosOrderTransactions(franchisePartnerId, { page, limit });
   }
 
   if (

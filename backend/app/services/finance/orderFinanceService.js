@@ -631,6 +631,23 @@ export async function settleDeliveredOrder(orderOrId, { actorId = null } = {}) {
       return order;
     }
 
+    if (order.isFranchisePosSale || order.financeFlags?.posSaleNoPlatformSettlement) {
+      order.financeFlags = {
+        ...(order.financeFlags || {}),
+        deliveredSettlementApplied: true,
+        posSaleNoPlatformSettlement: true,
+      };
+      order.settlementStatus = {
+        ...(order.settlementStatus || {}),
+        overall: "COMPLETED",
+        sellerPayout: "NOT_APPLICABLE",
+        riderPayout: "NOT_APPLICABLE",
+      };
+      await order.save({ session });
+      await session.commitTransaction();
+      return order;
+    }
+
     const now = new Date();
     const holdSellerPayout =
       order.returnWindowExpiresAt instanceof Date && order.returnWindowExpiresAt > now;

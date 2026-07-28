@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import handleResponse from "../../utils/helper.js";
 import Customer from "../../models/customer.js";
 import Seller from "../../models/seller.js";
+import Order from "../../models/order.js";
 import FranchisePartner from "../../models/franchisePartner.js";
 import {
   listFranchiseRegistrationReviews,
@@ -172,11 +173,31 @@ export const getPartnerDetail = async (req, res) => {
       .populate("userId", "name phone email")
       .lean();
     if (!partner) return handleResponse(res, 404, "Partner not found");
-    const [wallet, stock] = await Promise.all([
+    const [wallet, stock, posStats] = await Promise.all([
       getFranchiseWalletBalance(partner._id),
       getFranchiseStockSummary(partner._id),
+      Order.aggregate([
+        { $match: { franchisePartnerId: partner._id, isFranchisePosSale: true } },
+        {
+          $group: {
+            _id: null,
+            count: { $sum: 1 },
+            revenue: {
+              $sum: {
+                $ifNull: ["$paymentBreakdown.grandTotal", { $ifNull: ["$pricing.total", 0] }],
+              },
+            },
+          },
+        },
+      ]),
     ]);
-    return handleResponse(res, 200, "Partner detail", { partner, wallet, stock });
+    const pos = posStats[0] || { count: 0, revenue: 0 };
+    return handleResponse(res, 200, "Partner detail", {
+      partner,
+      wallet,
+      stock,
+      posStats: { totalSales: pos.count, totalRevenue: Math.round(pos.revenue || 0) },
+    });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
   }

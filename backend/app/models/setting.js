@@ -480,6 +480,14 @@ const settingSchema = new mongoose.Schema(
                 type: String,
                 default: FRANCHISE_DEFAULTS.hubShopDisplayName,
             },
+            posEnabled: {
+                type: Boolean,
+                default: FRANCHISE_DEFAULTS.posEnabled,
+            },
+            posShowOutOfStockInCatalog: {
+                type: Boolean,
+                default: FRANCHISE_DEFAULTS.posShowOutOfStockInCatalog,
+            },
         },
     },
     {

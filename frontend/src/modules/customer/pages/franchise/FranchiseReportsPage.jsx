@@ -32,6 +32,7 @@ const FranchiseReportsPage = () => {
 
   const rows = useMemo(() => {
     if (tab === "stock-purchases") return data?.stockPurchases || [];
+    if (tab === "pos-sales") return data?.posSales || [];
     if (tab === "fulfillment") return data?.movements?.items?.filter((x) => x.type === "FULFILLMENT") || [];
     if (tab === "inventory") return data?.summary?.items || [];
     return data?.movements?.items || [];
@@ -43,6 +44,16 @@ const FranchiseReportsPage = () => {
         { key: "orderId", label: "Order" },
         { key: "units", label: "Units" },
         { key: "amount", label: "Amount" },
+        { key: "createdAt", label: "Date" },
+      ];
+    }
+    if (tab === "pos-sales") {
+      return [
+        { key: "orderId", label: "Bill #" },
+        { key: "buyerName", label: "Buyer" },
+        { key: "paymentMethod", label: "Payment" },
+        { key: "amount", label: "Amount" },
+        { key: "units", label: "Units" },
         { key: "createdAt", label: "Date" },
       ];
     }
@@ -65,6 +76,8 @@ const FranchiseReportsPage = () => {
     { label: "Units", value: data?.summary?.totalUnits ?? 0 },
     { label: "Valuation", value: data?.summary?.valuation ?? 0 },
     { label: "Fulfillment units", value: data?.fulfillment?.units ?? 0 },
+    { label: "POS sales", value: data?.posSummary?.totalSales ?? 0 },
+    { label: "POS revenue", value: data?.posSummary?.totalRevenue ?? 0 },
   ];
 
   return (
@@ -106,6 +119,7 @@ const FranchiseReportsPage = () => {
       <div className="flex flex-wrap gap-2">
         {[
           ["stock-purchases", "Stock Purchases"],
+          ["pos-sales", "POS Sales"],
           ["fulfillment", "Fulfillment"],
           ["inventory", "Inventory Snapshot"],
           ["movements", "Movement Log"],

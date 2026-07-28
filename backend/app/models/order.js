@@ -6,6 +6,7 @@ import {
   ALL_PAYMENT_MODES,
   CURRENCY,
 } from "../constants/finance.js";
+import { ALL_FRANCHISE_POS_PAYMENT_METHODS } from "../constants/franchise.js";
 
 const orderSchema = new mongoose.Schema(
   {
@@ -162,7 +163,7 @@ const orderSchema = new mongoose.Schema(
       },
       createdFrom: {
         type: String,
-        enum: ["DIRECT_ITEMS", "CART"],
+        enum: ["DIRECT_ITEMS", "CART", "FRANCHISE_POS"],
         default: "DIRECT_ITEMS",
       },
     },
@@ -477,6 +478,36 @@ const orderSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    /** In-store franchise POS sale (walk-in); not an online routed order. */
+    isFranchisePosSale: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    posPaymentMethod: {
+      type: String,
+      enum: ALL_FRANCHISE_POS_PAYMENT_METHODS,
+      default: null,
+    },
+    posUpiReference: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    posBuyer: {
+      kind: {
+        type: String,
+        enum: ["guest", "registered"],
+        default: null,
+      },
+      name: { type: String, trim: true, default: "" },
+      phone: { type: String, trim: true, default: "" },
+      customerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+    },
     expiresAt: {
       type: Date,
     },
@@ -653,6 +684,7 @@ orderSchema.index({ "stockReservation.status": 1, "stockReservation.expiresAt": 
 orderSchema.index({ checkoutGroupId: 1, createdAt: -1 });
 orderSchema.index({ checkoutGroupId: 1, checkoutGroupIndex: 1 });
 orderSchema.index({ isFranchiseStockOrder: 1, createdAt: -1 });
+orderSchema.index({ franchisePartnerId: 1, isFranchisePosSale: 1, createdAt: -1 });
 orderSchema.index({ customer: 1, createdAt: -1, isFranchiseStockOrder: 1 });
 orderSchema.index(
   { "placement.idempotencyKeyExpiry": 1 },

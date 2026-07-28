@@ -31,7 +31,7 @@ const FranchisePartnerDetail = () => {
     );
   }
 
-  const { partner, wallet, stock } = data;
+  const { partner, wallet, stock, posStats } = data;
   const stockTotal = (stock || []).reduce((sum, s) => sum + Number(s.quantity || 0), 0);
 
   return (
@@ -47,7 +47,7 @@ const FranchisePartnerDetail = () => {
         </Link>
       }
     >
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
           <div className="flex items-center gap-2 text-slate-500 text-xs uppercase font-bold tracking-wider">
             <Wallet size={14} /> Wallet balance
@@ -60,6 +60,11 @@ const FranchisePartnerDetail = () => {
           </div>
           <p className="text-3xl font-black text-slate-900 mt-2">{stockTotal}</p>
           <p className="text-xs text-slate-500">{(stock || []).length} SKU lines</p>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+          <div className="text-slate-500 text-xs uppercase font-bold tracking-wider">POS sales</div>
+          <p className="text-3xl font-black text-slate-900 mt-2">{posStats?.totalSales ?? 0}</p>
+          <p className="text-xs text-slate-500">{formatINR(posStats?.totalRevenue)} collected</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
           <div className="flex items-center gap-2 text-slate-500 text-xs uppercase font-bold tracking-wider">

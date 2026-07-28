@@ -79,6 +79,7 @@ export async function listFranchisePartnerOrders(
   const query = {
     franchisePartnerId,
     isFranchiseStockOrder: { $ne: true },
+    isFranchisePosSale: { $ne: true },
     // Online gateway orders stay hidden until payment is captured.
     paymentStatus: { $ne: ORDER_PAYMENT_STATUS.CREATED },
   };

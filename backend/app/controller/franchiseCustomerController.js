@@ -30,6 +30,22 @@ import {
   createFranchiseOrderShipment,
 } from "../services/franchise/franchiseOrderService.js";
 import { listFranchiseTransactionHistory } from "../services/franchise/franchiseTransactionService.js";
+import {
+  listPosProducts,
+  previewPosSale,
+  createPosSale,
+  listPosSales,
+  getPosSaleReceipt,
+  getPosSaleInvoicePdf,
+  exportPosSalesExcel,
+  lookupPosCustomerByPhone,
+} from "../services/franchise/franchisePosService.js";
+import { validateBodySafe } from "../middleware/validate.js";
+import {
+  posPreviewBodySchema,
+  posSaleBodySchema,
+  posLookupPhoneQuerySchema,
+} from "../validation/franchisePosValidation.js";
 
 export const getFranchiseMe = async (req, res) => {
   try {
@@ -54,6 +70,7 @@ export const getFranchiseMe = async (req, res) => {
         registrationPrice: cfg.registrationPrice,
         walletCreditMultiplier: cfg.walletCreditMultiplier,
         hubShopDisplayName: cfg.hubShopDisplayName,
+        posEnabled: !!cfg.posEnabled,
       },
       isPartner: isActivePartner,
       registration,
@@ -370,5 +387,171 @@ export const createShipment = async (req, res) => {
     });
   } catch (error) {
     return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+async function requireActivePartner(req) {
+  const partner = await getFranchisePartnerByUserId(req.user.id);
+  if (!partner) {
+    const err = new Error("Not a franchise partner");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (partner.status !== FRANCHISE_PARTNER_STATUS.ACTIVE) {
+    const err = new Error("Franchise partner account is not active");
+    err.statusCode = 403;
+    err.code = "PARTNER_NOT_ACTIVE";
+    throw err;
+  }
+  return partner;
+}
+
+export const getPosProducts = async (req, res) => {
+  try {
+    const partner = await requireActivePartner(req);
+    const result = await listPosProducts(partner._id, {
+      q: req.query.q,
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    return handleResponse(res, 200, "POS catalog", result);
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+export const previewPosSaleHandler = async (req, res) => {
+  try {
+    const partner = await requireActivePartner(req);
+    const parsed = validateBodySafe(posPreviewBodySchema, req.body || {});
+    if (!parsed.isValid) return handleResponse(res, 400, parsed.message);
+    const result = await previewPosSale(partner._id, parsed.value);
+    return handleResponse(res, 200, "POS preview", result);
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+export const lookupPosCustomer = async (req, res) => {
+  try {
+    await requireActivePartner(req);
+    const parsed = validateBodySafe(posLookupPhoneQuerySchema, req.query || {});
+    if (!parsed.isValid) return handleResponse(res, 400, parsed.message);
+    const customer = await lookupPosCustomerByPhone(parsed.value.phone);
+    return handleResponse(res, 200, "Customer found", customer);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+export const createPosSaleHandler = async (req, res) => {
+  try {
+    const partner = await requireActivePartner(req);
+    const parsed = validateBodySafe(posSaleBodySchema, req.body || {});
+    if (!parsed.isValid) return handleResponse(res, 400, parsed.message);
+    const value = parsed.value;
+    const idempotencyKey =
+      req.headers["idempotency-key"] || req.headers["Idempotency-Key"] || value.idempotencyKey;
+    const result = await createPosSale({
+      franchisePartnerId: partner._id,
+      userId: req.user.id,
+      items: value.items,
+      buyer: value.buyer,
+      payment: value.payment,
+      idempotencyKey,
+    });
+    return handleResponse(res, result.duplicate ? 200 : 201, "POS sale recorded", {
+      duplicate: result.duplicate,
+      orderId: result.order.orderId,
+      receipt: result.receipt,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+export const listPosSalesHandler = async (req, res) => {
+  try {
+    const partner = await requireActivePartner(req);
+    const result = await listPosSales(partner._id, {
+      page: req.query.page,
+      limit: req.query.limit,
+      startDate: req.query.startDate,
+      endDate: req.query.endDate,
+    });
+    return handleResponse(res, 200, "POS sales", result);
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+export const getPosSaleReceiptHandler = async (req, res) => {
+  try {
+    const partner = await requireActivePartner(req);
+    const receipt = await getPosSaleReceipt(partner._id, req.params.orderId);
+    return handleResponse(res, 200, "POS receipt", receipt);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+export const downloadPosSaleInvoiceHandler = async (req, res) => {
+  try {
+    const partner = await requireActivePartner(req);
+    const invoice = await getPosSaleInvoicePdf(partner._id, req.params.orderId);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${invoice.fileName}"`,
+    );
+    return res.status(200).send(invoice.buffer);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+export const exportPosSalesExcelHandler = async (req, res) => {
+  try {
+    const partner = await requireActivePartner(req);
+    const result = await exportPosSalesExcel(partner._id, {
+      startDate: req.query.startDate,
+      endDate: req.query.endDate,
+    });
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${result.fileName}"`,
+    );
+    return res.status(200).send(result.buffer);
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
   }
 };

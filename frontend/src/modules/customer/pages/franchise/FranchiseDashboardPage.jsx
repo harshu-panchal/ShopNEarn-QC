@@ -14,6 +14,8 @@ import {
   Boxes,
   CheckCircle2,
   ScrollText,
+  Receipt,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 import { franchiseApi } from "../../services/franchiseApi";
@@ -326,6 +328,22 @@ const PartnerDashboard = ({ data, navigate, onRefresh, refreshing }) => {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {config.posEnabled && (
+          <ActionCard
+            icon={Receipt}
+            title="Bill customer (POS)"
+            description="Sell from your on-hand stock to walk-in customers at your store"
+            onClick={() => navigate("/mlm/franchise/pos")}
+          />
+        )}
+        {config.posEnabled && (
+          <ActionCard
+            icon={History}
+            title="POS order history"
+            description="View past walk-in bills, download invoices, and export Excel reports"
+            onClick={() => navigate("/mlm/franchise/pos/history")}
+          />
+        )}
         <ActionCard
           icon={Wallet}
           title="Wallet top-up"

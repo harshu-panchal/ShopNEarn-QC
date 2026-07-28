@@ -20,6 +20,14 @@ import {
   rejectOrder,
   fulfillOrder,
   createShipment,
+  getPosProducts,
+  previewPosSaleHandler,
+  lookupPosCustomer,
+  createPosSaleHandler,
+  listPosSalesHandler,
+  getPosSaleReceiptHandler,
+  downloadPosSaleInvoiceHandler,
+  exportPosSalesExcelHandler,
 } from "../controller/franchiseCustomerController.js";
 import {
   exportFranchiseInventoryReports,
@@ -49,5 +57,13 @@ router.patch("/orders/:orderId/accept", verifyToken, acceptOrder);
 router.patch("/orders/:orderId/reject", verifyToken, rejectOrder);
 router.patch("/orders/:orderId/fulfill", verifyToken, fulfillOrder);
 router.post("/orders/:orderId/shipment", verifyToken, createShipment);
+router.get("/pos/products", verifyToken, getPosProducts);
+router.post("/pos/preview", verifyToken, previewPosSaleHandler);
+router.get("/pos/customers/lookup", verifyToken, lookupPosCustomer);
+router.post("/pos/sales", verifyToken, createPosSaleHandler);
+router.get("/pos/sales", verifyToken, listPosSalesHandler);
+router.get("/pos/sales/export", verifyToken, exportPosSalesExcelHandler);
+router.get("/pos/sales/:orderId/receipt", verifyToken, getPosSaleReceiptHandler);
+router.get("/pos/sales/:orderId/invoice", verifyToken, downloadPosSaleInvoiceHandler);
 
 export default router;

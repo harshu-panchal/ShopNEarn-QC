@@ -280,7 +280,7 @@ export async function getFranchiseInventoryReport(franchisePartnerId, filters = 
     franchisePartnerId: new mongoose.Types.ObjectId(String(franchisePartnerId)),
     ...(dateMatch || {}),
   };
-  const [stockPurchases, fulfillment, trends] = await Promise.all([
+  const [stockPurchases, fulfillment, posFulfillment, posSales, trends] = await Promise.all([
     Order.find({ franchisePartnerId, isFranchiseStockOrder: true })
       .select("orderId items paymentBreakdown.grandTotal pricing.total createdAt")
       .sort({ createdAt: -1 })
@@ -296,6 +296,23 @@ export async function getFranchiseInventoryReport(franchisePartnerId, filters = 
         },
       },
     ]),
+    FranchiseStockMovement.aggregate([
+      { $match: { ...match, type: FRANCHISE_STOCK_TYPES.POS_SALE } },
+      {
+        $group: {
+          _id: null,
+          units: { $sum: { $abs: "$quantity" } },
+          events: { $sum: 1 },
+        },
+      },
+    ]),
+    Order.find({ franchisePartnerId, isFranchisePosSale: true, ...(dateMatch || {}) })
+      .select(
+        "orderId items paymentBreakdown.grandTotal pricing.total posPaymentMethod posBuyer createdAt",
+      )
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean(),
     aggregateTrend(FranchiseStockMovement, match, "franchise"),
   ]);
 
@@ -312,6 +329,33 @@ export async function getFranchiseInventoryReport(franchisePartnerId, filters = 
       createdAt: row.createdAt,
     })),
     fulfillment: fulfillment[0] || { units: 0, events: 0 },
+    posFulfillment: posFulfillment[0] || { units: 0, events: 0 },
+    posSales: posSales.map((row) => ({
+      orderId: row.orderId,
+      amount: Number(row?.paymentBreakdown?.grandTotal ?? row?.pricing?.total) || 0,
+      paymentMethod: row.posPaymentMethod || null,
+      buyerName: row.posBuyer?.name || "",
+      units: Array.isArray(row.items)
+        ? row.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)
+        : 0,
+      createdAt: row.createdAt,
+    })),
+    posSummary: {
+      totalSales: posSales.length,
+      totalRevenue: posSales.reduce(
+        (sum, row) =>
+          sum + (Number(row?.paymentBreakdown?.grandTotal ?? row?.pricing?.total) || 0),
+        0,
+      ),
+      unitsSold: posSales.reduce(
+        (sum, row) =>
+          sum +
+          (Array.isArray(row.items)
+            ? row.items.reduce((s, item) => s + (Number(item.quantity) || 0), 0)
+            : 0),
+        0,
+      ),
+    },
     trends,
   };
 }

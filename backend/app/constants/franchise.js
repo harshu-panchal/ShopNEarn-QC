@@ -79,7 +79,25 @@ export const FRANCHISE_IDEMPOTENCY_PREFIX = {
   TOPUP_CREDIT: "FRANCHISE-TOPUP-CREDIT",
   STOCK_PURCHASE: "FRANCHISE-STOCK",
   MANUAL_ADJUSTMENT: "FRANCHISE-MANUAL-ADJ",
+  POS_SALE: "FRANCHISE-POS",
 };
+
+export const FRANCHISE_POS_PAYMENT_METHOD = {
+  CASH: "cash",
+  UPI_PARTNER: "upi_partner",
+};
+
+export const ALL_FRANCHISE_POS_PAYMENT_METHODS = Object.values(
+  FRANCHISE_POS_PAYMENT_METHOD,
+);
+
+export const FRANCHISE_POS_BUYER_KIND = {
+  GUEST: "guest",
+  REGISTERED: "registered",
+};
+
+/** Reserved phone for the platform walk-in POS customer User document. */
+export const FRANCHISE_POS_WALKIN_PHONE = "+910000009999";
 
 export const FRANCHISE_MERCHANT_PREFIX = {
   REGISTRATION: "FRANCHISE-REG",
@@ -93,4 +111,6 @@ export const FRANCHISE_DEFAULTS = {
   registrationPaymentMode: FRANCHISE_PAYMENT_MODE.MANUAL_QR,
   hubSellerId: null,
   hubShopDisplayName: "Harsh's Hub",
+  posEnabled: false,
+  posShowOutOfStockInCatalog: true,
 };

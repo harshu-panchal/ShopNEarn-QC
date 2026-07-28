@@ -78,18 +78,32 @@ const FranchiseSettings = () => {
             <Store size={18} className="text-indigo-600" /> Program configuration
           </h2>
           {FIELD_META.map((field) => (
-            <label key={field.key} className="block">
-              <span className="text-sm font-semibold text-slate-800">{field.label}</span>
-              <p className="text-xs text-slate-500 mb-1.5">{field.hint}</p>
-              <input
-                type={field.type}
-                step={field.step}
-                value={cfg[field.key] ?? ""}
-                onChange={(e) => setCfg({ ...cfg, [field.key]: e.target.value })}
-                className={`w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 ${field.mono ? "font-mono text-xs" : ""}`}
-              />
-            </label>
+          <label key={field.key} className="block">
+            <span className="text-sm font-semibold text-slate-800">{field.label}</span>
+            <p className="text-xs text-slate-500 mb-1.5">{field.hint}</p>
+            <input
+              type={field.type}
+              step={field.step}
+              value={cfg[field.key] ?? ""}
+              onChange={(e) => setCfg({ ...cfg, [field.key]: e.target.value })}
+              className={`w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 ${field.mono ? "font-mono text-xs" : ""}`}
+            />
+          </label>
           ))}
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!cfg.posEnabled}
+              onChange={(e) => setCfg({ ...cfg, posEnabled: e.target.checked })}
+              className="mt-1 rounded border-slate-300"
+            />
+            <span>
+              <span className="text-sm font-semibold text-slate-800 block">Enable franchise POS</span>
+              <span className="text-xs text-slate-500">
+                Lets active partners bill walk-in customers from on-hand stock
+              </span>
+            </span>
+          </label>
           <button
             type="button"
             onClick={handleSave}
@@ -114,6 +128,10 @@ const FranchiseSettings = () => {
               <li>
                 <span className="text-slate-500">Hub name:</span>{" "}
                 <strong>{cfg.hubShopDisplayName || "Harsh's Hub"}</strong>
+              </li>
+              <li>
+                <span className="text-slate-500">POS billing:</span>{" "}
+                <strong>{cfg.posEnabled ? "Enabled" : "Disabled"}</strong>
               </li>
               <li>
                 <span className="text-slate-500">Enabled:</span>{" "}

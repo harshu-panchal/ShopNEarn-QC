@@ -34,6 +34,26 @@ export const franchiseApi = {
   fulfillOrder: (orderId) => axiosInstance.patch(`/customer/franchise/orders/${orderId}/fulfill`),
   createShipment: (orderId, data) =>
     axiosInstance.post(`/customer/franchise/orders/${orderId}/shipment`, data || {}),
+  getPosProducts: (params) => axiosInstance.get("/customer/franchise/pos/products", { params }),
+  previewPosSale: (data) => axiosInstance.post("/customer/franchise/pos/preview", data),
+  lookupPosCustomer: (phone) =>
+    axiosInstance.get("/customer/franchise/pos/customers/lookup", { params: { phone } }),
+  createPosSale: (data, idempotencyKey) =>
+    axiosInstance.post("/customer/franchise/pos/sales", data, {
+      headers: { "Idempotency-Key": idempotencyKey },
+    }),
+  listPosSales: (params) => axiosInstance.get("/customer/franchise/pos/sales", { params }),
+  getPosReceipt: (orderId) =>
+    axiosInstance.get(`/customer/franchise/pos/sales/${orderId}/receipt`),
+  downloadPosInvoice: (orderId) =>
+    axiosInstance.get(`/customer/franchise/pos/sales/${orderId}/invoice`, {
+      responseType: "blob",
+    }),
+  exportPosSalesExcel: (params) =>
+    axiosInstance.get("/customer/franchise/pos/sales/export", {
+      params,
+      responseType: "blob",
+    }),
 };
 
 export const adminFranchiseApi = {
