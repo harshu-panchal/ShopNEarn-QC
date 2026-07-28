@@ -41,7 +41,20 @@ const MlmWithdrawalPage = () => {
                 mlmApi.getMembership(),
                 mlmApi.listWithdrawals({ limit: 25 }),
             ]);
-            setMembership(m.data?.result ?? m.data?.data);
+            const membershipPayload = m.data?.result ?? m.data?.data;
+            setMembership(membershipPayload);
+            const savedBeneficiary = membershipPayload?.membership?.payoutBeneficiary;
+            if (savedBeneficiary && typeof savedBeneficiary === 'object') {
+                setForm((prev) => ({
+                    ...prev,
+                    method: savedBeneficiary.method || prev.method || 'upi',
+                    upiId: savedBeneficiary.upiId || prev.upiId || '',
+                    accountHolderName: savedBeneficiary.accountHolderName || prev.accountHolderName || '',
+                    accountNumber: savedBeneficiary.accountNumber || prev.accountNumber || '',
+                    ifsc: savedBeneficiary.ifsc || prev.ifsc || '',
+                    panNumber: savedBeneficiary.panNumber || prev.panNumber || '',
+                }));
+            }
             setRequests((w.data?.result ?? w.data?.data)?.items || []);
         } catch (err) {
             toast.error(err?.response?.data?.message || 'Failed to load withdrawals');
@@ -148,7 +161,7 @@ const MlmWithdrawalPage = () => {
             <Header navigate={navigate} />
             <div className="max-w-2xl mx-auto px-4 space-y-4">
                 {/* Balance summary */}
-                <div className="bg-gradient-to-br from-violet-600 to-indigo-700 text-white rounded-2xl p-5">
+                <div className="bg-linear-to-br from-violet-600 to-indigo-700 text-white rounded-2xl p-5">
                     <p className="text-xs font-bold uppercase tracking-widest opacity-80">Withdrawable Earnings</p>
                     <h2 className="text-3xl font-black mt-1">{formatINR(earnings)}</h2>
                     <p className="text-xs opacity-80 mt-2">
@@ -255,7 +268,7 @@ const MlmWithdrawalPage = () => {
 
                     {!canWithdraw && (
                         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-start gap-2">
-                            <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+                            <AlertCircle size={16} className="shrink-0 mt-0.5" />
                             <span>You need at least {formatINR(minAmt)} in earnings to withdraw.</span>
                         </div>
                     )}

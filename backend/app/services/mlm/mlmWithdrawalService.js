@@ -62,27 +62,36 @@ async function runInSession(externalSession, fn) {
   }
 }
 
-function validateBeneficiary(beneficiary) {
+function validateBeneficiary(beneficiary, fallbackBeneficiary = {}) {
   if (!beneficiary || typeof beneficiary !== "object") {
     throw new Error("Beneficiary details are required");
   }
-  const method = String(beneficiary.method || "").toLowerCase();
+  const method = String(beneficiary.method || fallbackBeneficiary.method || "").toLowerCase();
   if (![MLM_WITHDRAWAL_METHOD.BANK, MLM_WITHDRAWAL_METHOD.UPI].includes(method)) {
     throw new Error("Withdrawal method must be 'bank' or 'upi'");
   }
+  const merged = {
+    accountHolderName:
+      beneficiary.accountHolderName || fallbackBeneficiary.accountHolderName || "",
+    accountNumber: beneficiary.accountNumber || fallbackBeneficiary.accountNumber || "",
+    ifsc: beneficiary.ifsc || fallbackBeneficiary.ifsc || "",
+    upiId: beneficiary.upiId || fallbackBeneficiary.upiId || "",
+    panNumber: beneficiary.panNumber || fallbackBeneficiary.panNumber || "",
+    method,
+  };
   if (method === MLM_WITHDRAWAL_METHOD.BANK) {
-    if (!beneficiary.accountHolderName) throw new Error("Account holder name is required");
-    if (!beneficiary.accountNumber) throw new Error("Account number is required");
-    if (!beneficiary.ifsc) throw new Error("IFSC is required");
+    if (!merged.accountHolderName) throw new Error("Account holder name is required");
+    if (!merged.accountNumber) throw new Error("Account number is required");
+    if (!merged.ifsc) throw new Error("IFSC is required");
   } else if (method === MLM_WITHDRAWAL_METHOD.UPI) {
-    if (!beneficiary.upiId) throw new Error("UPI ID is required");
+    if (!merged.upiId) throw new Error("UPI ID is required");
   }
   return {
-    accountHolderName: String(beneficiary.accountHolderName || "").trim(),
-    accountNumber: String(beneficiary.accountNumber || "").trim(),
-    ifsc: String(beneficiary.ifsc || "").trim().toUpperCase(),
-    upiId: String(beneficiary.upiId || "").trim(),
-    panNumber: String(beneficiary.panNumber || "").trim().toUpperCase(),
+    accountHolderName: String(merged.accountHolderName || "").trim(),
+    accountNumber: String(merged.accountNumber || "").trim(),
+    ifsc: String(merged.ifsc || "").trim().toUpperCase(),
+    upiId: String(merged.upiId || "").trim(),
+    panNumber: String(merged.panNumber || "").trim().toUpperCase(),
     method,
   };
 }
@@ -116,7 +125,6 @@ export async function createWithdrawalRequest({
     throw new Error(`Minimum withdrawal amount is ${minAmount}`);
   }
 
-  const beneficiarySnap = validateBeneficiary(beneficiary);
   const key = idempotencyKey || `${MLM_IDEMPOTENCY_PREFIX.WITHDRAWAL_GROSS}-${userId}-${Date.now()}`;
 
   return runInSession(externalSession, async (session) => {
@@ -132,6 +140,10 @@ export async function createWithdrawalRequest({
     if (!membership) {
       throw new Error("Only MLM members can withdraw earnings");
     }
+    const beneficiarySnap = validateBeneficiary(
+      beneficiary,
+      membership.payoutBeneficiary || {},
+    );
 
     const charges = await computeWithdrawalCharges(grossRequested);
     if (charges.net <= 0) {
