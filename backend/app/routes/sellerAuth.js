@@ -39,6 +39,7 @@ router.post(
     authRouteRateLimiter,
     otpRouteRateLimiter,
     sellerOtpPayloadGuard,
+    verifySellerSignupOtp
 );
 
 router.post(

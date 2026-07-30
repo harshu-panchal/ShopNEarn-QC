@@ -10,6 +10,9 @@ import {
     updateCustomerProfile,
     getCustomerTransactions,
     lookupReferralCode,
+    sendCustomerForgotPasswordOtp,
+    verifyCustomerForgotPasswordOtp,
+    resetCustomerForgotPassword,
 } from "../controller/customerAuthController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 import {
@@ -38,6 +41,28 @@ router.post("/verify-otp", authRouteRateLimiter, otpRouteRateLimiter, smallAuthP
 // authentication paths; the client lets the user pick on the login
 // screen.
 router.post("/login-password", authRouteRateLimiter, smallAuthPayload, loginWithPassword);
+
+// Forgot password (email OTP → reset token → new password)
+router.post(
+    "/forgot-password/send-otp",
+    authRouteRateLimiter,
+    otpRouteRateLimiter,
+    smallAuthPayload,
+    sendCustomerForgotPasswordOtp,
+);
+router.post(
+    "/forgot-password/verify-otp",
+    authRouteRateLimiter,
+    otpRouteRateLimiter,
+    smallAuthPayload,
+    verifyCustomerForgotPasswordOtp,
+);
+router.post(
+    "/forgot-password/reset",
+    authRouteRateLimiter,
+    smallAuthPayload,
+    resetCustomerForgotPassword,
+);
 
 // Profile routes
 router.get("/profile", verifyToken, getCustomerProfile);

@@ -81,6 +81,7 @@ const CustomerAuth = () => {
     //   'signup'        → new signup form (Customer-MLM-rebuild full payload)
     //   'login'         → login screen (Password sub-tab default, OTP sub-tab opt-in)
     //   'otp-verify'    → OTP code-entry step (for both signup-complete and login-via-OTP)
+    //   'forgot'        → email OTP forgot-password flow
     const [authMode, setAuthMode] = useState('login');
     const [loginMethod, setLoginMethod] = useState('password'); // 'password' | 'otp'
     const [otpFlowOrigin, setOtpFlowOrigin] = useState(null); // 'signup' | 'login'
@@ -89,6 +90,19 @@ const CustomerAuth = () => {
     const [carouselIndex, setCarouselIndex] = useState(0);
     const [showPassword, setShowPassword] = useState(false);
     const [showLoginPassword, setShowLoginPassword] = useState(false);
+
+    // Forgot-password (email OTP) state
+    const [forgotStep, setForgotStep] = useState(1); // 1 = email+otp, 2 = new password
+    const [forgotEmail, setForgotEmail] = useState('');
+    const [forgotOtp, setForgotOtp] = useState('');
+    const [forgotNewPassword, setForgotNewPassword] = useState('');
+    const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+    const [forgotResetToken, setForgotResetToken] = useState('');
+    const [forgotOtpSent, setForgotOtpSent] = useState(false);
+    const [forgotOtpSending, setForgotOtpSending] = useState(false);
+    const [forgotVerifyingOtp, setForgotVerifyingOtp] = useState(false);
+    const [forgotResendIn, setForgotResendIn] = useState(0);
+    const [showForgotPassword, setShowForgotPassword] = useState(false);
 
     const { login } = useAuth();
     const { settings } = useSettings();
@@ -209,6 +223,107 @@ const CustomerAuth = () => {
         }
         return () => clearInterval(interval);
     }, [timer]);
+
+    useEffect(() => {
+        let interval;
+        if (forgotResendIn > 0) {
+            interval = setInterval(() => setForgotResendIn((t) => t - 1), 1000);
+        }
+        return () => clearInterval(interval);
+    }, [forgotResendIn]);
+
+    const resetForgotState = () => {
+        setForgotStep(1);
+        setForgotEmail('');
+        setForgotOtp('');
+        setForgotNewPassword('');
+        setForgotConfirmPassword('');
+        setForgotResetToken('');
+        setForgotOtpSent(false);
+        setForgotResendIn(0);
+        setShowForgotPassword(false);
+    };
+
+    const openForgotPassword = () => {
+        resetForgotState();
+        setAuthMode('forgot');
+    };
+
+    const handleSendForgotPasswordOtp = async () => {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)) {
+            toast.error('Please enter a valid email address.');
+            return;
+        }
+        setForgotOtpSending(true);
+        try {
+            const res = await customerApi.sendForgotPasswordOtp({ email: forgotEmail });
+            const result = res?.data?.result ?? res?.data?.data ?? {};
+            setForgotOtpSent(true);
+            setForgotResendIn(Number(result.resendCooldownSeconds) || 60);
+            toast.success(
+                res?.data?.message ||
+                    'If an account with this email exists, a password reset OTP has been sent.',
+            );
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to send OTP');
+        } finally {
+            setForgotOtpSending(false);
+        }
+    };
+
+    const handleVerifyForgotPasswordOtp = async () => {
+        if (forgotOtp.length !== 4) {
+            toast.error('Please enter a valid 4-digit OTP.');
+            return;
+        }
+        setForgotVerifyingOtp(true);
+        try {
+            const res = await customerApi.verifyForgotPasswordOtp({
+                email: forgotEmail,
+                otp: forgotOtp,
+            });
+            const result = res?.data?.result ?? res?.data?.data ?? {};
+            if (result.resetToken) {
+                setForgotResetToken(result.resetToken);
+                setForgotStep(2);
+                toast.success('OTP verified. Please enter your new password.');
+            } else {
+                toast.error('Could not verify OTP. Please try again.');
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Invalid or expired OTP');
+        } finally {
+            setForgotVerifyingOtp(false);
+        }
+    };
+
+    const handleResetForgotPassword = async (e) => {
+        e.preventDefault();
+        if (forgotNewPassword.length < 6) {
+            toast.error('Password must be at least 6 characters.');
+            return;
+        }
+        if (forgotNewPassword !== forgotConfirmPassword) {
+            toast.error('Passwords do not match.');
+            return;
+        }
+        setIsLoading(true);
+        try {
+            await customerApi.resetForgotPassword({
+                email: forgotEmail,
+                resetToken: forgotResetToken,
+                newPassword: forgotNewPassword,
+            });
+            toast.success('Password reset successfully. Please sign in with your new password.');
+            resetForgotState();
+            setAuthMode('login');
+            setLoginMethod('password');
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to reset password');
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     // Debounced sponsor-name lookup. We attach the result to the
     // *normalised* code we queried (uppercase, trimmed); the render
@@ -383,11 +498,19 @@ const CustomerAuth = () => {
             toast.error('Enter your User ID or phone number.');
             return;
         }
-        // Email-shaped identifiers are no longer accepted by the
-        // backend — short-circuit with a clear, local error instead
-        // of round-tripping for the EMAIL_LOGIN_DISABLED response.
+        // Email-shaped identifiers are no longer accepted for password
+        // login. Steer the user to Forgot Password (email OTP) with
+        // the address they already typed.
         if (identifier.includes('@')) {
-            toast.error('Email sign-in is no longer supported. Use your User ID or phone number.');
+            toast.error(
+                'Email sign-in is not supported. Use User ID or phone — or reset via Forgot Password.',
+            );
+            setForgotEmail(identifier.toLowerCase());
+            setForgotStep(1);
+            setForgotOtp('');
+            setForgotOtpSent(false);
+            setForgotResendIn(0);
+            setAuthMode('forgot');
             return;
         }
         if (!password) {
@@ -662,7 +785,8 @@ const CustomerAuth = () => {
                                     exit={{ opacity: 0, x: -20 }}
                                     className="space-y-4"
                                 >
-                                    {/* Top tab switcher: Login vs Sign Up */}
+                                    {/* Top tab switcher: Login vs Sign Up (hidden on forgot flow) */}
+                                    {authMode !== 'forgot' && (
                                     <div className="flex bg-gray-50 rounded-2xl p-1.5 border border-gray-100">
                                         <button
                                             type="button"
@@ -681,8 +805,37 @@ const CustomerAuth = () => {
                                             Sign Up
                                         </button>
                                     </div>
+                                    )}
 
-                                    {authMode === 'login' ? (
+                                    {authMode === 'forgot' ? (
+                                        <ForgotPasswordPane
+                                            step={forgotStep}
+                                            email={forgotEmail}
+                                            setEmail={setForgotEmail}
+                                            otp={forgotOtp}
+                                            setOtp={setForgotOtp}
+                                            newPassword={forgotNewPassword}
+                                            setNewPassword={setForgotNewPassword}
+                                            confirmPassword={forgotConfirmPassword}
+                                            setConfirmPassword={setForgotConfirmPassword}
+                                            otpSent={forgotOtpSent}
+                                            otpSending={forgotOtpSending}
+                                            verifyingOtp={forgotVerifyingOtp}
+                                            resendIn={forgotResendIn}
+                                            showPassword={showForgotPassword}
+                                            setShowPassword={setShowForgotPassword}
+                                            isLoading={isLoading}
+                                            theme={activeCategory.theme}
+                                            shadow={activeCategory.shadow}
+                                            onSendOtp={handleSendForgotPasswordOtp}
+                                            onVerifyOtp={handleVerifyForgotPasswordOtp}
+                                            onReset={handleResetForgotPassword}
+                                            onBack={() => {
+                                                resetForgotState();
+                                                setAuthMode('login');
+                                            }}
+                                        />
+                                    ) : authMode === 'login' ? (
                                         <LoginPane
                                             loginMethod={loginMethod}
                                             setLoginMethod={setLoginMethod}
@@ -695,6 +848,7 @@ const CustomerAuth = () => {
                                             shadow={activeCategory.shadow}
                                             onSubmitPassword={handleLoginWithPassword}
                                             onSubmitOtp={handleLoginSendOtp}
+                                            onForgotPassword={openForgotPassword}
                                         />
                                     ) : (
                                         <SignupPane
@@ -819,6 +973,158 @@ const CustomerAuth = () => {
 };
 
 /* =========================================================
+   ForgotPasswordPane — email OTP → set new password.
+   ========================================================= */
+function ForgotPasswordPane({
+    step,
+    email,
+    setEmail,
+    otp,
+    setOtp,
+    newPassword,
+    setNewPassword,
+    confirmPassword,
+    setConfirmPassword,
+    otpSent,
+    otpSending,
+    verifyingOtp,
+    resendIn,
+    showPassword,
+    setShowPassword,
+    isLoading,
+    theme,
+    shadow,
+    onSendOtp,
+    onVerifyOtp,
+    onReset,
+    onBack,
+}) {
+    return (
+        <div className="space-y-4">
+            <button
+                type="button"
+                onClick={onBack}
+                className="flex items-center gap-1 text-[11px] font-bold text-gray-500 hover:text-gray-800"
+            >
+                <ChevronLeft size={14} />
+                Back to login
+            </button>
+            <div className="space-y-1 text-center">
+                <h3 className="text-xl font-black text-gray-900 tracking-tight">
+                    {step === 1 ? 'Forgot Password' : 'Set New Password'}
+                </h3>
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest leading-none">
+                    {step === 1
+                        ? 'We will email you a one-time code'
+                        : 'Choose a new password for your account'}
+                </p>
+            </div>
+
+            {step === 1 ? (
+                <form
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        if (otpSent) onVerifyOtp();
+                        else onSendOtp();
+                    }}
+                    className="space-y-4"
+                >
+                    <FieldWithIcon
+                        icon={<Mail size={18} />}
+                        theme={theme}
+                        type="email"
+                        placeholder="Email address"
+                        value={email}
+                        onChange={setEmail}
+                        autoComplete="email"
+                    />
+                    <button
+                        type="button"
+                        onClick={onSendOtp}
+                        disabled={
+                            otpSending ||
+                            (otpSent && resendIn > 0) ||
+                            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+                        }
+                        className="w-full py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest border border-gray-200 text-gray-700 disabled:opacity-50"
+                    >
+                        {otpSending
+                            ? 'Sending...'
+                            : otpSent
+                              ? resendIn > 0
+                                ? `Resend OTP in ${resendIn}s`
+                                : 'Resend OTP'
+                              : 'Send OTP'}
+                    </button>
+
+                    {otpSent && (
+                        <>
+                            <FieldWithIcon
+                                icon={<ShieldCheck size={18} />}
+                                theme={theme}
+                                placeholder="4-digit OTP"
+                                value={otp}
+                                onChange={(v) => setOtp(String(v).replace(/\D/g, '').slice(0, 4))}
+                                autoComplete="one-time-code"
+                            />
+                            <button
+                                type="submit"
+                                disabled={verifyingOtp || otp.length !== 4}
+                                className="w-full text-white py-5 rounded-[24px] text-xs font-black tracking-[4px] flex items-center justify-center gap-3 active:scale-95 transition-all uppercase disabled:opacity-50"
+                                style={{ backgroundColor: theme, boxShadow: `0 20px 40px ${shadow}` }}
+                            >
+                                {verifyingOtp ? 'Verifying...' : 'Verify OTP'}
+                                <ChevronRight size={18} />
+                            </button>
+                        </>
+                    )}
+                </form>
+            ) : (
+                <form onSubmit={onReset} className="space-y-4">
+                    <FieldWithIcon
+                        icon={<Lock size={18} />}
+                        theme={theme}
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="New password"
+                        value={newPassword}
+                        onChange={setNewPassword}
+                        autoComplete="new-password"
+                        rightAdornment={
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword((v) => !v)}
+                                className="text-gray-400 hover:text-gray-600"
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                            >
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        }
+                    />
+                    <FieldWithIcon
+                        icon={<Lock size={18} />}
+                        theme={theme}
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Confirm new password"
+                        value={confirmPassword}
+                        onChange={setConfirmPassword}
+                        autoComplete="new-password"
+                    />
+                    <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full text-white py-5 rounded-[24px] text-xs font-black tracking-[4px] flex items-center justify-center gap-3 active:scale-95 transition-all uppercase"
+                        style={{ backgroundColor: theme, boxShadow: `0 20px 40px ${shadow}` }}
+                    >
+                        {isLoading ? 'Saving...' : 'Reset Password'}
+                        <ChevronRight size={18} />
+                    </button>
+                </form>
+            )}
+        </div>
+    );
+}
+
+/* =========================================================
    LoginPane — password + OTP sub-tabs.
    ========================================================= */
 function LoginPane({
@@ -833,6 +1139,7 @@ function LoginPane({
     shadow,
     onSubmitPassword,
     onSubmitOtp,
+    onForgotPassword,
 }) {
     return (
         <div className="space-y-4">
@@ -868,7 +1175,7 @@ function LoginPane({
                     <FieldWithIcon
                         icon={<BadgeCheck size={18} />}
                         theme={theme}
-                        placeholder="User ID or Phone Number"
+                        placeholder="User ID (SE…) or Phone — not email"
                         value={formData.loginIdentifier}
                         onChange={(v) => updateField('loginIdentifier', v)}
                         autoComplete="username"
@@ -892,6 +1199,15 @@ function LoginPane({
                             </button>
                         }
                     />
+                    <div className="flex justify-end -mt-1">
+                        <button
+                            type="button"
+                            onClick={onForgotPassword}
+                            className="text-[11px] font-bold text-gray-500 hover:text-gray-800"
+                        >
+                            Forgot Password?
+                        </button>
+                    </div>
                     <button
                         type="submit"
                         disabled={isLoading}

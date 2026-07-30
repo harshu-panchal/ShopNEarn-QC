@@ -16,6 +16,12 @@ export const customerApi = {
   // Body: { identifier, password }
   loginWithPassword: (data) =>
     axiosInstance.post("/customer/login-password", data),
+  sendForgotPasswordOtp: (data) =>
+    axiosInstance.post("/customer/forgot-password/send-otp", data),
+  verifyForgotPasswordOtp: (data) =>
+    axiosInstance.post("/customer/forgot-password/verify-otp", data),
+  resetForgotPassword: (data) =>
+    axiosInstance.post("/customer/forgot-password/reset", data),
   getProfile: () => getWithDedupe("/customer/profile", {}, { ttl: 5000 }), // Short cache for profile
   updateProfile: (data) => axiosInstance.put("/customer/profile", data),
   // Phase 7 (PO-request): in-app credential reveal. Returns

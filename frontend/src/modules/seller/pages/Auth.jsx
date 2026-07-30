@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@core/context/AuthContext";
@@ -73,6 +73,13 @@ const Auth = () => {
   const [forgotOtpSent, setForgotOtpSent] = useState(false);
   const [forgotOtpSending, setForgotOtpSending] = useState(false);
   const [forgotVerifyingOtp, setForgotVerifyingOtp] = useState(false);
+  const [forgotResendIn, setForgotResendIn] = useState(0);
+
+  useEffect(() => {
+    if (forgotResendIn <= 0) return undefined;
+    const id = setInterval(() => setForgotResendIn((t) => t - 1), 1000);
+    return () => clearInterval(id);
+  }, [forgotResendIn]);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -281,9 +288,14 @@ const Auth = () => {
     }
     setForgotOtpSending(true);
     try {
-      await sellerApi.sendForgotPasswordOtp({ email: forgotEmail });
+      const res = await sellerApi.sendForgotPasswordOtp({ email: forgotEmail });
+      const result = res?.data?.result ?? res?.data?.data ?? {};
       setForgotOtpSent(true);
-      toast.success("Password reset OTP sent to your email.");
+      setForgotResendIn(Number(result.resendCooldownSeconds) || 60);
+      toast.success(
+        res?.data?.message ||
+          "If an account with this email exists, a password reset OTP has been sent.",
+      );
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to send OTP");
     } finally {
@@ -341,6 +353,7 @@ const Auth = () => {
       setForgotConfirmPassword("");
       setForgotResetToken("");
       setForgotOtpSent(false);
+      setForgotResendIn(0);
       setIsLogin(true);
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to reset password");
@@ -640,18 +653,22 @@ const Auth = () => {
                         className="w-full pl-12 pr-28 py-4 bg-slate-50 border-2 border-transparent rounded-lg text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-200 transition-all placeholder:text-slate-300"
                         value={forgotEmail}
                         onChange={(e) => setForgotEmail(e.target.value)}
-                        disabled={forgotOtpSent}
+                        disabled={forgotOtpSent && forgotResendIn > 0}
                       />
                       <button
                         type="button"
                         onClick={handleSendForgotPasswordOtp}
-                        disabled={forgotOtpSending || forgotOtpSent || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)}
+                        disabled={
+                          forgotOtpSending ||
+                          (forgotOtpSent && forgotResendIn > 0) ||
+                          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)
+                        }
                         className="absolute right-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all bg-slate-900 text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {forgotOtpSending ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : forgotOtpSent ? (
-                          "Sent"
+                          forgotResendIn > 0 ? `${forgotResendIn}s` : "Resend"
                         ) : (
                           "Send OTP"
                         )}
@@ -945,6 +962,7 @@ const Auth = () => {
                             setForgotEmail("");
                             setForgotOtp("");
                             setForgotOtpSent(false);
+                            setForgotResendIn(0);
                           }}
                           className="text-xs font-bold text-slate-600 hover:text-black transition-colors"
                         >
