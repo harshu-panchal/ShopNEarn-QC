@@ -62,7 +62,7 @@ describe("Seller Forgot Password Flow", () => {
     app.use("/seller", sellerAuthRouter);
   });
 
-  test("POST /forgot-password/send-otp returns 404 if seller does not exist", async () => {
+  test("POST /forgot-password/send-otp returns 200 if seller does not exist (anti-enumeration)", async () => {
     mockFindOne.mockReturnValue({
       select: () => leanChain(null),
     });
@@ -71,8 +71,8 @@ describe("Seller Forgot Password Flow", () => {
       .post("/seller/forgot-password/send-otp")
       .send({ email: "missing@seller.com" });
 
-    expect(response.statusCode).toBe(404);
-    expect(response.body.message).toContain("Seller account not found");
+    expect(response.statusCode).toBe(200);
+    expect(mockSendSellerForgotPasswordOtpEmail).not.toHaveBeenCalled();
   });
 
   test("POST /forgot-password/send-otp sends OTP if seller exists", async () => {
@@ -88,7 +88,7 @@ describe("Seller Forgot Password Flow", () => {
       .send({ email: "existing@seller.com" });
 
     expect(response.statusCode).toBe(200);
-    expect(response.body.message).toContain("Password reset OTP sent successfully");
+    expect(response.body.message).toMatch(/password reset OTP/i);
     expect(mockSendSellerForgotPasswordOtpEmail).toHaveBeenCalledTimes(1);
   });
 

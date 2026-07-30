@@ -10,6 +10,11 @@ import {
     verifyCustomerOtpCode,
 } from "../services/otpAuthService.js";
 import {
+    issueCustomerForgotPasswordOtp,
+    verifyCustomerForgotPasswordOtp as verifyCustomerForgotPasswordOtpCode,
+    resetCustomerForgotPassword as resetCustomerForgotPasswordService,
+} from "../services/customerForgotPasswordService.js";
+import {
     changePasswordSchema,
     loginWithPasswordSchema,
     sendLoginOtpSchema,
@@ -328,7 +333,7 @@ export const loginWithPassword = async (req, res) => {
             return handleResponse(
                 res,
                 401,
-                "Email sign-in is no longer supported. Please use your User ID or phone number.",
+                "Email sign-in is no longer supported. Please use your User ID or phone number, or use Forgot Password with your email.",
                 { code: "EMAIL_LOGIN_DISABLED" },
             );
         }
@@ -601,5 +606,82 @@ export const getCustomerTransactions = async (req, res) => {
         });
     } catch (error) {
         return handleResponse(res, 500, error.message);
+    }
+};
+
+/* ===============================
+   FORGOT PASSWORD (email OTP)
+================================ */
+export const sendCustomerForgotPasswordOtp = async (req, res) => {
+    try {
+        const { email } = req.body || {};
+        if (!email) {
+            return handleResponse(res, 400, "Email is required");
+        }
+        const result = await issueCustomerForgotPasswordOtp({
+            email,
+            ipAddress: req.ip,
+        });
+        return handleResponse(
+            res,
+            200,
+            "If an account with this email exists, a password reset OTP has been sent.",
+            result,
+        );
+    } catch (error) {
+        return handleResponse(
+            res,
+            error.statusCode || 500,
+            error.message,
+            error.code ? { code: error.code } : undefined,
+        );
+    }
+};
+
+export const verifyCustomerForgotPasswordOtp = async (req, res) => {
+    try {
+        const { email, otp } = req.body || {};
+        if (!email || !otp) {
+            return handleResponse(res, 400, "Email and OTP are required");
+        }
+        const result = await verifyCustomerForgotPasswordOtpCode({
+            email,
+            otp,
+            ipAddress: req.ip,
+        });
+        return handleResponse(res, 200, "OTP verified successfully", result);
+    } catch (error) {
+        return handleResponse(
+            res,
+            error.statusCode || 500,
+            error.message,
+            error.code ? { code: error.code } : undefined,
+        );
+    }
+};
+
+export const resetCustomerForgotPassword = async (req, res) => {
+    try {
+        const { email, resetToken, newPassword } = req.body || {};
+        if (!email || !resetToken || !newPassword) {
+            return handleResponse(
+                res,
+                400,
+                "All fields (email, resetToken, newPassword) are required",
+            );
+        }
+        const result = await resetCustomerForgotPasswordService({
+            email,
+            resetToken,
+            newPassword,
+        });
+        return handleResponse(res, 200, "Password reset successfully", result);
+    } catch (error) {
+        return handleResponse(
+            res,
+            error.statusCode || 500,
+            error.message,
+            error.code ? { code: error.code } : undefined,
+        );
     }
 };

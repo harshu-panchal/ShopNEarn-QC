@@ -346,7 +346,7 @@ export const sendForgotPasswordOtp = async (req, res) => {
             ipAddress: req.ip,
         });
 
-        return handleResponse(res, 200, "Password reset OTP sent successfully", result);
+        return handleResponse(res, 200, "If an account with this email exists, a password reset OTP has been sent.", result);
     } catch (error) {
         return handleResponse(res, error.statusCode || 500, error.message);
     }

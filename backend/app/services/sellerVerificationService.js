@@ -492,13 +492,30 @@ export async function issueSellerForgotPasswordOtp({
   const normalizedChannel = String(channel || "").trim().toLowerCase();
   const target = normalizeTarget(normalizedChannel, rawValue);
 
-  // Verify that the seller account exists
+  // Verify that the seller account exists. Unknown emails get the
+  // same success shape (no OTP sent) to avoid account enumeration.
   const query = normalizedChannel === "email" ? { email: target } : { phone: target };
   const seller = await Seller.findOne(query).select("_id").lean();
   if (!seller) {
-    const error = new Error("Seller account not found");
-    error.statusCode = 404;
-    throw error;
+    console.log(
+      JSON.stringify({
+        level: "info",
+        ts: new Date().toISOString(),
+        event: "seller_forgot_password_otp_skipped_unknown",
+        channel: normalizedChannel,
+        target: normalizedChannel === "email" ? maskEmail(target) : maskPhone(target),
+        ipAddress,
+      }),
+    );
+    return {
+      sent: true,
+      channel: normalizedChannel,
+      maskedTarget:
+        normalizedChannel === "email" ? maskEmail(target) : maskPhone(target),
+      expiresInSeconds: OTP_EXPIRY_MINUTES() * 60,
+      resendCooldownSeconds: OTP_RESEND_COOLDOWN_SECONDS(),
+      antiEnumeration: true,
+    };
   }
 
   const sendAllowed = await incrementWindowCounter(
@@ -591,6 +608,7 @@ export async function issueSellerForgotPasswordOtp({
     maskedTarget:
       normalizedChannel === "email" ? maskEmail(target) : maskPhone(target),
     expiresInSeconds: OTP_EXPIRY_MINUTES() * 60,
+    resendCooldownSeconds: OTP_RESEND_COOLDOWN_SECONDS(),
   };
 }
 
