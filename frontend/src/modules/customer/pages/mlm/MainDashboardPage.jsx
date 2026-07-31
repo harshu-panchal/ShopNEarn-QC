@@ -42,7 +42,6 @@ import { toast } from "sonner";
 import { mlmApi } from "../../services/mlmApi";
 import { customerApi } from "../../services/customerApi";
 import { openRazorpayCheckout } from "@/shared/payments/openRazorpayCheckout";
-import { customerApi } from "../../services/customerApi";
 import { useAuth } from "@core/context/AuthContext";
 import { useMlmDrawer } from "./MlmLayout";
 import { buildBinaryPairHint, isTeamLegWeaker } from "@shared/utils/mlmBinaryDisplay";
