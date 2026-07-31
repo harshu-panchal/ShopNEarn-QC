@@ -94,7 +94,7 @@ async function archiveLegacyOrders() {
     await MlmJoiningPayment.create({
       _id: order._id, // preserve ledger idempotency key
       customer: order.customer,
-      gatewayName: "PHONEPE",
+      gatewayName: "RAZORPAY",
       gatewayOrderId: `LEGACY-MLM-JOIN-${order._id}`,
       amountPaise,
       currency: "INR",

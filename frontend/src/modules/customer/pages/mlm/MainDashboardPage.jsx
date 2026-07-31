@@ -41,6 +41,8 @@ import {
 import { toast } from "sonner";
 import { mlmApi } from "../../services/mlmApi";
 import { customerApi } from "../../services/customerApi";
+import { openRazorpayCheckout } from "@/shared/payments/openRazorpayCheckout";
+import { customerApi } from "../../services/customerApi";
 import { useAuth } from "@core/context/AuthContext";
 import { useMlmDrawer } from "./MlmLayout";
 import { buildBinaryPairHint, isTeamLegWeaker } from "@shared/utils/mlmBinaryDisplay";
@@ -227,13 +229,42 @@ const NotMemberView = ({ overview, pendingJoining, navigate }) => {
       const redirectUrl = payload?.redirectUrl;
       const paymentMode = payload?.paymentMode;
       const paymentId = payload?.paymentId;
-      if (!redirectUrl) throw new Error("Payment gateway did not return a redirect URL.");
+      const checkout = payload?.checkout;
+      const merchantOrderId = payload?.merchantOrderId;
+
       if (paymentMode === "manual_qr" && paymentId) {
         navigate(`/mlm/manual-payment/${paymentId}`);
         return;
       }
-      window.location.assign(redirectUrl);
+      if (checkout?.orderId) {
+        await openRazorpayCheckout({
+          checkout,
+          merchantOrderId,
+          onSuccess: async (rzpResponse) => {
+            await customerApi.verifyPaymentCallback({
+              merchantOrderId,
+              razorpay_order_id: rzpResponse.razorpay_order_id,
+              razorpay_payment_id: rzpResponse.razorpay_payment_id,
+              razorpay_signature: rzpResponse.razorpay_signature,
+            });
+            navigate(
+              `/payment-status?merchantOrderId=${encodeURIComponent(merchantOrderId)}`,
+              { replace: true },
+            );
+          },
+        });
+        return;
+      }
+      if (redirectUrl) {
+        window.location.assign(redirectUrl);
+        return;
+      }
+      throw new Error("Payment gateway did not return a checkout session.");
     } catch (err) {
+      if (err?.code === "PAYMENT_DISMISSED") {
+        setJoining(false);
+        return;
+      }
       const message =
         err?.response?.data?.message ||
         err?.message ||
@@ -645,12 +676,34 @@ const ActivationCta = ({ membership, joiningPrice, navigate }) => (
               const redirectUrl = payload?.redirectUrl;
               const paymentMode = payload?.paymentMode;
               const paymentId = payload?.paymentId;
+              const checkout = payload?.checkout;
+              const merchantOrderId = payload?.merchantOrderId;
               if (paymentMode === "manual_qr" && paymentId) {
                 navigate(`/mlm/manual-payment/${paymentId}`);
                 return;
               }
+              if (checkout?.orderId) {
+                await openRazorpayCheckout({
+                  checkout,
+                  merchantOrderId,
+                  onSuccess: async (rzpResponse) => {
+                    await customerApi.verifyPaymentCallback({
+                      merchantOrderId,
+                      razorpay_order_id: rzpResponse.razorpay_order_id,
+                      razorpay_payment_id: rzpResponse.razorpay_payment_id,
+                      razorpay_signature: rzpResponse.razorpay_signature,
+                    });
+                    navigate(
+                      `/payment-status?merchantOrderId=${encodeURIComponent(merchantOrderId)}`,
+                      { replace: true },
+                    );
+                  },
+                });
+                return;
+              }
               if (redirectUrl) window.location.assign(redirectUrl);
             } catch (err) {
+              if (err?.code === "PAYMENT_DISMISSED") return;
               toast.error(
                 err?.response?.data?.message ||
                   "Failed to start activation payment",

@@ -17,11 +17,13 @@ import {
   isJoiningMerchantOrderId,
   processJoiningPaymentWebhook,
   verifyJoiningPaymentStatus,
+  verifyJoiningCheckoutCallback,
 } from "./mlm/mlmJoiningPaymentService.js";
 import {
   isFranchiseRegMerchantOrderId,
   processFranchiseRegistrationWebhook,
   verifyFranchiseRegistrationPaymentStatus,
+  verifyFranchiseRegistrationCheckoutCallback,
 } from "./franchise/franchiseRegistrationPaymentService.js";
 import FranchiseRegistrationPayment from "../models/franchiseRegistrationPayment.js";
 import { DEFAULT_SELLER_TIMEOUT_MS, WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
@@ -502,6 +504,22 @@ async function handleOrderSideEffectsFromPaymentStatus(payment, nextStatus, reas
   );
 }
 
+function buildCheckoutReusePayload(payment) {
+  const raw = payment?.rawGatewayResponse || {};
+  const checkout = raw.checkout || null;
+  return {
+    payment,
+    checkout,
+    merchantOrderId: payment.gatewayOrderId,
+    razorpayOrderId: raw.razorpayOrderId || checkout?.orderId || null,
+  };
+}
+
+function hasReusableCheckout(payment) {
+  const raw = payment?.rawGatewayResponse || {};
+  return Boolean(raw.checkout?.orderId || raw.razorpayOrderId);
+}
+
 export async function createPaymentOrderForOrderRef({
   orderRef,
   userId,
@@ -520,12 +538,8 @@ export async function createPaymentOrderForOrderRef({
       ...paymentScopeQuery,
       idempotencyKey,
     });
-    if (existingForKey) {
-      return {
-        payment: existingForKey,
-        redirectUrl: existingForKey.rawGatewayResponse?.redirectUrl,
-        duplicate: true,
-      };
+    if (existingForKey && hasReusableCheckout(existingForKey)) {
+      return { ...buildCheckoutReusePayload(existingForKey), duplicate: true };
     }
   }
 
@@ -536,12 +550,8 @@ export async function createPaymentOrderForOrderRef({
     },
   }).sort({ createdAt: -1 });
 
-  if (existingOpenPayment && existingOpenPayment.rawGatewayResponse?.redirectUrl) {
-    return {
-      payment: existingOpenPayment,
-      redirectUrl: existingOpenPayment.rawGatewayResponse.redirectUrl,
-      duplicate: true,
-    };
+  if (existingOpenPayment && hasReusableCheckout(existingOpenPayment)) {
+    return { ...buildCheckoutReusePayload(existingOpenPayment), duplicate: true };
   }
 
   const amountPaise = getPayableAmountPaise(target);
@@ -559,6 +569,7 @@ export async function createPaymentOrderForOrderRef({
     merchantOrderId,
     amountPaise,
     redirectUrl,
+    description: `Order ${target.publicOrderRef || merchantOrderId}`,
   });
 
   const paymentData = {
@@ -576,8 +587,9 @@ export async function createPaymentOrderForOrderRef({
     idempotencyKey: idempotencyKey || undefined,
     correlationId,
     rawGatewayResponse: {
-      redirectUrl: initResult.redirectUrl,
-      merchantOrderId: merchantOrderId,
+      checkout: initResult.checkout,
+      razorpayOrderId: initResult.gatewayOrderId,
+      merchantOrderId,
       amount: amountPaise,
     },
     statusHistory: [
@@ -597,15 +609,21 @@ export async function createPaymentOrderForOrderRef({
     publicOrderId: payment.publicOrderId,
     paymentId: payment._id.toString(),
     gatewayOrderId: payment.gatewayOrderId,
+    razorpayOrderId: initResult.gatewayOrderId,
     amount: payment.amount,
-    redirectUrl: initResult.redirectUrl,
     provider: provider.providerName,
   });
 
-  return { payment, redirectUrl: initResult.redirectUrl, duplicate: false };
+  return {
+    payment,
+    checkout: initResult.checkout,
+    merchantOrderId,
+    razorpayOrderId: initResult.gatewayOrderId,
+    duplicate: false,
+  };
 }
 
-export async function verifyPhonePePaymentStatus({
+export async function verifyGatewayPaymentStatus({
   merchantOrderId,
   userId,
   correlationId = null,
@@ -643,7 +661,14 @@ export async function verifyPhonePePaymentStatus({
   }
 
   const provider = getActivePaymentProvider();
-  const statusResp = await provider.getPaymentStatus({ merchantOrderId });
+  const razorpayOrderId =
+    payment.rawGatewayResponse?.razorpayOrderId ||
+    payment.rawGatewayResponse?.checkout?.orderId ||
+    null;
+  const statusResp = await provider.getPaymentStatus({
+    merchantOrderId,
+    razorpayOrderId,
+  });
   const nextStatus = provider.mapStatusToInternal(statusResp.state);
 
   await transitionPaymentState(payment, {
@@ -708,14 +733,113 @@ async function classifyOrderKindForPayment(payment) {
   return "regular";
 }
 
-export async function processPhonePeWebhook({
+export async function verifyCheckoutPaymentCallback({
+  merchantOrderId,
+  razorpayOrderId,
+  razorpayPaymentId,
+  razorpaySignature,
+  userId,
+  correlationId = null,
+}) {
+  if (isJoiningMerchantOrderId(merchantOrderId)) {
+    return verifyJoiningCheckoutCallback({
+      merchantOrderId,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+      userId,
+      correlationId,
+    });
+  }
+
+  if (isFranchiseRegMerchantOrderId(merchantOrderId)) {
+    return verifyFranchiseRegistrationCheckoutCallback({
+      merchantOrderId,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+      userId,
+    });
+  }
+
+  const payment = await Payment.findOne({ gatewayOrderId: merchantOrderId });
+  if (!payment) {
+    const err = new Error("Payment attempt not found");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (userId && String(payment.customer) !== String(userId)) {
+    const err = new Error("Not authorized to verify this payment");
+    err.statusCode = 403;
+    throw err;
+  }
+
+  const provider = getActivePaymentProvider();
+  const ok = provider.verifyCheckoutSignature({
+    razorpayOrderId,
+    razorpayPaymentId,
+    razorpaySignature,
+  });
+  if (!ok) {
+    const err = new Error("Invalid payment signature");
+    err.statusCode = 401;
+    err.code = "PAYMENT_SIGNATURE_INVALID";
+    throw err;
+  }
+
+  const storedRazorpayOrderId =
+    payment.rawGatewayResponse?.razorpayOrderId ||
+    payment.rawGatewayResponse?.checkout?.orderId;
+  if (
+    storedRazorpayOrderId &&
+    String(storedRazorpayOrderId) !== String(razorpayOrderId)
+  ) {
+    const err = new Error("Payment order mismatch");
+    err.statusCode = 400;
+    err.code = "PAYMENT_ORDER_MISMATCH";
+    throw err;
+  }
+
+  await transitionPaymentState(payment, {
+    nextStatus: PAYMENT_STATUS.CAPTURED,
+    source: PAYMENT_EVENT_SOURCE.CLIENT_VERIFY,
+    reason: `${provider.providerName} checkout signature verified`,
+    gatewayPaymentId: razorpayPaymentId,
+    rawGatewayResponse: {
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+    },
+  });
+
+  payment.gatewaySignature = razorpaySignature;
+  payment.correlationId = correlationId || payment.correlationId;
+  await payment.save();
+
+  await handleOrderSideEffectsFromPaymentStatus(
+    payment,
+    PAYMENT_STATUS.CAPTURED,
+    "checkout_signature_verified",
+  );
+
+  const orderKind = await classifyOrderKindForPayment(payment);
+
+  return {
+    payment,
+    status: PAYMENT_STATUS.CAPTURED,
+    orderKind,
+  };
+}
+
+export async function processPaymentWebhook({
   rawBody,
-  authorization,
+  signature,
   correlationId = null,
 }) {
   const provider = getActivePaymentProvider();
 
-  const isValid = await provider.validateWebhook({ rawBody, authorization });
+  const isValid = await provider.validateWebhook({ rawBody, signature });
   if (!isValid) {
     const err = new Error("Invalid webhook signature");
     err.statusCode = 401;
@@ -745,7 +869,36 @@ export async function processPhonePeWebhook({
     throw error;
   }
 
-  const merchantOrderId = decoded.merchantOrderId;
+  let merchantOrderId = decoded.merchantOrderId;
+
+  // If notes were missing, resolve via Razorpay order id stored on Payment.
+  if (!merchantOrderId && decoded.razorpayOrderId) {
+    const byRazorpay = await Payment.findOne({
+      "rawGatewayResponse.razorpayOrderId": decoded.razorpayOrderId,
+    });
+    if (byRazorpay) {
+      merchantOrderId = byRazorpay.gatewayOrderId;
+    } else {
+      const joining = await MlmJoiningPayment.findOne({
+        "rawGatewayResponse.razorpayOrderId": decoded.razorpayOrderId,
+      });
+      if (joining) merchantOrderId = joining.gatewayOrderId;
+      else {
+        const franchise = await FranchiseRegistrationPayment.findOne({
+          "rawGatewayResponse.razorpayOrderId": decoded.razorpayOrderId,
+        });
+        if (franchise) merchantOrderId = franchise.gatewayOrderId;
+      }
+    }
+  }
+
+  if (!merchantOrderId) {
+    return {
+      accepted: true,
+      ignored: true,
+      reason: "merchantOrderId not found in webhook payload",
+    };
+  }
 
   // Fork: MLM joining payments are processed via a dedicated service
   // that owns its own collection, state machine, and activation hook.
@@ -845,11 +998,34 @@ export async function processPhonePeWebhook({
   };
 }
 
-// Placeholder for Razorpay compatibility if needed by other services
+/** @deprecated Use verifyGatewayPaymentStatus */
+export async function verifyPhonePePaymentStatus(args) {
+  return verifyGatewayPaymentStatus(args);
+}
+
+/** @deprecated Use processPaymentWebhook */
+export async function processPhonePeWebhook(args) {
+  return processPaymentWebhook({
+    rawBody: args.rawBody,
+    signature: args.signature || args.authorization,
+    correlationId: args.correlationId,
+  });
+}
+
 export async function verifyClientPaymentCallback(data) {
-    return verifyPhonePePaymentStatus({
-        merchantOrderId: data.gatewayOrderId || data.merchantOrderId,
-        userId: data.userId,
-        correlationId: data.correlationId
+  if (data?.razorpay_order_id && data?.razorpay_payment_id && data?.razorpay_signature) {
+    return verifyCheckoutPaymentCallback({
+      merchantOrderId: data.gatewayOrderId || data.merchantOrderId,
+      razorpayOrderId: data.razorpay_order_id,
+      razorpayPaymentId: data.razorpay_payment_id,
+      razorpaySignature: data.razorpay_signature,
+      userId: data.userId,
+      correlationId: data.correlationId,
     });
+  }
+  return verifyGatewayPaymentStatus({
+    merchantOrderId: data.gatewayOrderId || data.merchantOrderId,
+    userId: data.userId,
+    correlationId: data.correlationId,
+  });
 }

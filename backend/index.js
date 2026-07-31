@@ -186,9 +186,9 @@ function createApp() {
   app.use(cors(corsOptions));
   app.use(globalApiRateLimiter);
 
-  // PhonePe webhook needs raw body for signature verification
+  // Razorpay webhook needs raw body for signature verification
   app.use(
-    "/api/payments/webhook/phonepe",
+    "/api/payments/webhook/razorpay",
     express.raw({
       type: "application/json",
       limit: process.env.PAYMENT_WEBHOOK_MAX_PAYLOAD || "1mb",

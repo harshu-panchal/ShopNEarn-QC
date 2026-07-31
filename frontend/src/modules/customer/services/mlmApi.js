@@ -47,14 +47,14 @@ export const mlmApi = {
 
   /**
    * One-click MLM joining. Server creates the joining-package payment
-   * row and returns a redirect target. The shape of the redirect
-   * depends on `paymentMode`:
-   *   - `phonepe`     -> redirectUrl is the gateway checkout page.
+   * row and returns a checkout session or in-app redirect depending on
+   * `paymentMode`:
+   *   - `razorpay`    -> `checkout` session for Standard Checkout modal.
    *   - `manual_qr`   -> redirectUrl is the in-app
    *                       `/mlm/manual-payment/:paymentId` page.
    *
    * Response shape:
-   *   { paymentId, merchantOrderId, redirectUrl, paymentMode,
+   *   { paymentId, merchantOrderId, checkout?, redirectUrl?, paymentMode,
    *     manualQr?: { imageUrl, upiId, merchantName, instructions },
    *     duplicate }
    */

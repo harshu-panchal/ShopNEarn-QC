@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { MapPin, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { franchiseApi } from "../../services/franchiseApi";
+import { customerApi } from "../../services/customerApi";
+import { openRazorpayCheckout } from "@/shared/payments/openRazorpayCheckout";
 import FranchiseMlmHeader from "./FranchiseMlmHeader";
 import MapPicker from "@shared/components/MapPicker";
 
@@ -126,18 +128,49 @@ const FranchiseRegisterPage = () => {
       const payload = res.data?.result ?? res.data?.data ?? res.data;
       const paymentId = payload?.paymentId;
       const redirectUrl = payload?.redirectUrl;
+      const checkout = payload?.checkout;
+      const merchantOrderId = payload?.merchantOrderId;
+      const paymentMode = payload?.paymentMode;
 
-      if (redirectUrl?.includes("/register/payment/")) {
-        const path = redirectUrl.replace(window.location.origin, "");
-        navigate(path.startsWith("/") ? path : `/${path}`);
-      } else if (paymentId) {
-        navigate(`/mlm/franchise/register/payment/${paymentId}`);
-      } else if (redirectUrl) {
+      if (paymentMode === "manual_qr" || redirectUrl?.includes("/register/payment/")) {
+        if (redirectUrl?.includes("/register/payment/")) {
+          const path = redirectUrl.replace(window.location.origin, "");
+          navigate(path.startsWith("/") ? path : `/${path}`);
+        } else if (paymentId) {
+          navigate(`/mlm/franchise/register/payment/${paymentId}`);
+        } else {
+          toast.error("Could not start payment. Please try again.");
+        }
+        return;
+      }
+
+      if (checkout?.orderId) {
+        await openRazorpayCheckout({
+          checkout,
+          merchantOrderId,
+          onSuccess: async (rzpResponse) => {
+            await customerApi.verifyPaymentCallback({
+              merchantOrderId,
+              razorpay_order_id: rzpResponse.razorpay_order_id,
+              razorpay_payment_id: rzpResponse.razorpay_payment_id,
+              razorpay_signature: rzpResponse.razorpay_signature,
+            });
+            navigate(
+              `/payment-status?merchantOrderId=${encodeURIComponent(merchantOrderId)}`,
+              { replace: true },
+            );
+          },
+        });
+        return;
+      }
+
+      if (redirectUrl) {
         window.location.assign(redirectUrl);
       } else {
         toast.error("Could not start payment. Please try again.");
       }
     } catch (err) {
+      if (err?.code === "PAYMENT_DISMISSED") return;
       toast.error(err?.response?.data?.message || "Registration failed");
     } finally {
       setLoading(false);

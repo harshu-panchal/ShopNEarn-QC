@@ -2,7 +2,8 @@ import express from "express";
 import {
   createPaymentOrder,
   verifyPaymentStatus,
-  handlePhonePeWebhook,
+  verifyPaymentCallback,
+  handlePaymentWebhook,
 } from "../controller/paymentController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { paymentRouteRateLimiter } from "../middleware/securityMiddlewares.js";
@@ -10,7 +11,7 @@ import { paymentRouteRateLimiter } from "../middleware/securityMiddlewares.js";
 const paymentRoute = express.Router();
 
 /**
- * Initiate a PhonePe payment order for a specific CheckoutGroupId or OrderId.
+ * Initiate a Razorpay payment order for a CheckoutGroupId or OrderId.
  * Auth: Required (Customer paying for their own order)
  */
 paymentRoute.post(
@@ -21,7 +22,7 @@ paymentRoute.post(
 );
 
 /**
- * Verify payment status from client side (after redirect back from PhonePe).
+ * Verify payment status from client side (poll / recovery).
  * Auth: Required
  */
 paymentRoute.get(
@@ -32,13 +33,24 @@ paymentRoute.get(
 );
 
 /**
- * PhonePe Server-to-Server Webhook.
- * Auth: None (Internal verification via x-verify / authorization header)
+ * Razorpay Standard Checkout client callback (HMAC signature verify).
+ * Auth: Required
  */
 paymentRoute.post(
-  "/webhook/phonepe",
-  express.raw({ type: "application/json" }), // SDK needs raw body for verification
-  handlePhonePeWebhook,
+  "/verify-callback",
+  verifyToken,
+  paymentRouteRateLimiter,
+  verifyPaymentCallback,
+);
+
+/**
+ * Razorpay Server-to-Server Webhook.
+ * Auth: None (verified via X-Razorpay-Signature)
+ */
+paymentRoute.post(
+  "/webhook/razorpay",
+  express.raw({ type: "application/json" }),
+  handlePaymentWebhook,
 );
 
 export default paymentRoute;

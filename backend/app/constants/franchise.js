@@ -55,7 +55,7 @@ export const ALL_FRANCHISE_SHIPMENT_STATUSES = Object.values(
 );
 
 export const FRANCHISE_PAYMENT_MODE = {
-  PHONEPE: "phonepe",
+  RAZORPAY: "razorpay",
   MANUAL_QR: "manual_qr",
 };
 

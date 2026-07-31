@@ -63,7 +63,10 @@ const MlmSettings = () => {
         joiningPackageShoppingWalletCredit:
           Number(cfg.joiningPackageShoppingWalletCredit) || 0,
         joiningPaymentMode:
-          cfg.joiningPaymentMode === "phonepe" ? "phonepe" : "manual_qr",
+          cfg.joiningPaymentMode === "razorpay" ||
+          cfg.joiningPaymentMode === "phonepe"
+            ? "razorpay"
+            : "manual_qr",
         manualQr: {
           imageUrl: (cfg.manualQr?.imageUrl || "").trim(),
           upiId: (cfg.manualQr?.upiId || "").trim(),
@@ -846,14 +849,17 @@ const RuleEditor = ({ rows, columns, defaults, onChange }) => {
 
 /**
  * Joining Payment Mode panel — radio toggle between manual QR and the
- * PhonePe gateway, plus the manual-QR display config (image upload, UPI
+ * Razorpay gateway, plus the manual-QR display config (image upload, UPI
  * id, merchant name, instructions). Mirrors the customer-facing layout
  * in a live preview pane on the right.
  */
 const JoiningPaymentModePanel = ({ cfg, setCfg }) => {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
-  const mode = cfg.joiningPaymentMode === "phonepe" ? "phonepe" : "manual_qr";
+  const mode =
+    cfg.joiningPaymentMode === "razorpay" || cfg.joiningPaymentMode === "phonepe"
+      ? "razorpay"
+      : "manual_qr";
   const manualQr = cfg.manualQr || {};
 
   const setMode = (next) => setCfg({ ...cfg, joiningPaymentMode: next });
@@ -905,12 +911,12 @@ const JoiningPaymentModePanel = ({ cfg, setCfg }) => {
           onClick={() => setMode("manual_qr")}
         />
         <ModeRadio
-          active={mode === "phonepe"}
+          active={mode === "razorpay"}
           icon={<CreditCard size={18} />}
-          title="PhonePe Gateway"
+          title="Razorpay Gateway"
           badge="Production"
-          description="Hosted checkout with automatic capture via webhook. Requires completed PhonePe KYC."
-          onClick={() => setMode("phonepe")}
+          description="Standard Checkout modal with automatic capture via signature verify + webhook."
+          onClick={() => setMode("razorpay")}
         />
       </div>
 
@@ -1015,12 +1021,13 @@ const JoiningPaymentModePanel = ({ cfg, setCfg }) => {
         </div>
       )}
 
-      {mode === "phonepe" && (
+      {mode === "razorpay" && (
         <p className="text-[11px] text-slate-500 leading-relaxed bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
-          PhonePe-pg checkout will handle joining payments automatically. The
-          customer will be redirected to PhonePe and back; activation fires on
-          the success webhook. Configure provider credentials in System
-          Settings.
+          Razorpay Standard Checkout will handle joining payments automatically.
+          The customer pays in the Checkout modal; activation fires on signature
+          verify (and status poll). Configure{" "}
+          <code>RAZORPAY_KEY_ID</code> and <code>RAZORPAY_KEY_SECRET</code> in
+          the backend environment.
         </p>
       )}
     </div>

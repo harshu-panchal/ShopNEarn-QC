@@ -1,11 +1,10 @@
 export const PAYMENT_GATEWAY = {
   RAZORPAY: "RAZORPAY",
+  // Kept for historical Payment / webhook rows only — do not write on new docs.
   PHONEPE: "PHONEPE",
-  // Manual / out-of-band payment captured by the merchant (used as a
-  // temporary fallback for MLM joining payments while PhonePe KYC is
-  // pending). Has no real provider integration; the customer pays via
-  // a static UPI QR code and submits a transaction-id + screenshot for
-  // admin review.
+  // Manual / out-of-band payment captured by the merchant (MLM joining /
+  // franchise registration fallback). Has no real provider integration;
+  // the customer pays via a static UPI QR and submits proof for admin review.
   MANUAL_QR: "MANUAL_QR",
 };
 

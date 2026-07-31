@@ -27,8 +27,9 @@ import logger from "../logger.js";
  *
  * Replaces the legacy order-coupled `mlmJoinService`. A customer's
  * "Join Now" click now produces a single MlmJoiningPayment row, opens
- * the PhonePe redirect, and on capture activates membership directly
- * from the payment row — no Order, no Product, no Setting.mlm field.
+ * Razorpay Standard Checkout (or the manual-QR proof page), and on
+ * capture activates membership directly from the payment row — no
+ * Order, no Product, no Setting.mlm field.
  *
  * Money-flow discipline:
  *   - Price + shopping credit are snapshot-at-intent so admins can
@@ -242,14 +243,15 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
   // persisted and every state-machine + side-effect read goes through
   // the row, never `Setting` directly.
   const paymentMode =
-    cfg.joiningPaymentMode === MLM_PAYMENT_MODE.PHONEPE
-      ? MLM_PAYMENT_MODE.PHONEPE
+    cfg.joiningPaymentMode === MLM_PAYMENT_MODE.RAZORPAY ||
+    cfg.joiningPaymentMode === "phonepe"
+      ? MLM_PAYMENT_MODE.RAZORPAY
       : MLM_PAYMENT_MODE.MANUAL_QR;
   const isManualQr = paymentMode === MLM_PAYMENT_MODE.MANUAL_QR;
 
   // Idempotency: if the caller supplied a key and a row already
-  // exists for it, return that row's redirect rather than creating a
-  // duplicate. Survives rapid double-clicks on "Join Now".
+  // exists for it, return that row's checkout/redirect rather than
+  // creating a duplicate. Survives rapid double-clicks on "Join Now".
   const effectiveIdempotencyKey =
     idempotencyKey || buildClickIdempotencyKey(userId);
 
@@ -261,8 +263,9 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     return {
       paymentId: String(existingForKey._id),
       merchantOrderId: existingForKey.gatewayOrderId,
-      redirectUrl: existingForKey.rawGatewayResponse?.redirectUrl,
-      paymentMode: existingForKey.paymentMode || MLM_PAYMENT_MODE.PHONEPE,
+      checkout: existingForKey.rawGatewayResponse?.checkout || null,
+      redirectUrl: existingForKey.rawGatewayResponse?.redirectUrl || null,
+      paymentMode: existingForKey.paymentMode || MLM_PAYMENT_MODE.RAZORPAY,
       manualQr: isManualQr ? await getManualQrConfig() : undefined,
       duplicate: true,
     };
@@ -271,9 +274,8 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
   // Reuse an open intent of the SAME payment mode if the customer
   // hammered Join Now from a different client without an idempotency
   // key. Mode-scoped so a toggle flip never resurrects a stale row in
-  // the other flow. PhonePe path treats legacy rows (where the field
-  // is missing) as `phonepe` so we don't double-charge customers who
-  // had an open intent before this rollout.
+  // the other flow. Gateway path treats legacy rows (where the field
+  // is missing or still `phonepe`) as razorpay so we don't double-charge.
   const openStatuses = isManualQr
     ? [PAYMENT_STATUS.CREATED, PAYMENT_STATUS.PENDING_REVIEW]
     : [PAYMENT_STATUS.CREATED, PAYMENT_STATUS.PENDING];
@@ -281,7 +283,8 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     ? { paymentMode: MLM_PAYMENT_MODE.MANUAL_QR }
     : {
         $or: [
-          { paymentMode: MLM_PAYMENT_MODE.PHONEPE },
+          { paymentMode: MLM_PAYMENT_MODE.RAZORPAY },
+          { paymentMode: "phonepe" },
           { paymentMode: { $exists: false } },
           { paymentMode: null },
         ],
@@ -291,11 +294,16 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     ...paymentModeFilter,
     status: { $in: openStatuses },
   }).sort({ createdAt: -1 });
-  if (existingOpen && existingOpen.rawGatewayResponse?.redirectUrl) {
+  if (
+    existingOpen &&
+    (existingOpen.rawGatewayResponse?.checkout?.orderId ||
+      existingOpen.rawGatewayResponse?.redirectUrl)
+  ) {
     return {
       paymentId: String(existingOpen._id),
       merchantOrderId: existingOpen.gatewayOrderId,
-      redirectUrl: existingOpen.rawGatewayResponse.redirectUrl,
+      checkout: existingOpen.rawGatewayResponse?.checkout || null,
+      redirectUrl: existingOpen.rawGatewayResponse?.redirectUrl || null,
       paymentMode,
       manualQr: isManualQr ? await getManualQrConfig() : undefined,
       duplicate: true,
@@ -316,7 +324,7 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
   // pointing to the in-app proof-submission page. The admin approve
   // action transitions the row to CAPTURED, which re-uses the same
   // `handleStatusSideEffects` -> `activateMembershipFromJoiningPayment`
-  // hook that PhonePe captures fire.
+  // hook that Razorpay captures fire.
   if (isManualQr) {
     const manualQr = await getManualQrConfig();
     const customerRedirectUrl = `${process.env.FRONTEND_URL || ""}/mlm/manual-payment/${paymentId.toString()}`;
@@ -375,6 +383,7 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     merchantOrderId,
     amountPaise,
     redirectUrl,
+    description: `MLM joining ${merchantOrderId}`,
   });
 
   const payment = await MlmJoiningPayment.create({
@@ -382,7 +391,7 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     customer: userId,
     gatewayName: provider.providerName,
     gatewayOrderId: merchantOrderId,
-    paymentMode: MLM_PAYMENT_MODE.PHONEPE,
+    paymentMode: MLM_PAYMENT_MODE.RAZORPAY,
     amountPaise,
     currency: "INR",
     status: PAYMENT_STATUS.PENDING,
@@ -391,7 +400,8 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     sponsorReferralCodeSnapshot: customer.pendingSponsorReferralCode || null,
     idempotencyKey: effectiveIdempotencyKey,
     rawGatewayResponse: {
-      redirectUrl: initResult.redirectUrl,
+      checkout: initResult.checkout,
+      razorpayOrderId: initResult.gatewayOrderId,
       merchantOrderId,
       amountPaise,
     },
@@ -410,14 +420,14 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     merchantOrderId,
     amountPaise,
     provider: provider.providerName,
-    paymentMode: MLM_PAYMENT_MODE.PHONEPE,
+    paymentMode: MLM_PAYMENT_MODE.RAZORPAY,
   });
 
   return {
     paymentId: String(payment._id),
     merchantOrderId,
-    redirectUrl: initResult.redirectUrl,
-    paymentMode: MLM_PAYMENT_MODE.PHONEPE,
+    checkout: initResult.checkout,
+    paymentMode: MLM_PAYMENT_MODE.RAZORPAY,
     duplicate: false,
   };
 }
@@ -448,7 +458,14 @@ export async function verifyJoiningPaymentStatus({
   }
 
   const provider = getActivePaymentProvider();
-  const statusResp = await provider.getPaymentStatus({ merchantOrderId });
+  const razorpayOrderId =
+    payment.rawGatewayResponse?.razorpayOrderId ||
+    payment.rawGatewayResponse?.checkout?.orderId ||
+    null;
+  const statusResp = await provider.getPaymentStatus({
+    merchantOrderId,
+    razorpayOrderId,
+  });
   const nextStatus = provider.mapStatusToInternal(statusResp.state);
 
   await transitionStatus(payment, {
@@ -481,7 +498,78 @@ export async function verifyJoiningPaymentStatus({
 }
 
 /**
- * Process a PhonePe webhook event for an MLM joining payment.
+ * Razorpay Standard Checkout client callback for MLM joining.
+ */
+export async function verifyJoiningCheckoutCallback({
+  merchantOrderId,
+  razorpayOrderId,
+  razorpayPaymentId,
+  razorpaySignature,
+  userId,
+  correlationId = null,
+}) {
+  const payment = await MlmJoiningPayment.findOne({
+    gatewayOrderId: merchantOrderId,
+  });
+  if (!payment) {
+    const err = new Error("Joining payment not found");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (userId && String(payment.customer) !== String(userId)) {
+    const err = new Error("Not authorized to verify this payment");
+    err.statusCode = 403;
+    throw err;
+  }
+
+  if (payment.paymentMode === MLM_PAYMENT_MODE.MANUAL_QR) {
+    const err = new Error("Manual QR payments cannot use checkout callback");
+    err.statusCode = 422;
+    throw err;
+  }
+
+  const provider = getActivePaymentProvider();
+  const ok = provider.verifyCheckoutSignature({
+    razorpayOrderId,
+    razorpayPaymentId,
+    razorpaySignature,
+  });
+  if (!ok) {
+    const err = new Error("Invalid payment signature");
+    err.statusCode = 401;
+    err.code = "PAYMENT_SIGNATURE_INVALID";
+    throw err;
+  }
+
+  await transitionStatus(payment, {
+    nextStatus: PAYMENT_STATUS.CAPTURED,
+    source: PAYMENT_EVENT_SOURCE.CLIENT_VERIFY,
+    reason: `${provider.providerName} checkout signature verified`,
+    gatewayPaymentId: razorpayPaymentId,
+    rawGatewayResponse: {
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+    },
+  });
+
+  if (correlationId) {
+    payment.correlationId = correlationId;
+    await payment.save();
+  }
+
+  await handleStatusSideEffects(payment, PAYMENT_STATUS.CAPTURED);
+
+  return {
+    payment,
+    status: PAYMENT_STATUS.CAPTURED,
+    orderKind: "mlm_joining",
+  };
+}
+
+/**
+ * Process a gateway webhook event for an MLM joining payment.
  * Called by the unified webhook dispatcher in `paymentService.js`
  * after the merchantOrderId has already been resolved to a row in
  * this collection. The dispatcher owns webhook-event dedupe via
@@ -489,7 +577,7 @@ export async function verifyJoiningPaymentStatus({
  *
  * Manual-QR rows are immune to webhook-driven transitions: they
  * carry no real `gatewayPaymentId`, and any callback received against
- * one means a stray PhonePe event was misrouted. We short-circuit
+ * one means a stray gateway event was misrouted. We short-circuit
  * with a structured `ignored` result so the dispatcher can ack the
  * webhook without mutating internal state.
  */

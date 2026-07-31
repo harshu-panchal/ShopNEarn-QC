@@ -183,13 +183,19 @@ export async function resolvePlanABonusWalletBucket(opts) {
 }
 
 /**
- * Active joining payment mode (`"manual_qr"` while PhonePe KYC is
- * pending, `"phonepe"` once it clears). Always returns one of the two
- * canonical values — unknown overrides fall back to the default.
+ * Active joining payment mode (`"manual_qr"` or `"razorpay"`). Always
+ * returns one of the two canonical values — unknown overrides and the
+ * legacy `"phonepe"` value fall back / map to `"razorpay"`.
  */
 export async function getJoiningPaymentMode(opts) {
   const cfg = await getMlmConfig(opts);
-  return cfg.joiningPaymentMode === "phonepe" ? "phonepe" : "manual_qr";
+  if (
+    cfg.joiningPaymentMode === "razorpay" ||
+    cfg.joiningPaymentMode === "phonepe"
+  ) {
+    return "razorpay";
+  }
+  return "manual_qr";
 }
 
 /**

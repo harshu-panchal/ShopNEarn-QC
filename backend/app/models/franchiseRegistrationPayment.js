@@ -32,7 +32,7 @@ const franchiseRegistrationPaymentSchema = new mongoose.Schema(
     gatewayName: {
       type: String,
       enum: ALL_PAYMENT_GATEWAYS,
-      default: "PHONEPE",
+      default: "RAZORPAY",
       index: true,
     },
     paymentMode: {

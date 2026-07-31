@@ -150,8 +150,9 @@ export async function initiateFranchiseRegistrationPayment({
   }
 
   const paymentMode =
-    cfg.registrationPaymentMode === FRANCHISE_PAYMENT_MODE.PHONEPE
-      ? FRANCHISE_PAYMENT_MODE.PHONEPE
+    cfg.registrationPaymentMode === FRANCHISE_PAYMENT_MODE.RAZORPAY ||
+    cfg.registrationPaymentMode === "phonepe"
+      ? FRANCHISE_PAYMENT_MODE.RAZORPAY
       : FRANCHISE_PAYMENT_MODE.MANUAL_QR;
   const isManualQr = paymentMode === FRANCHISE_PAYMENT_MODE.MANUAL_QR;
   const effectiveIdempotencyKey =
@@ -165,6 +166,7 @@ export async function initiateFranchiseRegistrationPayment({
     return {
       paymentId: String(existingForKey._id),
       merchantOrderId: existingForKey.gatewayOrderId,
+      checkout: existingForKey.rawGatewayResponse?.checkout || null,
       redirectUrl: existingForKey.rawGatewayResponse?.redirectUrl,
       paymentMode: existingForKey.paymentMode,
       duplicate: true,
@@ -179,11 +181,16 @@ export async function initiateFranchiseRegistrationPayment({
     customer: userId,
     status: { $in: openStatuses },
   }).sort({ createdAt: -1 });
-  if (existingOpen?.rawGatewayResponse?.redirectUrl) {
+  if (
+    existingOpen &&
+    (existingOpen.rawGatewayResponse?.checkout?.orderId ||
+      existingOpen.rawGatewayResponse?.redirectUrl)
+  ) {
     return {
       paymentId: String(existingOpen._id),
       merchantOrderId: existingOpen.gatewayOrderId,
-      redirectUrl: existingOpen.rawGatewayResponse.redirectUrl,
+      checkout: existingOpen.rawGatewayResponse?.checkout || null,
+      redirectUrl: existingOpen.rawGatewayResponse?.redirectUrl,
       paymentMode,
       manualQr: isManualQr ? await getManualQrConfig() : undefined,
       duplicate: true,
@@ -252,6 +259,7 @@ export async function initiateFranchiseRegistrationPayment({
     merchantOrderId,
     amountPaise,
     redirectUrl,
+    description: `Franchise registration ${merchantOrderId}`,
   });
 
   const payment = await FranchiseRegistrationPayment.create({
@@ -259,20 +267,24 @@ export async function initiateFranchiseRegistrationPayment({
     customer: userId,
     gatewayName: provider.providerName,
     gatewayOrderId: merchantOrderId,
-    paymentMode: FRANCHISE_PAYMENT_MODE.PHONEPE,
+    paymentMode: FRANCHISE_PAYMENT_MODE.RAZORPAY,
     amountPaise,
     status: PAYMENT_STATUS.PENDING,
     registrationPriceSnapshot: price,
     territoryPincodesSnapshot: pincodes,
     addressSnapshot,
     idempotencyKey: effectiveIdempotencyKey,
-    rawGatewayResponse: { redirectUrl: initResult.redirectUrl, merchantOrderId },
+    rawGatewayResponse: {
+      checkout: initResult.checkout,
+      razorpayOrderId: initResult.gatewayOrderId,
+      merchantOrderId,
+    },
     statusHistory: [
       {
         fromStatus: PAYMENT_STATUS.CREATED,
         toStatus: PAYMENT_STATUS.PENDING,
         source: PAYMENT_EVENT_SOURCE.SYSTEM,
-        reason: "Franchise registration PhonePe initiated",
+        reason: "Franchise registration Razorpay initiated",
       },
     ],
   });
@@ -280,8 +292,8 @@ export async function initiateFranchiseRegistrationPayment({
   return {
     paymentId: String(payment._id),
     merchantOrderId,
-    redirectUrl: initResult.redirectUrl,
-    paymentMode: FRANCHISE_PAYMENT_MODE.PHONEPE,
+    checkout: initResult.checkout,
+    paymentMode: FRANCHISE_PAYMENT_MODE.RAZORPAY,
     duplicate: false,
   };
 }
@@ -299,7 +311,14 @@ export async function verifyFranchiseRegistrationPaymentStatus({ merchantOrderId
     throw err;
   }
   const provider = getActivePaymentProvider();
-  const statusResp = await provider.getPaymentStatus({ merchantOrderId });
+  const razorpayOrderId =
+    payment.rawGatewayResponse?.razorpayOrderId ||
+    payment.rawGatewayResponse?.checkout?.orderId ||
+    null;
+  const statusResp = await provider.getPaymentStatus({
+    merchantOrderId,
+    razorpayOrderId,
+  });
   const nextStatus = provider.mapStatusToInternal(statusResp.state);
   await transitionStatus(payment, {
     nextStatus,
@@ -310,6 +329,64 @@ export async function verifyFranchiseRegistrationPaymentStatus({ merchantOrderId
   });
   if (nextStatus === PAYMENT_STATUS.CAPTURED) await handleCaptured(payment);
   return { payment, status: nextStatus, orderKind: "franchise_registration" };
+}
+
+export async function verifyFranchiseRegistrationCheckoutCallback({
+  merchantOrderId,
+  razorpayOrderId,
+  razorpayPaymentId,
+  razorpaySignature,
+  userId,
+}) {
+  const payment = await FranchiseRegistrationPayment.findOne({
+    gatewayOrderId: merchantOrderId,
+  });
+  if (!payment) {
+    const err = new Error("Registration payment not found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (userId && String(payment.customer) !== String(userId)) {
+    const err = new Error("Not authorized");
+    err.statusCode = 403;
+    throw err;
+  }
+  if (payment.paymentMode === FRANCHISE_PAYMENT_MODE.MANUAL_QR) {
+    const err = new Error("Manual QR payments cannot use checkout callback");
+    err.statusCode = 422;
+    throw err;
+  }
+
+  const provider = getActivePaymentProvider();
+  const ok = provider.verifyCheckoutSignature({
+    razorpayOrderId,
+    razorpayPaymentId,
+    razorpaySignature,
+  });
+  if (!ok) {
+    const err = new Error("Invalid payment signature");
+    err.statusCode = 401;
+    err.code = "PAYMENT_SIGNATURE_INVALID";
+    throw err;
+  }
+
+  await transitionStatus(payment, {
+    nextStatus: PAYMENT_STATUS.CAPTURED,
+    source: PAYMENT_EVENT_SOURCE.CLIENT_VERIFY,
+    reason: `${provider.providerName} checkout signature verified`,
+    gatewayPaymentId: razorpayPaymentId,
+    rawGatewayResponse: {
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+    },
+  });
+  await handleCaptured(payment);
+  return {
+    payment,
+    status: PAYMENT_STATUS.CAPTURED,
+    orderKind: "franchise_registration",
+  };
 }
 
 export async function processFranchiseRegistrationWebhook({ payment, decoded }) {

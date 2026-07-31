@@ -52,17 +52,17 @@ const mlmJoiningPaymentSchema = new mongoose.Schema(
       type: String,
       enum: ALL_PAYMENT_GATEWAYS,
       required: true,
-      default: "PHONEPE",
+      default: "RAZORPAY",
       index: true,
     },
     // Snapshot of `Setting.mlm.joiningPaymentMode` at intent time so a
     // mid-flight admin toggle never reroutes an open payment from one
-    // flow to the other. The PhonePe code path treats every legacy row
-    // (where this field is missing) as `phonepe` for back-compat.
+    // flow to the other. Gateway path treats legacy rows (where this
+    // field is missing) as `razorpay` for back-compat.
     paymentMode: {
       type: String,
       enum: ALL_MLM_PAYMENT_MODES,
-      default: MLM_PAYMENT_MODE.PHONEPE,
+      default: MLM_PAYMENT_MODE.RAZORPAY,
       index: true,
     },
     gatewayOrderId: {
@@ -151,7 +151,7 @@ const mlmJoiningPaymentSchema = new mongoose.Schema(
     },
     // Manual-QR flow only — out-of-band proof submitted by the customer
     // through `/mlm/manual-payment/:paymentId`. Stays null for the
-    // PhonePe gateway code path.
+    // Gateway payment proof fields.
     manualPaymentDetails: {
       transactionId: {
         type: String,
@@ -165,7 +165,7 @@ const mlmJoiningPaymentSchema = new mongoose.Schema(
       submittedAt: { type: Date, default: null },
     },
     // Manual-QR flow only — admin who actioned the review and when.
-    // Untouched for PhonePe payments (those auto-capture via webhook).
+    // Untouched for gateway payments (those auto-capture via webhook).
     reviewedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

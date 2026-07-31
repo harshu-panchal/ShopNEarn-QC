@@ -99,7 +99,7 @@ const PaymentStatusPage = () => {
 
             if (isNetworkError) {
                 setStatus("timeout");
-                setError("Cannot reach the backend. If PhonePe opened this on another device/app, localhost URLs will not work.");
+                setError("Cannot reach the backend. If payment opened this on another device/app, localhost URLs will not work.");
                 if (pollInterval.current) clearInterval(pollInterval.current);
                 return;
             }
@@ -229,7 +229,7 @@ const PaymentStatusPage = () => {
                         {status === "verifying" && (
                             <motion.div key="text-verifying" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                                 <h1 className="text-2xl font-black text-slate-800 mb-2 uppercase tracking-tight">Verifying Payment</h1>
-                                <p className="text-slate-500 text-sm font-medium">Please wait while we confirm your transaction with PhonePe. Do not refresh or go back.</p>
+                                <p className="text-slate-500 text-sm font-medium">Please wait while we confirm your transaction. Do not refresh or go back.</p>
                                 <div className="mt-6 flex justify-center gap-1">
                                     {[0, 1, 2].map((i) => (
                                         <motion.div
@@ -295,7 +295,7 @@ const PaymentStatusPage = () => {
                             <motion.div key="text-failure" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                                 <h1 className="text-2xl font-[1000] text-slate-800 mb-2 uppercase tracking-tight">Payment Failed</h1>
                                 <p className="text-rose-600 text-sm font-black mb-6 uppercase tracking-wider">{error || "Transaction Rejected"}</p>
-                                <p className="text-slate-500 text-sm font-medium mb-8">Oops! Something went wrong with the transaction. Your money (if debited) will be refunded automatically by PhonePe.</p>
+                                <p className="text-slate-500 text-sm font-medium mb-8">Oops! Something went wrong with the transaction. If money was debited, it will be refunded to your wallet after order cancellation or return processing.</p>
                                 <div className="flex flex-col gap-3">
                                     <Button 
                                         onClick={() => navigate('/checkout')}
@@ -321,7 +321,7 @@ const PaymentStatusPage = () => {
                                 <div className="bg-amber-50 rounded-2xl p-4 mb-8 border border-amber-100 flex items-start gap-3 text-left">
                                     <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={18} />
                                     <p className="text-xs text-amber-800 font-medium leading-relaxed">
-                                        We haven't received confirmation from PhonePe yet. This sometimes happens due to bank delays. Please check your order history in a few minutes.
+                                        We haven't received confirmation from the payment gateway yet. This sometimes happens due to bank delays. Please check your order history in a few minutes.
                                     </p>
                                 </div>
                                 <div className="flex flex-col gap-3">

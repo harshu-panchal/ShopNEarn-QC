@@ -14,6 +14,13 @@ export const verifyPaymentClientSchema = Joi.object({
   transactionId: Joi.string().trim().optional(),
 }).or("orderRef", "orderId");
 
+export const verifyCheckoutCallbackSchema = Joi.object({
+  merchantOrderId: Joi.string().trim().min(4).max(128).required(),
+  razorpay_order_id: Joi.string().trim().required(),
+  razorpay_payment_id: Joi.string().trim().required(),
+  razorpay_signature: Joi.string().trim().required(),
+});
+
 export const refundSchema = Joi.object({
     merchantOrderId: Joi.string().trim().required(),
     amount: Joi.number().min(0.01).required(),

@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import crypto from "crypto";
 
 const mockOrderFindOne = jest.fn();
 const mockOrderFindById = jest.fn();
@@ -16,9 +17,9 @@ const mockHandleOnlineOrderFinance = jest.fn();
 const mockAfterPlaceOrderV2 = jest.fn();
 const mockReleaseReservedStockForOrder = jest.fn();
 
-const mockPhonePePay = jest.fn();
-const mockPhonePeGetOrderStatus = jest.fn();
-const mockPhonePeValidateCallback = jest.fn();
+const mockOrdersCreate = jest.fn();
+const mockOrdersFetch = jest.fn();
+const mockOrdersFetchPayments = jest.fn();
 
 jest.unstable_mockModule("../app/models/order.js", () => ({
   default: {
@@ -56,56 +57,33 @@ jest.unstable_mockModule("../app/services/stockService.js", () => ({
   releaseReservedStockForOrder: mockReleaseReservedStockForOrder,
 }));
 
-jest.unstable_mockModule("@phonepe-pg/pg-sdk-node", () => ({
-  Env: {
-    PRODUCTION: "PRODUCTION",
-    SANDBOX: "SANDBOX",
-  },
-  StandardCheckoutClient: {
-    getInstance: jest.fn(() => ({
-      pay: mockPhonePePay,
-      getOrderStatus: mockPhonePeGetOrderStatus,
-      validateCallback: mockPhonePeValidateCallback,
-    })),
-  },
-  StandardCheckoutPayRequest: {
-    builder: jest.fn(() => {
-      const request = {};
-      return {
-        merchantOrderId(value) {
-          request.merchantOrderId = value;
-          return this;
-        },
-        amount(value) {
-          request.amount = value;
-          return this;
-        },
-        redirectUrl(value) {
-          request.redirectUrl = value;
-          return this;
-        },
-        build() {
-          return request;
-        },
-      };
-    }),
-  },
+jest.unstable_mockModule("razorpay", () => ({
+  default: jest.fn().mockImplementation(() => ({
+    orders: {
+      create: mockOrdersCreate,
+      fetch: mockOrdersFetch,
+      fetchPayments: mockOrdersFetchPayments,
+    },
+  })),
 }));
 
 const {
   createPaymentOrderForOrderRef,
-  processPhonePeWebhook,
+  processPaymentWebhook,
+  verifyCheckoutPaymentCallback,
 } = await import("../app/services/paymentService.js");
+const {
+  __resetPaymentProviderForTests,
+} = await import("../app/services/payment/providerRegistry.js");
 
-describe("Phase 0 payment hardening", () => {
+describe("Phase 0 payment hardening (Razorpay)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    __resetPaymentProviderForTests();
+    process.env.PAYMENT_PROVIDER = "razorpay";
     process.env.RAZORPAY_KEY_ID = "rzp_test_key";
     process.env.RAZORPAY_KEY_SECRET = "rzp_test_secret";
-    process.env.RAZORPAY_WEBHOOK_SECRET = "rzp_wh_secret";
-    process.env.PHONEPE_CLIENT_ID = "phonepe-client";
-    process.env.PHONEPE_CLIENT_SECRET = "phonepe-secret";
-    process.env.PHONEPE_CLIENT_VERSION = "1";
+    process.env.RAZORPAY_WEBHOOK_SECRET = "whsec_test";
     process.env.FRONTEND_URL = "https://frontend.test";
 
     mockPaymentFindOne.mockImplementation((query) => {
@@ -130,20 +108,29 @@ describe("Phase 0 payment hardening", () => {
       paymentBreakdown: { grandTotal: 499 },
     });
     mockPaymentCountDocuments.mockResolvedValue(0);
-    mockPhonePePay.mockResolvedValue({
-      redirectUrl: "https://pay.test/checkout",
+    mockOrdersCreate.mockResolvedValue({
+      id: "order_RzpTest1",
+      amount: 49900,
+      currency: "INR",
+      status: "created",
     });
     mockPaymentCreate.mockResolvedValue({
       _id: "payment-1",
       publicOrderId: "ORD-20260325-ABC123",
       gatewayName: "RAZORPAY",
-      gatewayOrderId: "order_gateway_1",
+      gatewayOrderId: "ORD-20260325-ABC123-A1",
       amount: 49900,
       currency: "INR",
       status: "PENDING",
       attemptCount: 1,
       rawGatewayResponse: {
-        redirectUrl: "https://pay.test/checkout",
+        razorpayOrderId: "order_RzpTest1",
+        checkout: {
+          keyId: "rzp_test_key",
+          orderId: "order_RzpTest1",
+          amount: 49900,
+          currency: "INR",
+        },
       },
     });
 
@@ -154,12 +141,15 @@ describe("Phase 0 payment hardening", () => {
       correlationId: "corr-1",
     });
 
-    expect(mockPhonePePay).toHaveBeenCalledWith(
+    expect(mockOrdersCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: 49900,
+        currency: "INR",
+        payment_capture: 1,
       }),
     );
     expect(result.payment.amount).toBe(49900);
+    expect(result.checkout?.orderId).toBe("order_RzpTest1");
   });
 
   it("blocks payment initiation for wrong user or invalid order state", async () => {
@@ -203,21 +193,29 @@ describe("Phase 0 payment hardening", () => {
   it("treats duplicate webhook event id as idempotent", async () => {
     mockWebhookEventCreate.mockRejectedValueOnce({ code: 11000 });
 
-    const callbackPayload = Buffer.from(
-      JSON.stringify({
-        state: "COMPLETED",
-        merchantOrderId: "gateway-order-1",
-        transactionId: "pay_1",
-      }),
-    ).toString("base64");
+    const bodyObj = {
+      id: "evt_duplicate_1",
+      event: "payment.captured",
+      payload: {
+        payment: {
+          entity: {
+            id: "pay_1",
+            status: "captured",
+            order_id: "order_RzpTest1",
+            notes: { merchantOrderId: "gateway-order-1" },
+          },
+        },
+      },
+    };
+    const rawBody = Buffer.from(JSON.stringify(bodyObj));
+    const signature = crypto
+      .createHmac("sha256", "whsec_test")
+      .update(rawBody)
+      .digest("hex");
 
-    const payload = Buffer.from(JSON.stringify({ response: callbackPayload }));
-    mockPhonePeValidateCallback.mockResolvedValue(true);
-
-    const result = await processPhonePeWebhook({
-      rawBody: payload,
-      authorization: "phonepe-auth",
-      eventId: "event-duplicate-1",
+    const result = await processPaymentWebhook({
+      rawBody,
+      signature,
       correlationId: "corr-webhook",
     });
 
@@ -228,5 +226,26 @@ describe("Phase 0 payment hardening", () => {
       }),
     );
     expect(mockOrderUpdateOne).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid checkout signatures", async () => {
+    mockPaymentFindOne.mockResolvedValue({
+      _id: "payment-1",
+      gatewayOrderId: "MERCHANT-1",
+      customer: "user-1",
+      status: "PENDING",
+      rawGatewayResponse: { razorpayOrderId: "order_abc" },
+      save: jest.fn(),
+    });
+
+    await expect(
+      verifyCheckoutPaymentCallback({
+        merchantOrderId: "MERCHANT-1",
+        razorpayOrderId: "order_abc",
+        razorpayPaymentId: "pay_abc",
+        razorpaySignature: "not-a-valid-signature",
+        userId: "user-1",
+      }),
+    ).rejects.toMatchObject({ statusCode: 401 });
   });
 });

@@ -128,6 +128,8 @@ export const customerApi = {
   createPaymentOrder: (data) =>
     axiosInstance.post("/payments/create-order", data),
   verifyPaymentStatus: (id) => axiosInstance.get(`/payments/status/${id}`),
+  verifyPaymentCallback: (data) =>
+    axiosInstance.post("/payments/verify-callback", data),
 
   // Support & Reviews
   getProductReviews: (productId) =>

@@ -7,6 +7,7 @@ import { useAuth } from "../../../core/context/AuthContext";
 import { useWishlist } from "../context/WishlistContext";
 import { customerApi } from "../services/customerApi";
 import { mlmApi } from "../services/mlmApi";
+import { openRazorpayCheckout } from "@/shared/payments/openRazorpayCheckout";
 import { useLocation as useAppLocation } from "../context/LocationContext";
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 import {
@@ -1032,9 +1033,30 @@ const CheckoutPage = () => {
               orderRef: paymentRef,
               orderId: mainOrderId,
             });
-            if (paymentRes.data.success && paymentRes.data.result?.redirectUrl) {
+            const checkout = paymentRes.data.result?.checkout;
+            const merchantOrderId = paymentRes.data.result?.merchantOrderId;
+            if (paymentRes.data.success && checkout?.orderId) {
               clearCart();
-              window.location.href = paymentRes.data.result.redirectUrl;
+              setIsPlacingOrder(false);
+              await openRazorpayCheckout({
+                checkout,
+                merchantOrderId,
+                onSuccess: async (rzpResponse) => {
+                  await customerApi.verifyPaymentCallback({
+                    merchantOrderId,
+                    razorpay_order_id: rzpResponse.razorpay_order_id,
+                    razorpay_payment_id: rzpResponse.razorpay_payment_id,
+                    razorpay_signature: rzpResponse.razorpay_signature,
+                  });
+                  navigate(
+                    `/payment-status?merchantOrderId=${encodeURIComponent(merchantOrderId)}`,
+                    { replace: true },
+                  );
+                },
+                onDismiss: () => {
+                  navigate(`/orders/${mainOrderId}`);
+                },
+              });
               return;
             } else {
               throw new Error(
@@ -1043,6 +1065,10 @@ const CheckoutPage = () => {
             }
           } catch (payError) {
             setIsPlacingOrder(false);
+            if (payError?.code === "PAYMENT_DISMISSED") {
+              navigate(`/orders/${mainOrderId}`);
+              return;
+            }
             showToast(
               payError.message ||
                 "Order created but payment gateway failed. Please pay from order details.",

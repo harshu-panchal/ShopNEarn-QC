@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../services/mlmApi";
+import { customerApi } from "../../services/customerApi";
+import { openRazorpayCheckout } from "@/shared/payments/openRazorpayCheckout";
 import { buildBinaryPairHint, isTeamLegWeaker } from "@shared/utils/mlmBinaryDisplay";
 import UpgradePlanBModal from "./UpgradePlanBModal";
 
@@ -120,10 +122,9 @@ const NotMemberView = ({ data, navigate }) => {
     if (joining) return;
     if (!canJoin) {
       if (hasOpenIntent) {
-        // Resume — route the customer back to the manual page or
-        // wait for review. Should not normally reach here as the
-        // banner CTA fires first.
-        if (pending.redirectUrl) {
+        if (pending.paymentId && pending.paymentMode === "manual_qr") {
+          navigate(`/mlm/manual-payment/${pending.paymentId}`);
+        } else if (pending.redirectUrl) {
           window.location.assign(pending.redirectUrl);
         }
         return;
@@ -138,18 +139,45 @@ const NotMemberView = ({ data, navigate }) => {
       const redirectUrl = payload?.redirectUrl;
       const paymentMode = payload?.paymentMode;
       const paymentId = payload?.paymentId;
-      if (!redirectUrl) {
-        throw new Error("Payment gateway did not return a redirect URL.");
-      }
+      const checkout = payload?.checkout;
+      const merchantOrderId = payload?.merchantOrderId;
+
       if (paymentMode === "manual_qr" && paymentId) {
-        // Stay in-app for the manual flow — don't trigger a hard
-        // window.location.assign which would unmount the SPA.
         navigate(`/mlm/manual-payment/${paymentId}`);
         return;
       }
-      // PhonePe path — hand off the browser.
-      window.location.assign(redirectUrl);
+
+      if (checkout?.orderId) {
+        await openRazorpayCheckout({
+          checkout,
+          merchantOrderId,
+          onSuccess: async (rzpResponse) => {
+            await customerApi.verifyPaymentCallback({
+              merchantOrderId,
+              razorpay_order_id: rzpResponse.razorpay_order_id,
+              razorpay_payment_id: rzpResponse.razorpay_payment_id,
+              razorpay_signature: rzpResponse.razorpay_signature,
+            });
+            navigate(
+              `/payment-status?merchantOrderId=${encodeURIComponent(merchantOrderId)}`,
+              { replace: true },
+            );
+          },
+        });
+        return;
+      }
+
+      if (redirectUrl) {
+        window.location.assign(redirectUrl);
+        return;
+      }
+
+      throw new Error("Payment gateway did not return a checkout session.");
     } catch (err) {
+      if (err?.code === "PAYMENT_DISMISSED") {
+        setJoining(false);
+        return;
+      }
       const message =
         err?.response?.data?.message ||
         err?.message ||

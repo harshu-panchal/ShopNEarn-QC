@@ -163,12 +163,11 @@ export const ALL_MLM_RETURN_CLAWBACK_MODES = Object.values(
  * MLM joining payment mode. Controls which gateway code path
  * `mlmJoiningPaymentService.initiateJoiningPayment` takes.
  *
- *  - `phonepe`    — production flow: PhonePe-pg checkout, automatic
- *    activation on webhook capture.
- *  - `manual_qr`  — temporary fallback used while PhonePe KYC is
- *    pending. Customer scans an admin-uploaded UPI QR, pays out-of-band,
- *    and submits a transaction id + screenshot. Admin manually approves
- *    or rejects in `/admin/mlm/joining-reviews`.
+ *  - `razorpay`   — production flow: Razorpay Standard Checkout, automatic
+ *    activation on webhook/signature capture.
+ *  - `manual_qr`  — fallback. Customer scans an admin-uploaded UPI QR, pays
+ *    out-of-band, and submits a transaction id + screenshot. Admin manually
+ *    approves or rejects in `/admin/mlm/joining-reviews`.
  *
  * The active mode is read from `Setting.mlm.joiningPaymentMode` at
  * intent-creation time and snapshotted on the `MlmJoiningPayment` row,
@@ -176,7 +175,7 @@ export const ALL_MLM_RETURN_CLAWBACK_MODES = Object.values(
  */
 export const MLM_PAYMENT_MODE = {
   MANUAL_QR: "manual_qr",
-  PHONEPE: "phonepe",
+  RAZORPAY: "razorpay",
 };
 export const ALL_MLM_PAYMENT_MODES = Object.values(MLM_PAYMENT_MODE);
 
@@ -249,9 +248,7 @@ export const MLM_DEFAULTS = Object.freeze({
   joiningPackageShoppingWalletCredit: 5000,
 
   // Joining payment mode toggle. See `MLM_PAYMENT_MODE`. Defaults to
-  // `manual_qr` because the temporary UPI-QR flow is the production
-  // mode while PhonePe KYC verification is pending. Switch to
-  // `phonepe` once KYC clears.
+  // `manual_qr`. Switch to `razorpay` to use Standard Checkout.
   joiningPaymentMode: "manual_qr",
 
   // Manual-QR config. Empty `imageUrl` falls back to the bundled

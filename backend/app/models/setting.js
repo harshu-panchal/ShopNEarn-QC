@@ -233,8 +233,7 @@ const settingSchema = new mongoose.Schema(
                 min: 0,
             },
             // Joining payment mode toggle. `manual_qr` keeps the
-            // PhonePe gateway code path completely dormant so the
-            // app stays functional during KYC delays.
+            // Razorpay gateway code path dormant when desired.
             joiningPaymentMode: {
                 type: String,
                 enum: ALL_MLM_PAYMENT_MODES,

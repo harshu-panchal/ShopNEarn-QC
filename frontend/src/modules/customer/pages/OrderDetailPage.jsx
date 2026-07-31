@@ -30,6 +30,7 @@ import {
   Network,
 } from "lucide-react";
 import { customerApi } from "../services/customerApi";
+import { openRazorpayCheckout } from "@/shared/payments/openRazorpayCheckout";
 import { toast } from "sonner";
 import { subscribeToOrderLocation, subscribeToOrderTrail, subscribeToOrderRoute } from "@/core/services/trackingClient";
 import {
@@ -743,12 +744,30 @@ const OrderDetailPage = () => {
       const response = await customerApi.createPaymentOrder({
         orderRef: paymentRef,
       });
-      if (response.data.success && response.data.result?.redirectUrl) {
-        window.location.href = response.data.result.redirectUrl;
+      const checkout = response.data.result?.checkout;
+      const merchantOrderId = response.data.result?.merchantOrderId;
+      if (response.data.success && checkout?.orderId) {
+        await openRazorpayCheckout({
+          checkout,
+          merchantOrderId,
+          onSuccess: async (rzpResponse) => {
+            await customerApi.verifyPaymentCallback({
+              merchantOrderId,
+              razorpay_order_id: rzpResponse.razorpay_order_id,
+              razorpay_payment_id: rzpResponse.razorpay_payment_id,
+              razorpay_signature: rzpResponse.razorpay_signature,
+            });
+            navigate(
+              `/payment-status?merchantOrderId=${encodeURIComponent(merchantOrderId)}`,
+              { replace: true },
+            );
+          },
+        });
       } else {
         toast.error(response.data.message || "Failed to initiate payment");
       }
     } catch (err) {
+      if (err?.code === "PAYMENT_DISMISSED") return;
       console.error("[OrderDetailPage] Retry payment error:", err);
       toast.error(
         err?.response?.data?.message ||

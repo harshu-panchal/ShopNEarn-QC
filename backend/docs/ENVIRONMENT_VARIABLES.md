@@ -131,6 +131,16 @@ Redis is **mandatory in production** (`NODE_ENV=production`). Startup fails if n
 | `API_URLENCODED_LIMIT` | `1mb` | No | URL-encoded body size limit |
 | `PAYMENT_WEBHOOK_MAX_PAYLOAD` | `1mb` | No | Webhook payload size limit |
 
+## Payments (Razorpay)
+
+| Variable | Default | Required | Description |
+|----------|---------|----------|-------------|
+| `PAYMENT_PROVIDER` | `razorpay` | No | Active payment adapter (`razorpay`) |
+| `RAZORPAY_KEY_ID` | — | Yes (for online pay) | Razorpay key id |
+| `RAZORPAY_KEY_SECRET` | — | Yes (for online pay) | Razorpay key secret (also verifies Checkout.js signatures) |
+| `RAZORPAY_WEBHOOK_SECRET` | — | No | Optional; only if enabling Dashboard webhooks. Leave unset to use checkout signature verify only |
+| `RAZORPAY_CHECKOUT_NAME` | `ShopAndEarn` | No | Display name on Checkout.js |
+
 ## Production Validation Rules
 
 At startup with `NODE_ENV=production`, the following are enforced:

@@ -463,7 +463,10 @@ export const getMyMembership = async (req, res) => {
         joiningPackageShoppingWalletCredit:
           cfg.joiningPackageShoppingWalletCredit,
         joiningPaymentMode:
-          cfg.joiningPaymentMode === "phonepe" ? "phonepe" : "manual_qr",
+          cfg.joiningPaymentMode === "razorpay" ||
+          cfg.joiningPaymentMode === "phonepe"
+            ? "razorpay"
+            : "manual_qr",
         withdrawalMinAmount: cfg.withdrawalMinAmount,
         withdrawalAdminChargePercent: cfg.withdrawalAdminChargePercent,
         withdrawalGstOnAdminChargePercent:
@@ -777,15 +780,16 @@ export const claimHomeShopping = async (req, res) => {
  * POST /api/customer/mlm/join/initiate
  *
  * One-click MLM joining: creates a dedicated MlmJoiningPayment row,
- * initiates the PhonePe checkout, and returns a redirect URL. No
- * Order or Product is involved — joining is a direct subscription
- * purchase whose lifecycle lives entirely in `MlmJoiningPayment`.
+ * initiates Razorpay Standard Checkout (or manual QR), and returns a
+ * checkout session. No Order or Product is involved — joining is a
+ * direct subscription purchase whose lifecycle lives entirely in
+ * `MlmJoiningPayment`.
  *
  * Activation happens via the payment-CAPTURED hook
- * (`processPhonePeWebhook` / `verifyPhonePePaymentStatus` →
+ * (`processPaymentWebhook` / `verifyCheckoutPaymentCallback` →
  * `mlmJoiningPaymentService` → `activateMembershipFromJoiningPayment`).
  *
- * Response: `{ paymentId, merchantOrderId, redirectUrl, duplicate }`.
+ * Response: `{ paymentId, merchantOrderId, checkout, paymentMode, duplicate }`.
  */
 export const initiateJoin = async (req, res) => {
   try {
