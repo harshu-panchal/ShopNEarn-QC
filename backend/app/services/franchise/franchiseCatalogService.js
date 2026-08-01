@@ -20,11 +20,17 @@ export async function listHubCatalogProducts({ page = 1, limit = 50, q } = {}) {
 
   const query = {
     sellerId: hubId,
-    status: "active",
   };
   if (q) {
     const rx = new RegExp(String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-    query.$or = [{ name: rx }, { description: rx }];
+    query.$or = [
+      { name: rx },
+      { productName: rx },
+      { title: rx },
+      { description: rx },
+      { sku: rx },
+      { brand: rx },
+    ];
   }
 
   const [items, total] = await Promise.all([
