@@ -160,9 +160,6 @@ export async function getPlanAPairBonusForPairIndex(pairIndex, opts) {
   );
   if (tier) return Number(tier.bonusAmount) || 0;
 
-  const fixedAfter = Number(cfg.planAPairBonusFixedAfterPair) || 0;
-  if (idx > fixedAfter) return Number(cfg.planAPairBonusFixedAmount) || 0;
-
   return 0;
 }
 

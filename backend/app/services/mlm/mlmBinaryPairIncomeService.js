@@ -399,7 +399,8 @@ export async function getBinaryPairIncomePreview(membership, { session } = {}) {
   if (isTopup) {
     nextPairBonusAmount = Number(cfg.binaryTopupPairIncome?.pairIncome) || 550;
   } else {
-    nextPairBonusAmount = await getPlanAPairBonusForPairIndex(nextPairIndex);
+    const explicitBonus = await getPlanAPairBonusForPairIndex(nextPairIndex);
+    nextPairBonusAmount = explicitBonus > 0 ? explicitBonus : (cfg.binaryPairIncomeTiers?.find(t => directCount >= t.minDirectCount)?.pairIncome || 0);
   }
 
   return {
@@ -502,7 +503,10 @@ export async function computeAndCreditBinaryTeamPairIncome({
 
     let currentPairIncome = defaultPairIncome;
     if (!isTopup) {
-      currentPairIncome = await getPlanAPairBonusForPairIndex(pairIndex);
+      const explicitBonus = await getPlanAPairBonusForPairIndex(pairIndex);
+      if (explicitBonus > 0) {
+        currentPairIncome = explicitBonus;
+      }
     }
 
     if (currentPairIncome <= 0) continue;
