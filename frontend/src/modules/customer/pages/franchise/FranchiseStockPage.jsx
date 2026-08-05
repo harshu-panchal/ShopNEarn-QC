@@ -111,7 +111,20 @@ const FranchiseStockPage = () => {
                 </thead>
                 <tbody>
                   {items.map((row) => {
-                    const price = getProductPrice(row.product);
+                    let price = getProductPrice(row.product);
+                    const vSku = String(row.variantSku || "").trim();
+                    const vName = String(row.variantName || "").trim();
+
+                    if (vSku && Array.isArray(row.product?.variants)) {
+                      const vHit = row.product.variants.find(
+                        (v) => String(v.sku || "").trim() === vSku || String(v.name || "").trim() === vSku
+                      );
+                      if (vHit) {
+                        const vp = Number(vHit.salePrice) > 0 ? Number(vHit.salePrice) : Number(vHit.price);
+                        if (vp > 0) price = vp;
+                      }
+                    }
+
                     const qty = Number(row.quantity) || 0;
                     return (
                       <tr key={row._id} className="border-t border-slate-100">
@@ -119,16 +132,21 @@ const FranchiseStockPage = () => {
                           <div className="flex items-center gap-3">
                             <ProductThumb product={row.product} size="sm" />
                             <div>
-                              <p className="font-semibold text-slate-900">
+                              <p className="font-semibold text-slate-900 flex items-center gap-1.5">
                                 {row.product?.name || "Product"}
+                                {vName && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                    {vName}
+                                  </span>
+                                )}
                               </p>
-                              <p className="text-[10px] text-slate-400 font-mono truncate max-w-[140px]">
-                                {row.productId}
+                              <p className="text-[10px] text-slate-400 font-mono truncate max-w-[180px]">
+                                {vSku ? `SKU: ${vSku}` : `ID: ${row.productId}`}
                               </p>
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-right">{formatINR(price)}</td>
+                        <td className="px-4 py-3 text-right font-medium">{formatINR(price)}</td>
                         <td className="px-4 py-3 text-right">
                           <span className="inline-flex items-center gap-1 font-black text-slate-900">
                             <Package size={14} className="text-indigo-500" />

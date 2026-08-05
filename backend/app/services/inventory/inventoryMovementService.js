@@ -26,13 +26,36 @@ export async function decrementHubProductStock({
   variantSku = null,
 }) {
   const qty = Math.max(1, Number(quantity) || 0);
-  const filter = { _id: productId, sellerId, stock: { $gte: qty } };
+  const filter = { _id: productId, sellerId };
+  const update = { $inc: { stock: -qty } };
+  const options = { new: true, session };
 
-  const updated = await Product.findOneAndUpdate(
-    filter,
-    { $inc: { stock: -qty } },
-    { new: true, session },
-  );
+  const normVariantSku = String(variantSku || "").trim();
+  if (normVariantSku) {
+    filter.variants = {
+      $elemMatch: {
+        $or: [{ sku: normVariantSku }, { name: normVariantSku }],
+        stock: { $gte: qty },
+      },
+    };
+    update.$inc["variants.$[v].stock"] = -qty;
+    options.arrayFilters = [
+      { $or: [{ "v.sku": normVariantSku }, { "v.name": normVariantSku }] },
+    ];
+  } else {
+    filter.stock = { $gte: qty };
+  }
+
+  let updated = await Product.findOneAndUpdate(filter, update, options);
+
+  if (!updated && normVariantSku) {
+    // Fallback attempt: if variant stock was not nested or root stock check failed
+    delete filter.variants;
+    delete update.$inc["variants.$[v].stock"];
+    delete options.arrayFilters;
+    filter.stock = { $gte: qty };
+    updated = await Product.findOneAndUpdate(filter, update, options);
+  }
 
   if (!updated) {
     const product = await Product.findOne({ _id: productId }).select("name stock").lean();
@@ -54,7 +77,7 @@ export async function decrementHubProductStock({
         note: note || `Stock out (${type})`,
         order: orderId,
         transferGroupId,
-        variantSku,
+        variantSku: normVariantSku || null,
       },
     ],
     { session },
@@ -76,15 +99,20 @@ export async function incrementFranchiseStock({
   orderId = null,
   transferGroupId = null,
   createdBy = null,
+  variantSku = "",
+  variantName = "",
 }) {
   const qty = Math.max(1, Number(quantity) || 0);
+  const normVariantSku = String(variantSku || "").trim();
+  const normVariantName = String(variantName || "").trim();
 
   const ledger = await FranchiseStockLedger.findOneAndUpdate(
-    { franchisePartnerId, productId },
+    { franchisePartnerId, productId, variantSku: normVariantSku },
     {
       $inc: { quantity: qty },
       $set: {
         note: note || "Stock movement",
+        variantName: normVariantName,
         ...(orderId ? { sourceStockOrderId: orderId } : {}),
       },
     },
@@ -103,6 +131,8 @@ export async function incrementFranchiseStock({
         order: orderId,
         transferGroupId,
         createdBy,
+        variantSku: normVariantSku || null,
+        variantName: normVariantName || null,
       },
     ],
     { session },
@@ -124,11 +154,13 @@ export async function decrementFranchiseStock({
   orderId = null,
   transferGroupId = null,
   createdBy = null,
+  variantSku = "",
 }) {
   const qty = Math.max(1, Number(quantity) || 0);
+  const normVariantSku = String(variantSku || "").trim();
 
   const ledger = await FranchiseStockLedger.findOneAndUpdate(
-    { franchisePartnerId, productId, quantity: { $gte: qty } },
+    { franchisePartnerId, productId, variantSku: normVariantSku, quantity: { $gte: qty } },
     { $inc: { quantity: -qty } },
     { new: true, session },
   );
@@ -152,6 +184,7 @@ export async function decrementFranchiseStock({
         order: orderId,
         transferGroupId,
         createdBy,
+        variantSku: normVariantSku || null,
       },
     ],
     { session },

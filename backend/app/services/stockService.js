@@ -37,29 +37,65 @@ export async function reserveStockForItems({
   for (const item of items) {
     const variantSku = String(item.variantSku || "").trim();
 
-    let updated;
+    let updated = null;
     if (variantSku) {
-      // Decrement variant stock + master stock atomically
-      // Use $elemMatch to ensure stock check and sku match on the SAME array element
-      updated = await Product.findOneAndUpdate(
-        {
-          _id: item.productId,
-          stock: { $gte: item.quantity },
-          variants: {
-            $elemMatch: {
-              sku: variantSku,
-              stock: { $gte: item.quantity },
-            },
+      // 1. Primary atomic attempt using arrayFilters with sku/name $or match
+      const filter = {
+        _id: item.productId,
+        variants: {
+          $elemMatch: {
+            $or: [{ sku: variantSku }, { name: variantSku }],
+            stock: { $gte: item.quantity },
           },
         },
-        {
-          $inc: {
-            stock: -item.quantity,
-            "variants.$.stock": -item.quantity,
-          },
+      };
+      const update = {
+        $inc: {
+          stock: -item.quantity,
+          "variants.$[v].stock": -item.quantity,
         },
-        { new: true, session },
-      );
+      };
+      const options = {
+        new: true,
+        session,
+        arrayFilters: [
+          { $or: [{ "v.sku": variantSku }, { "v.name": variantSku }] },
+        ],
+      };
+
+      updated = await Product.findOneAndUpdate(filter, update, options);
+
+      // Fallback 2: If root stock check or strict query blocked update, attempt single variant or unsynced stock fallback
+      if (!updated) {
+        const query = Product.findById(item.productId);
+        if (session) query.session(session);
+        const product = await query;
+
+        if (product && Array.isArray(product.variants) && product.variants.length > 0) {
+          const vIdx = product.variants.findIndex(
+            (v) =>
+              String(v.sku || "").trim() === variantSku ||
+              String(v.name || "").trim() === variantSku ||
+              product.variants.length === 1
+          );
+
+          if (vIdx !== -1) {
+            const vStock = Math.max(0, Number(product.variants[vIdx].stock || 0));
+            if (vStock >= item.quantity) {
+              product.variants[vIdx].stock -= item.quantity;
+              product.stock = Math.max(
+                0,
+                product.variants.reduce(
+                  (sum, v) => sum + Math.max(0, Number(v.stock || 0)),
+                  0,
+                ),
+              );
+              await product.save({ session });
+              updated = product;
+            }
+          }
+        }
+      }
     } else {
       updated = await Product.findOneAndUpdate(
         {
@@ -71,6 +107,23 @@ export async function reserveStockForItems({
         },
         { new: true, session },
       );
+
+      if (!updated) {
+        const query = Product.findById(item.productId);
+        if (session) query.session(session);
+        const product = await query;
+        if (product && Array.isArray(product.variants) && product.variants.length > 0) {
+          const variantSum = product.variants.reduce((sum, v) => sum + Math.max(0, Number(v.stock || 0)), 0);
+          if (variantSum >= item.quantity) {
+            product.stock = Math.max(0, variantSum - item.quantity);
+            if (product.variants[0]) {
+              product.variants[0].stock = Math.max(0, Number(product.variants[0].stock || 0) - item.quantity);
+            }
+            await product.save({ session });
+            updated = product;
+          }
+        }
+      }
     }
 
     if (!updated) {

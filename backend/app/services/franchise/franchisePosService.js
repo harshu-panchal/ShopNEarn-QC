@@ -21,13 +21,16 @@ import {
   OWNER_TYPE,
   LEDGER_TRANSACTION_TYPE,
 } from "../../constants/finance.js";
-import { debitWallet, getOrCreateWallet } from "../finance/walletService.js";
+import { creditWallet, debitWallet, getOrCreateWallet } from "../finance/walletService.js";
 import { listHubCatalogProducts, isHubProduct } from "./franchiseCatalogService.js";
 import { getFranchiseConfig } from "./franchiseConfigService.js";
 import { formatFranchiseAddress } from "./franchiseAddressUtils.js";
 import { getFranchisePosWalkInUserId } from "./franchisePosGuestService.js";
 import { generateUniquePublicOrderId } from "../orderIdService.js";
-import { decrementFranchiseStock } from "../inventory/inventoryMovementService.js";
+import {
+  decrementFranchiseStock,
+  incrementFranchiseStock,
+} from "../inventory/inventoryMovementService.js";
 import { freezeFinancialSnapshot } from "../finance/orderFinanceService.js";
 import { resolveSellingPrice } from "../../utils/productStockUtils.js";
 import { normalizePhoneNumber } from "../../utils/phone.js";
@@ -887,4 +890,283 @@ export async function exportPosSalesExcel(
 export async function assertPartnerCanUsePos(userId) {
   await assertPosEnabled();
   return loadActivePartnerForUser(userId);
+}
+
+export async function updatePosSale({
+  franchisePartnerId,
+  orderId,
+  userId,
+  items,
+  buyer,
+  payment,
+  reason,
+}) {
+  await assertPosEnabled();
+  const partner = await FranchisePartner.findById(franchisePartnerId);
+  if (!partner || String(partner.userId) !== String(userId)) {
+    const err = new Error("Franchise partner not found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (partner.status !== FRANCHISE_PARTNER_STATUS.ACTIVE) {
+    const err = new Error("Franchise partner account is not active");
+    err.statusCode = 403;
+    throw err;
+  }
+
+  const order = await Order.findOne({
+    orderId,
+    franchisePartnerId: partner._id,
+    isFranchisePosSale: true,
+  });
+
+  if (!order) {
+    const err = new Error("POS bill not found");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const paymentMethod = String(payment?.method || "").toLowerCase();
+  const validMethods = Object.values(FRANCHISE_POS_PAYMENT_METHOD);
+  if (!validMethods.includes(paymentMethod)) {
+    const err = new Error("Invalid POS payment method");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const { orderCustomerId, posBuyer } = await resolveBuyerCustomerId(buyer || { kind: "guest" });
+
+  if (
+    (paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.SHOPPING_WALLET ||
+      paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.EARNINGS_WALLET) &&
+    (posBuyer.kind !== FRANCHISE_POS_BUYER_KIND.REGISTERED || !posBuyer.customerId)
+  ) {
+    const err = new Error("Wallet payment requires selecting a registered customer");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const preview = await previewPosSale(partner._id, { items });
+
+  // 1. Calculate stock deltas per product between old items and new items
+  const oldItemMap = new Map();
+  for (const oldLine of order.items || []) {
+    const pId = String(oldLine.product || oldLine.productId);
+    oldItemMap.set(pId, (oldItemMap.get(pId) || 0) + Number(oldLine.quantity || 0));
+  }
+
+  const newItemMap = new Map();
+  for (const newLine of preview.lineItems) {
+    const pId = String(newLine.productId);
+    newItemMap.set(pId, (newItemMap.get(pId) || 0) + Number(newLine.quantity || 0));
+  }
+
+  const allProductIds = new Set([...oldItemMap.keys(), ...newItemMap.keys()]);
+  const stockDeltas = [];
+  for (const pId of allProductIds) {
+    const oldQty = oldItemMap.get(pId) || 0;
+    const newQty = newItemMap.get(pId) || 0;
+    const delta = newQty - oldQty;
+    if (delta !== 0) {
+      stockDeltas.push({ productId: pId, delta, oldQty, newQty });
+    }
+  }
+
+  // 2. Check available stock on hand for items with positive deltas (increased qty)
+  const onHandMap = await ledgerQtyMap(partner._id, Array.from(allProductIds));
+  for (const d of stockDeltas) {
+    if (d.delta > 0) {
+      const avail = onHandMap.get(d.productId) || 0;
+      if (avail < d.delta) {
+        const prod = preview.lineItems.find((l) => String(l.productId) === d.productId);
+        const err = new Error(
+          `Insufficient stock to increase ${prod?.name || "product"} by ${d.delta} unit(s) (on hand: ${avail})`,
+        );
+        err.statusCode = 422;
+        err.code = "INSUFFICIENT_STOCK";
+        throw err;
+      }
+    }
+  }
+
+  // 3. Financial & Wallet Reconciliation
+  const oldGrandTotal = roundCurrency(order.pricing?.total ?? order.pricing?.grandTotal ?? 0);
+  const newGrandTotal = preview.grandTotal;
+  const oldPaymentMethod = order.posPaymentMethod || order.payment?.method;
+  const oldCustomerId = order.posBuyer?.customerId ? String(order.posBuyer.customerId) : null;
+  const newCustomerId = posBuyer.customerId ? String(posBuyer.customerId) : null;
+
+  const upiRef =
+    paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.UPI_PARTNER
+      ? String(payment?.upiReference || "").trim().slice(0, 120)
+      : "";
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      // Reconcile Franchise Stock Ledgers
+      for (const d of stockDeltas) {
+        if (d.delta > 0) {
+          // Debit extra quantity
+          await decrementFranchiseStock({
+            franchisePartnerId: partner._id,
+            productId: d.productId,
+            quantity: d.delta,
+            session,
+            type: FRANCHISE_STOCK_TYPES.POS_SALE_EDIT_DEBIT,
+            note: `POS bill edit #${orderId} (+${d.delta} units)`,
+            orderId: order._id,
+            createdBy: userId,
+          });
+        } else if (d.delta < 0) {
+          // Restore reduced quantity
+          await incrementFranchiseStock({
+            franchisePartnerId: partner._id,
+            productId: d.productId,
+            quantity: Math.abs(d.delta),
+            session,
+            type: FRANCHISE_STOCK_TYPES.POS_SALE_EDIT_RESTORE,
+            note: `POS bill edit #${orderId} (-${Math.abs(d.delta)} units)`,
+            orderId: order._id,
+            createdBy: userId,
+          });
+        }
+      }
+
+      // Reconcile Customer Wallet Payments
+      const isOldWallet =
+        oldPaymentMethod === FRANCHISE_POS_PAYMENT_METHOD.SHOPPING_WALLET ||
+        oldPaymentMethod === FRANCHISE_POS_PAYMENT_METHOD.EARNINGS_WALLET;
+      const isNewWallet =
+        paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.SHOPPING_WALLET ||
+        paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.EARNINGS_WALLET;
+
+      if (
+        isOldWallet &&
+        (!isNewWallet || oldCustomerId !== newCustomerId || oldPaymentMethod !== paymentMethod)
+      ) {
+        // Refund full old amount to old customer's wallet
+        const oldBucket =
+          oldPaymentMethod === FRANCHISE_POS_PAYMENT_METHOD.SHOPPING_WALLET
+            ? "shopping"
+            : "earnings";
+        await creditWallet({
+          ownerType: OWNER_TYPE.CUSTOMER,
+          ownerId: oldCustomerId,
+          amount: oldGrandTotal,
+          bucket: oldBucket,
+          session,
+          ledgerType: LEDGER_TRANSACTION_TYPE.WALLET_REFUND,
+          ledgerReference: orderId,
+          ledgerDescription: `POS bill edit #${orderId} refund (payment method change)`,
+          orderId: order._id,
+          idempotencyKey: `${orderId}-edit-refund-${Date.now()}`,
+        });
+      }
+
+      if (isNewWallet) {
+        const newBucket =
+          paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.SHOPPING_WALLET
+            ? "shopping"
+            : "earnings";
+        if (isOldWallet && oldCustomerId === newCustomerId && oldPaymentMethod === paymentMethod) {
+          // Same wallet payment method & customer: handle net delta
+          const netDelta = roundCurrency(newGrandTotal - oldGrandTotal);
+          if (netDelta > 0) {
+            // Debit extra amount
+            await debitWallet({
+              ownerType: OWNER_TYPE.CUSTOMER,
+              ownerId: newCustomerId,
+              amount: netDelta,
+              bucket: newBucket,
+              session,
+              ledgerType: LEDGER_TRANSACTION_TYPE.WALLET_PAYMENT,
+              ledgerReference: orderId,
+              ledgerDescription: `POS bill edit #${orderId} extra charge (+₹${netDelta})`,
+              orderId: order._id,
+              idempotencyKey: `${orderId}-edit-debit-${Date.now()}`,
+            });
+          } else if (netDelta < 0) {
+            // Refund difference
+            const refundAmt = Math.abs(netDelta);
+            await creditWallet({
+              ownerType: OWNER_TYPE.CUSTOMER,
+              ownerId: newCustomerId,
+              amount: refundAmt,
+              bucket: newBucket,
+              session,
+              ledgerType: LEDGER_TRANSACTION_TYPE.WALLET_REFUND,
+              ledgerReference: orderId,
+              ledgerDescription: `POS bill edit #${orderId} partial refund (-₹${refundAmt})`,
+              orderId: order._id,
+              idempotencyKey: `${orderId}-edit-refund-${Date.now()}`,
+            });
+          }
+        } else {
+          // New wallet payment or customer changed: debit full new amount
+          await debitWallet({
+            ownerType: OWNER_TYPE.CUSTOMER,
+            ownerId: newCustomerId,
+            amount: newGrandTotal,
+            bucket: newBucket,
+            session,
+            ledgerType: LEDGER_TRANSACTION_TYPE.WALLET_PAYMENT,
+            ledgerReference: orderId,
+            ledgerDescription: `POS bill edit #${orderId} payment via ${newBucket === "shopping" ? "Shopping" : "Earning"} Wallet`,
+            orderId: order._id,
+            idempotencyKey: `${orderId}-edit-debit-${Date.now()}`,
+          });
+        }
+      }
+
+      // Update Order document fields
+      const oldItemsBackup = (order.items || []).map((i) => ({
+        product: i.product,
+        name: i.name,
+        quantity: i.quantity,
+        price: i.price,
+      }));
+
+      order.customer = orderCustomerId;
+      order.items = preview.lineItems.map((line) => ({
+        product: line.productId,
+        name: line.name,
+        quantity: line.quantity,
+        price: line.unitPrice,
+      }));
+      order.pricing = {
+        total: preview.grandTotal,
+        grandTotal: preview.grandTotal,
+      };
+      order.paymentMode = isNewWallet ? "WALLET" : "COD";
+      order.payment = {
+        method: paymentMethod,
+        status: "completed",
+      };
+      order.posPaymentMethod = paymentMethod;
+      order.posUpiReference = upiRef || null;
+      order.posBuyer = posBuyer;
+
+      if (!Array.isArray(order.editHistory)) {
+        order.editHistory = [];
+      }
+      order.editHistory.push({
+        editedAt: new Date(),
+        editedBy: userId,
+        oldGrandTotal,
+        newGrandTotal,
+        oldItems: oldItemsBackup,
+        newItems: order.items,
+        reason: String(reason || "").trim() || "POS bill edited by franchise",
+      });
+
+      freezeFinancialSnapshot(order, buildPosPaymentBreakdown(preview.grandTotal));
+      await order.save({ session });
+    });
+
+    const updated = await Order.findById(order._id);
+    return { order: updated, receipt: buildReceiptDto(updated, partner) };
+  } finally {
+    await session.endSession();
+  }
 }

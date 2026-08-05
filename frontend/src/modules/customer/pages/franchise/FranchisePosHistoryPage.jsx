@@ -7,6 +7,7 @@ import {
   Printer,
   RefreshCcw,
   Plus,
+  Edit2,
   X,
   Loader2,
 } from "lucide-react";
@@ -14,6 +15,7 @@ import { toast } from "sonner";
 import { franchiseApi } from "../../services/franchiseApi";
 import FranchiseMlmHeader from "./FranchiseMlmHeader";
 import PosReceiptPrint from "./PosReceiptPrint";
+import EditPosSaleModal from "./EditPosSaleModal";
 import Pagination from "@shared/components/ui/Pagination";
 import {
   FranchisePageShell,
@@ -55,6 +57,7 @@ const FranchisePosHistoryPage = () => {
   const [downloadingId, setDownloadingId] = useState(null);
   const [receipt, setReceipt] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState(null);
 
   useEffect(() => {
     franchiseApi
@@ -287,6 +290,13 @@ const FranchisePosHistoryPage = () => {
                     <span className="font-black text-slate-900 mr-1">{formatINR(row.grandTotal)}</span>
                     <button
                       type="button"
+                      onClick={() => setEditingOrderId(row.orderId)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold uppercase rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                    >
+                      <Edit2 size={12} /> Edit
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleViewReceipt(row.orderId)}
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold uppercase rounded-lg border border-slate-200"
                     >
@@ -361,6 +371,14 @@ const FranchisePosHistoryPage = () => {
             <PosReceiptPrint receipt={receipt} />
           </div>
         </div>
+      )}
+
+      {editingOrderId && (
+        <EditPosSaleModal
+          orderId={editingOrderId}
+          onClose={() => setEditingOrderId(null)}
+          onUpdated={() => load()}
+        />
       )}
     </>
   );

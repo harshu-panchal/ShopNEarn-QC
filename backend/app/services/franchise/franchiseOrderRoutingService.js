@@ -177,13 +177,54 @@ export function buildFranchiseOrderFields(franchisePartner) {
       franchisePartnerId: null,
       franchiseRoutedAt: null,
       franchiseStatus: null,
+      franchiseCandidates: [],
+      currentFranchiseIndex: 0,
+      routedFranchiseHistory: [],
     };
   }
+  return buildMultiFranchiseOrderFields([franchisePartner]);
+}
+
+export function buildMultiFranchiseOrderFields(candidates = []) {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return {
+      franchisePartnerId: null,
+      franchiseRoutedAt: null,
+      franchiseStatus: null,
+      franchiseCandidates: [],
+      currentFranchiseIndex: 0,
+      routedFranchiseHistory: [],
+    };
+  }
+
+  const firstPartner = candidates[0];
+  const now = new Date();
   return {
-    franchisePartnerId: franchisePartner._id,
-    franchiseRoutedAt: new Date(),
+    franchisePartnerId: firstPartner._id,
+    franchiseRoutedAt: now,
     franchiseStatus: FRANCHISE_ORDER_STATUS.PENDING,
+    franchiseCandidates: candidates.map((c) => c._id),
+    currentFranchiseIndex: 0,
+    routedFranchiseHistory: [
+      {
+        franchisePartnerId: firstPartner._id,
+        status: "PENDING",
+        routedAt: now,
+      },
+    ],
   };
+}
+
+export async function resolveFranchiseRoutingCandidates({ address, customerId, hydratedItems } = {}) {
+  const normalizedAddress = normalizeAddressForFranchiseRouting(address);
+  const excludeCustomerId = customerId || null;
+
+  const candidates = await findActivePartnerCandidates(normalizedAddress, {
+    excludeCustomerId,
+  });
+
+  if (!candidates || candidates.length === 0) return [];
+  return candidates.slice(0, 5);
 }
 
 export async function shouldRouteOrderToFranchise(hydratedItems = []) {
@@ -213,23 +254,21 @@ export async function resolveFranchiseOrderRouting({ hydratedItems, address, cus
   if (!shouldRoute) {
     return {
       franchisePartner: null,
-      fields: buildFranchiseOrderFields(null),
+      candidates: [],
+      fields: buildMultiFranchiseOrderFields([]),
       hubFallback: false,
     };
   }
 
   const normalizedAddress = normalizeAddressForFranchiseRouting(address);
-  const franchisePartner = await resolveFranchisePartner({
+  const candidates = await resolveFranchiseRoutingCandidates({
     address: normalizedAddress,
     customerId,
     hydratedItems,
   });
 
-  // No partner covers the territory, or none holds full stock for the
-  // cart: the hub seller fulfills directly through the standard seller
-  // workflow (hub gets the new-order alert instead of a partner).
-  if (!franchisePartner) {
-    logger.info("[franchiseRouting] hub-seller fallback: no stocked partner", {
+  if (!candidates || candidates.length === 0) {
+    logger.info("[franchiseRouting] hub-seller fallback: no active partners found", {
       customerId: customerId ? String(customerId) : null,
       productIds: (hydratedItems || []).map((item) =>
         String(item?.productId || item?.product || ""),
@@ -237,14 +276,19 @@ export async function resolveFranchiseOrderRouting({ hydratedItems, address, cus
     });
     return {
       franchisePartner: null,
-      fields: buildFranchiseOrderFields(null),
+      candidates: [],
+      fields: buildMultiFranchiseOrderFields([]),
       hubFallback: true,
     };
   }
 
+  const franchisePartner = candidates[0];
+  const fields = buildMultiFranchiseOrderFields(candidates);
+
   return {
     franchisePartner,
-    fields: buildFranchiseOrderFields(franchisePartner),
+    candidates,
+    fields,
     hubFallback: false,
   };
 }

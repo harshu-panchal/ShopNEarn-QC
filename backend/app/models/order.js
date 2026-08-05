@@ -446,10 +446,35 @@ const orderSchema = new mongoose.Schema(
     franchiseRoutedAt: { type: Date, default: null },
     franchiseStatus: {
       type: String,
-      enum: ["pending", "accepted", "rejected", "fulfilled"],
+      enum: ["pending", "accepted", "rejected", "fulfilled", "passed_to_hub"],
       default: null,
       index: true,
     },
+    franchiseCandidates: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "FranchisePartner",
+      },
+    ],
+    currentFranchiseIndex: {
+      type: Number,
+      default: 0,
+    },
+    routedFranchiseHistory: [
+      {
+        franchisePartnerId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "FranchisePartner",
+        },
+        status: {
+          type: String,
+          enum: ["PENDING", "ACCEPTED", "REJECTED", "EXPIRED", "PASSED_TO_HUB"],
+        },
+        routedAt: { type: Date, default: Date.now },
+        respondedAt: { type: Date, default: null },
+        reason: { type: String, default: "" },
+      },
+    ],
     /** Set when franchise partner accepts; Harsh's Hub must accept next. */
     hubAcceptanceStatus: {
       type: String,
@@ -508,6 +533,17 @@ const orderSchema = new mongoose.Schema(
         default: null,
       },
     },
+    editHistory: [
+      {
+        editedAt: { type: Date, default: Date.now },
+        editedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        oldGrandTotal: Number,
+        newGrandTotal: Number,
+        oldItems: Array,
+        newItems: Array,
+        reason: String,
+      },
+    ],
     expiresAt: {
       type: Date,
     },

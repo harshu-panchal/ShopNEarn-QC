@@ -27,10 +27,19 @@ export async function listHubCatalogProducts({ page = 1, limit = 50, q } = {}) {
     query.$or = [{ name: rx }, { description: rx }];
   }
 
-  const [items, total] = await Promise.all([
+  const [rawItems, total] = await Promise.all([
     Product.find(query).sort({ createdAt: -1 }).skip(skip).limit(safeLimit).lean(),
     Product.countDocuments(query),
   ]);
+
+  const items = rawItems.map((item) => {
+    const variants = Array.isArray(item.variants) ? item.variants : [];
+    if (variants.length > 0) {
+      const variantSum = variants.reduce((sum, v) => sum + Math.max(0, Number(v.stock || 0)), 0);
+      item.stock = Math.max(Number(item.stock || 0), variantSum);
+    }
+    return item;
+  });
 
   return {
     items,

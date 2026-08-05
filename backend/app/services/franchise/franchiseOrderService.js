@@ -23,6 +23,7 @@ import {
   restoreFranchiseStock,
 } from "../inventory/inventoryMovementService.js";
 import { FRANCHISE_STOCK_TYPES } from "../../constants/inventory.js";
+import { getHubSellerId } from "./franchiseConfigService.js";
 
 /**
  * Restore franchise ledger stock if this order had consumed inventory on fulfill.
@@ -163,37 +164,120 @@ export async function acceptFranchiseOrder({ franchisePartnerId, orderId }) {
   return order;
 }
 
+export async function rerouteOrTransferFranchiseOrder(order, { currentPartnerId, reason = "" } = {}) {
+  const now = new Date();
+
+  if (Array.isArray(order.routedFranchiseHistory)) {
+    const currentHist = order.routedFranchiseHistory.find(
+      (h) => String(h.franchisePartnerId) === String(currentPartnerId) && h.status === "PENDING"
+    );
+    if (currentHist) {
+      currentHist.status = "REJECTED";
+      currentHist.respondedAt = now;
+      currentHist.reason = String(reason || "").slice(0, 240);
+    }
+  }
+
+  if (order.franchiseStockConsumed) {
+    await restoreFranchiseStockForOrder(order);
+  }
+
+  const candidates = Array.isArray(order.franchiseCandidates) ? order.franchiseCandidates : [];
+  const currentIndex = typeof order.currentFranchiseIndex === "number" ? order.currentFranchiseIndex : 0;
+  const nextIndex = currentIndex + 1;
+
+  if (nextIndex < candidates.length && nextIndex < 5) {
+    const nextPartnerId = candidates[nextIndex];
+    order.currentFranchiseIndex = nextIndex;
+    order.franchisePartnerId = nextPartnerId;
+    order.franchiseRoutedAt = now;
+    order.franchiseStatus = FRANCHISE_ORDER_STATUS.PENDING;
+    order.hubAcceptanceStatus = null;
+    order.workflowStatus = WORKFLOW_STATUS.FRANCHISE_PENDING;
+    order.status = legacyStatusFromWorkflow(WORKFLOW_STATUS.FRANCHISE_PENDING);
+    order.orderStatus = order.status;
+
+    if (!Array.isArray(order.routedFranchiseHistory)) order.routedFranchiseHistory = [];
+    order.routedFranchiseHistory.push({
+      franchisePartnerId: nextPartnerId,
+      status: "PENDING",
+      routedAt: now,
+    });
+
+    await order.save();
+
+    emitOrderStatusUpdate(
+      order.orderId,
+      { workflowStatus: order.workflowStatus, franchisePartnerId: String(nextPartnerId) },
+      order.customer,
+    );
+
+    const nextPartner = await FranchisePartner.findById(nextPartnerId).select("userId displayName").lean();
+    if (nextPartner?.userId) {
+      emitNotificationEvent(NOTIFICATION_EVENTS.FRANCHISE_NEW_ORDER, {
+        userId: String(nextPartner.userId),
+        orderId: order.orderId,
+        data: { orderId: String(order._id), publicOrderId: order.orderId },
+      });
+    }
+
+    emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_STATUS_CHANGED, {
+      orderId: order.orderId,
+      customerId: order.customer,
+      userId: order.customer,
+      customerMessage: "Your order is being rerouted to another nearby Home Shoppy partner.",
+    });
+
+    return order;
+  }
+
+  const configuredHubId = await getHubSellerId();
+  order.franchisePartnerId = null;
+  if (configuredHubId) {
+    order.seller = configuredHubId;
+  }
+  order.franchiseStatus = "passed_to_hub";
+  order.hubAcceptanceStatus = null;
+  order.workflowStatus = WORKFLOW_STATUS.PENDING_SELLER;
+  order.status = legacyStatusFromWorkflow(WORKFLOW_STATUS.PENDING_SELLER);
+  order.orderStatus = order.status;
+
+  if (!Array.isArray(order.routedFranchiseHistory)) order.routedFranchiseHistory = [];
+  order.routedFranchiseHistory.push({
+    franchisePartnerId: null,
+    status: "PASSED_TO_HUB",
+    routedAt: now,
+    reason: "All franchise partner candidates rejected or unavailable",
+  });
+
+  await order.save();
+
+  emitOrderStatusUpdate(
+    order.orderId,
+    { workflowStatus: order.workflowStatus, franchiseStatus: order.franchiseStatus },
+    order.customer,
+  );
+
+  emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_STATUS_CHANGED, {
+    orderId: order.orderId,
+    customerId: order.customer,
+    userId: order.customer,
+    customerMessage: "Your order has been transferred directly to Harsh's Main Hub for dispatch.",
+  });
+
+  return order;
+}
+
 export async function rejectFranchiseOrder({
   franchisePartnerId,
   orderId,
   reason,
 }) {
   const order = await assertPartnerOwnsOrder(franchisePartnerId, orderId);
-
-  if (order.franchiseStockConsumed) {
-    await restoreFranchiseStockForOrder(order);
-  }
-
-  order.franchiseStatus = FRANCHISE_ORDER_STATUS.REJECTED;
-  order.hubAcceptanceStatus = null;
-  order.workflowStatus = WORKFLOW_STATUS.CANCELLED;
-  order.status = legacyStatusFromWorkflow(WORKFLOW_STATUS.CANCELLED);
-  order.orderStatus = order.status;
-  if (reason) order.cancelReason = String(reason).slice(0, 240);
-  await order.save();
-  emitOrderStatusUpdate(
-    order.orderId,
-    { workflowStatus: order.workflowStatus },
-    order.customer,
-  );
-  emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
-    orderId: order.orderId,
-    customerId: order.customer,
-    userId: order.customer,
-    customerMessage:
-      reason || "Your Home Shoppy partner could not fulfill this order.",
+  return rerouteOrTransferFranchiseOrder(order, {
+    currentPartnerId: franchisePartnerId,
+    reason,
   });
-  return order;
 }
 
 export async function acceptHubFranchiseOrder({ sellerId, orderId }) {

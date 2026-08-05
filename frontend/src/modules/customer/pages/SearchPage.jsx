@@ -105,15 +105,20 @@ const SearchPage = () => {
         }
     };
 
-    // Fetch products
+    // Fetch products based on debounced search query
     useEffect(() => {
         const fetchProducts = async () => {
+            if (!debouncedQuery.trim()) {
+                setResults([]);
+                setAllProducts([]);
+                return;
+            }
             setIsLoading(true);
             try {
                 const hasValidLocation =
                     Number.isFinite(currentLocation?.latitude) &&
                     Number.isFinite(currentLocation?.longitude);
-                const params = { limit: 100 };
+                const params = { limit: 100, search: debouncedQuery.trim() };
                 if (hasValidLocation) {
                     params.lat = currentLocation.latitude;
                     params.lng = currentLocation.longitude;
@@ -141,6 +146,7 @@ const SearchPage = () => {
                         deliveryTime: '8-15 mins'
                     }));
                     setAllProducts(formattedProds);
+                    setResults(formattedProds);
                 }
             } catch (error) {
                 console.error('Error fetching products:', error);
@@ -149,7 +155,23 @@ const SearchPage = () => {
             }
         };
         fetchProducts();
-    }, [currentLocation?.latitude, currentLocation?.longitude]);
+    }, [debouncedQuery, currentLocation?.latitude, currentLocation?.longitude]);
+
+    // Dynamically load no-service Lottie when results are empty
+    useEffect(() => {
+        if (!isLoading) {
+            import('@/assets/lottie/animation.json')
+                .then((m) => setNoServiceData(m.default))
+                .catch(() => {});
+        }
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Lowest Price Section
+    const lowestPriceProducts = useMemo(() => {
+        return [...allProducts]
+            .sort((a, b) => a.price - b.price)
+            .slice(0, 10);
+    }, [allProducts]);
 
     // Save search term to history
     const saveSearch = (term) => {
@@ -173,35 +195,6 @@ const SearchPage = () => {
             saveSearch(query);
         }
     };
-
-    // Real-time filtering logic
-    const filteredResults = useMemo(() => {
-        if (!debouncedQuery.trim()) return [];
-        return allProducts.filter(p =>
-            p.name.toLowerCase().includes(debouncedQuery.toLowerCase()) ||
-            p.categoryId?.name?.toLowerCase().includes(debouncedQuery.toLowerCase())
-        );
-    }, [debouncedQuery, allProducts]);
-
-    useEffect(() => {
-        setResults(filteredResults);
-    }, [filteredResults]);
-
-    // Dynamically load no-service Lottie when results are empty
-    useEffect(() => {
-        if (!isLoading) {
-            import('@/assets/lottie/animation.json')
-                .then((m) => setNoServiceData(m.default))
-                .catch(() => {});
-        }
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Lowest Price Section
-    const lowestPriceProducts = useMemo(() => {
-        return [...allProducts]
-            .sort((a, b) => a.price - b.price)
-            .slice(0, 10);
-    }, [allProducts]);
 
     const handleClear = () => {
         setQuery('');

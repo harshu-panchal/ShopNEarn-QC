@@ -75,6 +75,7 @@ export async function purchaseFranchiseStock({
   const lineItems = [];
   for (const line of items) {
     const productId = String(line.productId || "");
+    const variantSku = String(line.variantSku || "").trim();
     const qty = Math.max(1, parseInt(line.quantity, 10) || 1);
     if (!hubProductIds.has(productId)) {
       const err = new Error("Product is not available in hub catalog");
@@ -82,17 +83,35 @@ export async function purchaseFranchiseStock({
       throw err;
     }
     const product = catalog.items.find((p) => String(p._id) === productId);
-    const available = resolveAvailableStock(product, "");
+
+    let variantName = "";
+    if (variantSku && Array.isArray(product?.variants)) {
+      const hit = product.variants.find(
+        (v) => String(v.sku || "").trim() === variantSku || String(v.name || "").trim() === variantSku
+      );
+      if (hit) variantName = hit.name || "";
+    }
+
+    const available = resolveAvailableStock(product, variantSku);
     if (qty > available) {
-      const err = new Error(buildInsufficientStockMessage(available, product?.name));
+      const displayName = variantName ? `${product?.name} (${variantName})` : product?.name;
+      const err = new Error(buildInsufficientStockMessage(available, displayName));
       err.statusCode = 422;
       err.code = "INSUFFICIENT_STOCK";
       throw err;
     }
-    const unitPrice = resolveSellingPrice(product);
+    const unitPrice = resolveSellingPrice(product, variantSku);
     const lineTotal = unitPrice * qty;
     totalCost += lineTotal;
-    lineItems.push({ productId, qty, unitPrice, lineTotal, name: product.name });
+    lineItems.push({
+      productId,
+      variantSku,
+      variantName,
+      qty,
+      unitPrice,
+      lineTotal,
+      name: variantName ? `${product.name} (${variantName})` : product.name,
+    });
   }
 
   const wallet = await getFranchiseWalletBalance(franchisePartnerId);
@@ -139,6 +158,8 @@ export async function purchaseFranchiseStock({
             },
             items: lineItems.map((l) => ({
               product: l.productId,
+              variantSku: l.variantSku || null,
+              variantName: l.variantName || null,
               quantity: l.qty,
               price: l.unitPrice,
               name: l.name,
@@ -168,6 +189,7 @@ export async function purchaseFranchiseStock({
           note: `Transfer to franchise partner (${publicOrderId})`,
           orderId: stockOrderDocId,
           transferGroupId,
+          variantSku: line.variantSku || null,
         });
 
         await incrementFranchiseStock({
@@ -180,6 +202,8 @@ export async function purchaseFranchiseStock({
           orderId: stockOrderDocId,
           transferGroupId,
           createdBy: userId,
+          variantSku: line.variantSku || "",
+          variantName: line.variantName || "",
         });
       }
     });

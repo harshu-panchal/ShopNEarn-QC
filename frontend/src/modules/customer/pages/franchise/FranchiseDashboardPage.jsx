@@ -16,11 +16,13 @@ import {
   ScrollText,
   Receipt,
   History,
+  Edit3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { franchiseApi } from "../../services/franchiseApi";
 import FranchiseMlmHeader from "./FranchiseMlmHeader";
 import FranchisePushEnableBanner from "./FranchisePushEnableBanner";
+import EditFranchiseLocationModal from "./EditFranchiseLocationModal";
 import { primeFranchiseOrderAlertSound } from "./franchiseOrderAlertSound";
 
 const formatINR = (n) =>
@@ -212,6 +214,7 @@ const PartnerDashboard = ({ data, navigate, onRefresh, refreshing }) => {
   const [orders, setOrders] = useState([]);
   const [topUps, setTopUps] = useState([]);
   const [extrasLoading, setExtrasLoading] = useState(true);
+  const [showEditLocationModal, setShowEditLocationModal] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -465,21 +468,30 @@ const PartnerDashboard = ({ data, navigate, onRefresh, refreshing }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-          <div className="flex gap-3">
-            <MapPin className="text-indigo-600 shrink-0 mt-0.5" size={18} />
-            <div>
-              <p className="font-bold text-slate-900">Franchise address</p>
-              <p className="text-sm text-slate-600 mt-1 leading-relaxed">
-                {partner.address ||
-                  [partner.locality, partner.city, partner.state, partner.pincode]
-                    .filter(Boolean)
-                    .join(", ") ||
-                  "—"}
-              </p>
-              {partner.pincode && (
-                <p className="text-xs text-slate-500 mt-2">Service pincode: {partner.pincode}</p>
-              )}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex gap-3">
+              <MapPin className="text-indigo-600 shrink-0 mt-0.5" size={18} />
+              <div>
+                <p className="font-bold text-slate-900">Franchise address</p>
+                <p className="text-sm text-slate-600 mt-1 leading-relaxed">
+                  {partner.address ||
+                    [partner.locality, partner.city, partner.state, partner.pincode]
+                      .filter(Boolean)
+                      .join(", ") ||
+                    "—"}
+                </p>
+                {partner.pincode && (
+                  <p className="text-xs text-slate-500 mt-2">Service pincode: {partner.pincode}</p>
+                )}
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowEditLocationModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-xl hover:bg-indigo-100 shrink-0"
+            >
+              <Edit3 size={13} /> Edit Location
+            </button>
           </div>
         </div>
 
@@ -521,7 +533,7 @@ const PartnerDashboard = ({ data, navigate, onRefresh, refreshing }) => {
                   </p>
                 </div>
                 <span
-                  className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                  className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
                     row.status === "approved"
                       ? "bg-emerald-100 text-emerald-800"
                       : row.status === "rejected"
@@ -535,6 +547,14 @@ const PartnerDashboard = ({ data, navigate, onRefresh, refreshing }) => {
             ))}
           </ul>
         </section>
+      )}
+
+      {showEditLocationModal && (
+        <EditFranchiseLocationModal
+          partner={partner}
+          onClose={() => setShowEditLocationModal(false)}
+          onUpdated={() => onRefresh()}
+        />
       )}
     </div>
   );

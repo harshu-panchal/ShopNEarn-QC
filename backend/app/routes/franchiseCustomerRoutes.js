@@ -2,6 +2,7 @@ import express from "express";
 import { verifyToken } from "../middleware/authMiddleware.js";
 import {
   getFranchiseMe,
+  updateFranchiseLocationHandler,
   initiateRegistration,
   submitRegistrationProof,
   getRegistrationPayment,
@@ -24,6 +25,7 @@ import {
   previewPosSaleHandler,
   lookupPosCustomer,
   createPosSaleHandler,
+  updatePosSaleHandler,
   listPosSalesHandler,
   getPosSaleReceiptHandler,
   downloadPosSaleInvoiceHandler,
@@ -37,6 +39,7 @@ import {
 const router = express.Router();
 
 router.get("/me", verifyToken, getFranchiseMe);
+router.patch("/location", verifyToken, updateFranchiseLocationHandler);
 router.post("/register/initiate", verifyToken, initiateRegistration);
 router.post("/register/submit-proof", verifyToken, submitRegistrationProof);
 router.get("/register/payment/:paymentId", verifyToken, getRegistrationPayment);
@@ -61,6 +64,7 @@ router.get("/pos/products", verifyToken, getPosProducts);
 router.post("/pos/preview", verifyToken, previewPosSaleHandler);
 router.get("/pos/customers/lookup", verifyToken, lookupPosCustomer);
 router.post("/pos/sales", verifyToken, createPosSaleHandler);
+router.put("/pos/sales/:orderId", verifyToken, updatePosSaleHandler);
 router.get("/pos/sales", verifyToken, listPosSalesHandler);
 router.get("/pos/sales/export", verifyToken, exportPosSalesExcelHandler);
 router.get("/pos/sales/:orderId/receipt", verifyToken, getPosSaleReceiptHandler);

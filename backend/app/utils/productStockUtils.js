@@ -28,11 +28,26 @@ export function findVariantBySkuOrName(variants = [], variantSku = "") {
 export function resolveAvailableStock(product, variantSku = "") {
   if (!product) return 0;
 
-  const masterStock = Math.max(0, Number(product?.stock || 0));
+  let masterStock = Math.max(0, Number(product?.stock || 0));
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+
+  if (variants.length > 0) {
+    const variantSum = variants.reduce(
+      (sum, v) => sum + Math.max(0, Number(v?.stock || 0)),
+      0,
+    );
+    masterStock = Math.max(masterStock, variantSum);
+  }
+
   const normalized = String(variantSku || "").trim();
   if (normalized) {
-    const hit = findVariantBySkuOrName(product.variants, normalized);
-    if (!hit) return 0;
+    const hit = findVariantBySkuOrName(variants, normalized);
+    if (!hit) {
+      if (variants.length === 1) {
+        return Math.max(0, Number(variants[0].stock || 0));
+      }
+      return masterStock;
+    }
     const variantStock = Math.max(0, Number(hit.stock || 0));
     return Math.min(variantStock, masterStock);
   }

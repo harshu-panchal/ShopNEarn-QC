@@ -34,18 +34,22 @@ import {
   listPosProducts,
   previewPosSale,
   createPosSale,
+  updatePosSale,
   listPosSales,
   getPosSaleReceipt,
   getPosSaleInvoicePdf,
   exportPosSalesExcel,
   lookupPosCustomerByPhone,
 } from "../services/franchise/franchisePosService.js";
+import { updateFranchisePartnerLocation } from "../services/franchise/franchiseConfigService.js";
 import { validateBodySafe } from "../middleware/validate.js";
 import {
   posPreviewBodySchema,
   posSaleBodySchema,
+  posSaleUpdateBodySchema,
   posLookupPhoneQuerySchema,
 } from "../validation/franchisePosValidation.js";
+import { updateFranchiseLocationBodySchema } from "../validation/franchiseLocationValidation.js";
 
 export const getFranchiseMe = async (req, res) => {
   try {
@@ -85,6 +89,8 @@ export const getFranchiseMe = async (req, res) => {
             pincode: partner.pincode || "",
             city: partner.city || "",
             state: partner.state || "",
+            phone: partner.phone || "",
+            location: partner.location || null,
             registeredAt: partner.registeredAt,
             displayName: partner.displayName,
             hasCompletedFirstTopup: !!partner.hasCompletedFirstTopup,
@@ -92,6 +98,20 @@ export const getFranchiseMe = async (req, res) => {
         : null,
       wallet,
     });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+export const updateFranchiseLocationHandler = async (req, res) => {
+  try {
+    const parsed = validateBodySafe(updateFranchiseLocationBodySchema, req.body || {});
+    if (!parsed.isValid) return handleResponse(res, 400, parsed.message);
+    const partner = await updateFranchisePartnerLocation({
+      userId: req.user.id,
+      ...parsed.value,
+    });
+    return handleResponse(res, 200, "Franchise location updated", { partner });
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
   }
@@ -472,6 +492,35 @@ export const createPosSaleHandler = async (req, res) => {
     });
     return handleResponse(res, result.duplicate ? 200 : 201, "POS sale recorded", {
       duplicate: result.duplicate,
+      orderId: result.order.orderId,
+      receipt: result.receipt,
+    });
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+export const updatePosSaleHandler = async (req, res) => {
+  try {
+    const partner = await requireActivePartner(req);
+    const parsed = validateBodySafe(posSaleUpdateBodySchema, req.body || {});
+    if (!parsed.isValid) return handleResponse(res, 400, parsed.message);
+    const value = parsed.value;
+    const result = await updatePosSale({
+      franchisePartnerId: partner._id,
+      orderId: req.params.orderId,
+      userId: req.user.id,
+      items: value.items,
+      buyer: value.buyer,
+      payment: value.payment,
+      reason: value.reason,
+    });
+    return handleResponse(res, 200, "POS bill updated", {
       orderId: result.order.orderId,
       receipt: result.receipt,
     });

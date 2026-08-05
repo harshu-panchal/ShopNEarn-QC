@@ -14,6 +14,8 @@ const franchiseStockLedgerSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    variantSku: { type: String, default: "" },
+    variantName: { type: String, default: "" },
     quantity: { type: Number, required: true, min: 0 },
     sourceTopUpId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -31,7 +33,7 @@ const franchiseStockLedgerSchema = new mongoose.Schema(
 );
 
 franchiseStockLedgerSchema.index(
-  { franchisePartnerId: 1, productId: 1 },
+  { franchisePartnerId: 1, productId: 1, variantSku: 1 },
   { unique: true },
 );
 

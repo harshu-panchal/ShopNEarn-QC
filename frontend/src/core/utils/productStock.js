@@ -6,10 +6,19 @@
 export function getAvailableStock(product, variantSku = "") {
   if (!product) return 0;
 
-  const masterStock = Math.max(0, Number(product?.stock || 0));
+  let masterStock = Math.max(0, Number(product?.stock || 0));
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+
+  if (variants.length > 0) {
+    const variantSum = variants.reduce(
+      (sum, v) => sum + Math.max(0, Number(v?.stock || 0)),
+      0,
+    );
+    masterStock = Math.max(masterStock, variantSum);
+  }
+
   const normalized = String(variantSku || "").trim();
   if (normalized) {
-    const variants = Array.isArray(product?.variants) ? product.variants : [];
     const hit = variants.find((variant) => {
       const sku = String(variant?.sku || "").trim();
       const name = String(variant?.name || "").trim();

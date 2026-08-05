@@ -2,6 +2,7 @@ import axiosInstance from "@core/api/axios";
 
 export const franchiseApi = {
   getMe: () => axiosInstance.get("/customer/franchise/me"),
+  updateLocation: (data) => axiosInstance.patch("/customer/franchise/location", data),
   initiateRegistration: (data) =>
     axiosInstance.post("/customer/franchise/register/initiate", data || {}),
   submitRegistrationProof: (data) =>
@@ -42,6 +43,8 @@ export const franchiseApi = {
     axiosInstance.post("/customer/franchise/pos/sales", data, {
       headers: { "Idempotency-Key": idempotencyKey },
     }),
+  updatePosSale: (orderId, data) =>
+    axiosInstance.put(`/customer/franchise/pos/sales/${orderId}`, data),
   listPosSales: (params) => axiosInstance.get("/customer/franchise/pos/sales", { params }),
   getPosReceipt: (orderId) =>
     axiosInstance.get(`/customer/franchise/pos/sales/${orderId}/receipt`),
