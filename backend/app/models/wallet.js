@@ -23,7 +23,6 @@ const walletSchema = new mongoose.Schema(
     availableBalance: {
       type: Number,
       default: 0,
-      min: 0,
     },
     pendingBalance: {
       type: Number,
@@ -49,12 +48,10 @@ const walletSchema = new mongoose.Schema(
     shoppingBalance: {
       type: Number,
       default: 0,
-      min: 0,
     },
     earningsBalance: {
       type: Number,
       default: 0,
-      min: 0,
     },
     totalCredited: {
       type: Number,

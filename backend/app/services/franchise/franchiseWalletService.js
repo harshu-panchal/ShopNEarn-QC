@@ -372,6 +372,7 @@ export async function adjustFranchiseWallet({
         idempotencyKey,
         metadata: { adminId: adminId ? String(adminId) : null, reason },
         syncUserWalletBalance: false,
+        allowNegative: true,
       };
       if (String(direction).toUpperCase() === "CREDIT") {
         await creditWallet(args);

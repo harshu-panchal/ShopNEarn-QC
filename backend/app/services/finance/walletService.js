@@ -268,6 +268,7 @@ export async function debitWallet({
   correlationId = null,
   // Phase 4 P4-3: dual-write to legacy `User.walletBalance`. See creditWallet.
   syncUserWalletBalance = true,
+  allowNegative = false,
 }) {
   const normalizedAmount = assertPositiveAmount(amount);
   const wallet = await getOrCreateWallet(ownerType, ownerId, { session });
@@ -278,7 +279,7 @@ export async function debitWallet({
 
   const field = `${bucket}Balance`;
   const before = roundCurrency(wallet[field] || 0);
-  if (before < normalizedAmount) {
+  if (!allowNegative && before < normalizedAmount) {
     throw new Error(`Insufficient ${bucket} balance`);
   }
 

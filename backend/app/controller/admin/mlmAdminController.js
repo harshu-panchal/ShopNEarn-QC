@@ -1674,6 +1674,7 @@ export const adjustMemberWallet = async (req, res) => {
           ledgerReference: idempotencyKey,
           ledgerDescription: `Manual admin adjustment: ${reason}`,
           idempotencyKey,
+          allowNegative: true,
           metadata: {
             // Persist the target bucket so wallet-history labelling and
             // category filters resolve the correct wallet. Without this,
@@ -2227,6 +2228,7 @@ export const applyMlmPayoutReportCorrection = async (req, res) => {
             lineItemId: String(line._id),
           },
           syncUserWalletBalance: false,
+          allowNegative: true,
         };
         walletResult =
           direction === "CREDIT"
