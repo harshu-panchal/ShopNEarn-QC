@@ -56,6 +56,7 @@ export const FranchiseStatCard = ({ label, value, hint, tone = "indigo" }) => {
     indigo: "border-indigo-100 bg-indigo-50/50",
     emerald: "border-emerald-100 bg-emerald-50/50",
     amber: "border-amber-100 bg-amber-50/50",
+    purple: "border-purple-100 bg-purple-50/50",
     slate: "border-slate-200 bg-slate-50",
   };
   return (

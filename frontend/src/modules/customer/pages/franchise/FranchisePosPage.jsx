@@ -9,7 +9,9 @@ import {
   User,
   Banknote,
   Smartphone,
+  Coins,
   Wallet,
+  ShoppingBag,
   Loader2,
   Printer,
   X,
@@ -46,7 +48,6 @@ const FranchisePosPage = () => {
   const [registeredCustomer, setRegisteredCustomer] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
-  const [walletType, setWalletType] = useState("SHOPPING"); // "SHOPPING" | "EARNING"
   const [upiReference, setUpiReference] = useState("");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [receipt, setReceipt] = useState(null);
@@ -94,12 +95,8 @@ const FranchisePosPage = () => {
   }, [search]);
 
   useEffect(() => {
-    if (loadingMe || !posEnabled) return;
-    const timer = setTimeout(() => {
-      loadProducts(search);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [loadingMe, posEnabled, search, loadProducts]);
+    if (!loadingMe && posEnabled) loadProducts("");
+  }, [loadingMe, posEnabled, loadProducts]);
 
   const cartLines = useMemo(() => {
     return Object.entries(cart)
@@ -149,7 +146,7 @@ const FranchisePosPage = () => {
   };
 
   const handleLookup = async () => {
-    if (!lookupPhone.trim()) return toast.error("Enter phone number or Customer ID");
+    if (!lookupPhone.trim()) return toast.error("Enter phone number");
     setLookupLoading(true);
     try {
       const res = await franchiseApi.lookupPosCustomer(lookupPhone.trim());
@@ -169,17 +166,25 @@ const FranchisePosPage = () => {
     if (buyerKind === "registered" && !registeredCustomer?.id) {
       return toast.error("Look up a registered customer first");
     }
-    if (paymentMethod === "wallet") {
+    if (paymentMethod === "shopping_wallet" || paymentMethod === "earnings_wallet") {
       if (buyerKind !== "registered" || !registeredCustomer?.id) {
-        return toast.error("Please select a registered customer to use wallet payment");
+        return toast.error("Wallet payment requires selecting a registered customer");
       }
-      const availBal = walletType === "SHOPPING"
-        ? (registeredCustomer.shoppingWallet || 0)
-        : (registeredCustomer.earningWallet || 0);
-      if (availBal < cartTotal) {
-        return toast.error(
-          `Insufficient balance in customer's ${walletType === "SHOPPING" ? "Shopping Wallet" : "Earning Wallet"}. Available: ₹${availBal}, Total: ₹${cartTotal}`
-        );
+      if (paymentMethod === "shopping_wallet") {
+        const bal = Number(registeredCustomer.shoppingWalletBalance || 0);
+        if (bal < cartTotal) {
+          return toast.error(
+            `Insufficient Shopping Wallet balance (${formatINR(bal)} available, ${formatINR(cartTotal)} required)`,
+          );
+        }
+      }
+      if (paymentMethod === "earnings_wallet") {
+        const bal = Number(registeredCustomer.earningsWalletBalance || 0);
+        if (bal < cartTotal) {
+          return toast.error(
+            `Insufficient Earning Wallet balance (${formatINR(bal)} available, ${formatINR(cartTotal)} required)`,
+          );
+        }
       }
     }
     if (paymentMethod === "upi_partner" && !upiReference.trim()) {
@@ -206,8 +211,6 @@ const FranchisePosPage = () => {
           payment: {
             method: paymentMethod,
             upiReference: paymentMethod === "upi_partner" ? upiReference : "",
-            walletType: paymentMethod === "wallet" ? walletType : undefined,
-            walletAmount: paymentMethod === "wallet" ? cartTotal : undefined,
           },
         },
         idempotencyKey,
@@ -400,11 +403,10 @@ const FranchisePosPage = () => {
                 <div className="space-y-2">
                   <div className="flex gap-2">
                     <input
-                      type="text"
-                      placeholder="Phone or Customer ID (e.g. SE33832545)"
+                      type="tel"
+                      placeholder="Registered phone"
                       value={lookupPhone}
                       onChange={(e) => setLookupPhone(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleLookup()}
                       className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
                     />
                     <button
@@ -417,26 +419,17 @@ const FranchisePosPage = () => {
                     </button>
                   </div>
                   {registeredCustomer && (
-                    <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-slate-800 font-bold">
-                          {registeredCustomer.name} · {registeredCustomer.phone}
-                        </p>
-                        {registeredCustomer.userId && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md">
-                            {registeredCustomer.userId}
-                          </span>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800">
-                          <p className="font-semibold text-[10px] uppercase tracking-wider">🛍️ Shopping Wallet</p>
-                          <p className="font-black text-sm">₹{registeredCustomer.shoppingWallet ?? 0}</p>
-                        </div>
-                        <div className="p-2 bg-purple-50 border border-purple-200 rounded-lg text-purple-800">
-                          <p className="font-semibold text-[10px] uppercase tracking-wider">💰 Earning Wallet</p>
-                          <p className="font-black text-sm">₹{registeredCustomer.earningWallet ?? 0}</p>
-                        </div>
+                    <div className="text-xs space-y-1 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 mt-2">
+                      <p className="font-bold text-emerald-800">
+                        {registeredCustomer.name} · {registeredCustomer.phone}
+                      </p>
+                      <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-emerald-700 mt-1">
+                        <span className="bg-emerald-100/80 px-2 py-0.5 rounded-md">
+                          Shopping: {formatINR(registeredCustomer.shoppingWalletBalance || 0)}
+                        </span>
+                        <span className="bg-emerald-100/80 px-2 py-0.5 rounded-md">
+                          Earning: {formatINR(registeredCustomer.earningsWalletBalance || 0)}
+                        </span>
                       </div>
                     </div>
                   )}
@@ -446,14 +439,14 @@ const FranchisePosPage = () => {
 
             <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
               <h2 className="font-bold text-slate-900">Payment</h2>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("cash")}
-                  className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border text-xs font-bold transition-all ${
+                  className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-bold ${
                     paymentMethod === "cash"
-                      ? "border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm"
-                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      ? "border-indigo-600 bg-indigo-50 text-indigo-700"
+                      : "border-slate-200"
                   }`}
                 >
                   <Banknote size={16} /> Cash
@@ -461,69 +454,63 @@ const FranchisePosPage = () => {
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("upi_partner")}
-                  className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border text-xs font-bold transition-all ${
+                  className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-bold ${
                     paymentMethod === "upi_partner"
-                      ? "border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm"
-                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                      ? "border-indigo-600 bg-indigo-50 text-indigo-700"
+                      : "border-slate-200"
                   }`}
                 >
                   <Smartphone size={16} /> UPI
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod("wallet")}
-                  className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border text-xs font-bold transition-all ${
-                    paymentMethod === "wallet"
-                      ? "border-emerald-600 bg-emerald-50 text-emerald-700 shadow-sm"
-                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  onClick={() => {
+                    if (buyerKind !== "registered") {
+                      setBuyerKind("registered");
+                      toast.info("Switched to Registered customer mode for wallet payment");
+                    }
+                    setPaymentMethod("shopping_wallet");
+                  }}
+                  className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl border text-xs font-bold ${
+                    paymentMethod === "shopping_wallet"
+                      ? "border-indigo-600 bg-indigo-50 text-indigo-700"
+                      : "border-slate-200 text-slate-700"
                   }`}
                 >
-                  <Wallet size={16} /> Wallet
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <ShoppingBag size={14} /> Shopping Wallet
+                  </div>
+                  {registeredCustomer && (
+                    <span className="text-[10px] opacity-80 mt-0.5">
+                      {formatINR(registeredCustomer.shoppingWalletBalance || 0)}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (buyerKind !== "registered") {
+                      setBuyerKind("registered");
+                      toast.info("Switched to Registered customer mode for wallet payment");
+                    }
+                    setPaymentMethod("earnings_wallet");
+                  }}
+                  className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl border text-xs font-bold ${
+                    paymentMethod === "earnings_wallet"
+                      ? "border-indigo-600 bg-indigo-50 text-indigo-700"
+                      : "border-slate-200 text-slate-700"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <Coins size={14} /> Earning Wallet
+                  </div>
+                  {registeredCustomer && (
+                    <span className="text-[10px] opacity-80 mt-0.5">
+                      {formatINR(registeredCustomer.earningsWalletBalance || 0)}
+                    </span>
+                  )}
                 </button>
               </div>
-
-              {paymentMethod === "wallet" && (
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                  <label className="text-xs font-bold text-slate-700 block">Select Customer Wallet:</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setWalletType("SHOPPING")}
-                      className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
-                        walletType === "SHOPPING"
-                          ? "border-emerald-600 bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-500/30"
-                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      <span>🛍️ Shopping Wallet</span>
-                      <span className="text-[11px] font-semibold opacity-90">
-                        Bal: ₹{registeredCustomer?.shoppingWallet ?? 0}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setWalletType("EARNING")}
-                      className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
-                        walletType === "EARNING"
-                          ? "border-purple-600 bg-purple-600 text-white shadow-sm ring-2 ring-purple-500/30"
-                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      <span>💰 Earning Wallet</span>
-                      <span className="text-[11px] font-semibold opacity-90">
-                        Bal: ₹{registeredCustomer?.earningWallet ?? 0}
-                      </span>
-                    </button>
-                  </div>
-                  {buyerKind !== "registered" && (
-                    <p className="text-[11px] text-amber-700 font-semibold mt-1">
-                      ⚠️ Please look up a registered customer to deduct from their wallet.
-                    </p>
-                  )}
-                </div>
-              )}
-
               {paymentMethod === "upi_partner" && (
                 <input
                   type="text"

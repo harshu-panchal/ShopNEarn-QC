@@ -85,6 +85,8 @@ export const FRANCHISE_IDEMPOTENCY_PREFIX = {
 export const FRANCHISE_POS_PAYMENT_METHOD = {
   CASH: "cash",
   UPI_PARTNER: "upi_partner",
+  SHOPPING_WALLET: "shopping_wallet",
+  EARNINGS_WALLET: "earnings_wallet",
 };
 
 export const ALL_FRANCHISE_POS_PAYMENT_METHODS = Object.values(

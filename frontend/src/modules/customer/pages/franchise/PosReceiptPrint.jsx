@@ -4,6 +4,8 @@ import { formatINR } from "./franchiseCustomerShared";
 const paymentLabel = (method) => {
   if (method === "upi_partner") return "UPI (partner)";
   if (method === "cash") return "Cash";
+  if (method === "shopping_wallet") return "Shopping Wallet";
+  if (method === "earnings_wallet") return "Earning Wallet";
   return method || "—";
 };
 

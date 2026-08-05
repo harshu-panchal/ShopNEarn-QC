@@ -57,7 +57,7 @@ const FranchiseTopUps = () => {
     setCatalogSearch("");
     setCatalogLoading(true);
     try {
-      const res = await franchiseApi.getCatalog({ limit: 200 });
+      const res = await franchiseApi.getCatalog({ limit: 2000 });
       const catItems = res.data?.result?.items ?? res.data?.data?.items ?? [];
       setCatalog(catItems);
     } catch (err) {
@@ -138,7 +138,7 @@ const FranchiseTopUps = () => {
       const available = getAvailableStock(product, "");
 
       if (delta > 0 && next > available) {
-        toast.error(`Only ${available} units available in hub stock`);
+        toast.error(`Only ${available} units available in Harsh's Hub stock`);
         return prev;
       }
 
@@ -170,7 +170,7 @@ const FranchiseTopUps = () => {
 
     if (parsed > available) {
       parsed = available;
-      toast.error(`Cannot exceed available hub stock (${available} units)`);
+      toast.error(`Cannot exceed available Harsh's Hub stock (${available} units)`);
     }
 
     setCart((prev) => {
@@ -353,7 +353,7 @@ const FranchiseTopUps = () => {
                   <h3 className="font-bold text-lg">First Top-Up Product Selection</h3>
                 </div>
                 <p className="text-xs text-slate-300 mt-0.5">
-                  Select Hub products to dispatch to{" "}
+                  Select Harsh's Hub products ({catalog.length} products available) to dispatch to{" "}
                   <span className="font-semibold text-white">
                     {firstTopUpTargetRow.partnerInfo?.userId?.name || firstTopUpTargetRow.partnerInfo?.displayName || "Franchise Partner"}
                   </span>
@@ -395,16 +395,20 @@ const FranchiseTopUps = () => {
             </div>
 
             {/* Search */}
-            <div className="px-6 py-3 border-b border-slate-100 bg-slate-50">
-              <div className="relative">
+            <div className="px-6 py-3 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+              <div className="relative flex-1 min-w-[240px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input
                   type="text"
                   value={catalogSearch}
                   onChange={(e) => setCatalogSearch(e.target.value)}
-                  placeholder="Search hub catalog products by name…"
+                  placeholder="Search Harsh's Hub catalog products by name…"
                   className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
+              </div>
+              <div className="text-xs font-bold text-purple-900 bg-purple-100 border border-purple-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-purple-600 animate-pulse"></span>
+                Harsh's Hub: <span className="font-black">{catalog.length}</span> Products Available
               </div>
             </div>
 
@@ -444,9 +448,9 @@ const FranchiseTopUps = () => {
                         </div>
                         <p className="text-[10px] font-medium text-slate-500">
                           {isOutOfStock ? (
-                            <span className="text-rose-600 font-bold">Out of stock</span>
+                            <span className="text-rose-600 font-bold">Out of stock in Harsh's Hub</span>
                           ) : (
-                            `${available} available in hub`
+                            `${available} available in Harsh's Hub`
                           )}
                         </p>
                       </div>

@@ -28,7 +28,7 @@ const FranchiseCatalogPage = () => {
     setLoading(true);
     try {
       const [catalogRes, meRes] = await Promise.all([
-        franchiseApi.getCatalog({ limit: 100, q: q.trim() || undefined }),
+        franchiseApi.getCatalog({ limit: 2000, q: q.trim() || undefined }),
         franchiseApi.getMe(),
       ]);
       const catalog = catalogRes.data?.result ?? catalogRes.data?.data;
@@ -124,7 +124,7 @@ const FranchiseCatalogPage = () => {
       <FranchiseMlmHeader title="Buy Stock" />
       <FranchisePageShell
         title={`${hubName} catalog`}
-        subtitle="Purchase inventory using your franchise wallet balance."
+        subtitle={`Purchase inventory using your franchise wallet balance. (${items.length} products available in ${hubName})`}
         actions={
           <button
             type="button"
@@ -149,7 +149,13 @@ const FranchiseCatalogPage = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <FranchiseStatCard
+            label="Available Products"
+            value={loading ? "…" : items.length}
+            hint={`In ${hubName} catalog`}
+            tone="purple"
+          />
           <FranchiseStatCard label="Wallet balance" value={formatINR(walletBalance)} tone="indigo" />
           <FranchiseStatCard label="Cart total" value={formatINR(cartTotal)} tone="amber" />
           <FranchiseStatCard
@@ -160,15 +166,21 @@ const FranchiseCatalogPage = () => {
           />
         </div>
 
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && load()}
-            placeholder="Search products…"
-            className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl bg-white"
-          />
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && load()}
+              placeholder="Search products…"
+              className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl bg-white"
+            />
+          </div>
+          <div className="px-4 py-3 bg-purple-100/70 border border-purple-200 text-purple-950 font-extrabold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 shadow-xs whitespace-nowrap">
+            <span className="w-2.5 h-2.5 rounded-full bg-purple-600 animate-pulse"></span>
+            {hubName}: <span className="font-black">{items.length}</span> Products Available
+          </div>
         </div>
 
         {loading ? (
@@ -201,7 +213,7 @@ const FranchiseCatalogPage = () => {
                     <p className="font-bold text-slate-900 truncate">{p.name}</p>
                     <p className="text-lg font-black text-indigo-600 mt-0.5">{formatINR(p.price)}</p>
                     <p className="text-[11px] font-bold uppercase tracking-wider mt-1 text-slate-500">
-                      {isOutOfStock ? "Out of stock" : `${availableStock} in hub stock`}
+                      {isOutOfStock ? "Out of stock in Harsh's Hub" : `${availableStock} available in ${hubName}`}
                     </p>
                     {p.description && (
                       <p className="text-xs text-slate-500 mt-1 line-clamp-2">{p.description}</p>

@@ -133,7 +133,7 @@ export async function approveFranchiseWalletTopUp({ topUpId, adminId, adminRemar
           throw err;
         }
 
-        const catalog = await listHubCatalogProducts({ limit: 500 });
+        const catalog = await listHubCatalogProducts({ limit: 2000 });
         const hubProductIds = new Set(catalog.items.map((p) => String(p._id)));
 
         let totalCost = 0;

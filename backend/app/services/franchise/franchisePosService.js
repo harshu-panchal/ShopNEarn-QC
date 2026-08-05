@@ -4,7 +4,6 @@ import FranchisePartner from "../../models/franchisePartner.js";
 import FranchiseStockLedger from "../../models/franchiseStockLedger.js";
 import Product from "../../models/product.js";
 import Customer from "../../models/customer.js";
-import Wallet from "../../models/wallet.js";
 import {
   FRANCHISE_PARTNER_STATUS,
   FRANCHISE_ORDER_STATUS,
@@ -17,7 +16,12 @@ import {
   WORKFLOW_STATUS,
   legacyStatusFromWorkflow,
 } from "../../constants/orderWorkflow.js";
-import { ORDER_PAYMENT_STATUS } from "../../constants/finance.js";
+import {
+  ORDER_PAYMENT_STATUS,
+  OWNER_TYPE,
+  LEDGER_TRANSACTION_TYPE,
+} from "../../constants/finance.js";
+import { debitWallet, getOrCreateWallet } from "../finance/walletService.js";
 import { listHubCatalogProducts, isHubProduct } from "./franchiseCatalogService.js";
 import { getFranchiseConfig } from "./franchiseConfigService.js";
 import { formatFranchiseAddress } from "./franchiseAddressUtils.js";
@@ -100,78 +104,76 @@ async function hydrateHubProducts(productIds) {
 export async function listPosProducts(franchisePartnerId, { q, page, limit } = {}) {
   await assertPosEnabled();
 
-  const partnerOid = mongoose.Types.ObjectId.isValid(franchisePartnerId)
-    ? new mongoose.Types.ObjectId(franchisePartnerId)
-    : franchisePartnerId;
-
-  // 1. Fetch all products held in stock by this franchise partner in stock ledger (quantity > 0)
-  const inStockLedgers = await FranchiseStockLedger.find({
-    franchisePartnerId: { $in: [partnerOid, String(franchisePartnerId)] },
+  // 1. Fetch all stock ledger rows for this franchise partner with quantity > 0
+  const stockRows = await FranchiseStockLedger.find({
+    franchisePartnerId,
     quantity: { $gt: 0 },
   }).lean();
 
-  const inStockProductIds = inStockLedgers.map((l) => l.productId);
-  const inStockProductsMap = new Map();
+  const inStockQtyMap = new Map(
+    stockRows.map((r) => [String(r.productId), Number(r.quantity) || 0]),
+  );
+  const inStockProductIds = Array.from(inStockQtyMap.keys());
+
+  // 2. Hydrate full product details for all in-stock products
+  let inStockProducts = [];
   if (inStockProductIds.length > 0) {
-    const prods = await Product.find({ _id: { $in: inStockProductIds } }).lean();
-    prods.forEach((p) => inStockProductsMap.set(String(p._id), p));
+    const query = { _id: { $in: inStockProductIds } };
+    if (q) {
+      const rx = new RegExp(String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      query.$or = [{ name: rx }, { description: rx }];
+    }
+    inStockProducts = await Product.find(query).lean();
   }
 
-  // 2. Fetch hub catalog products
-  const catalog = await listHubCatalogProducts({ page, limit, q });
+  // 3. Fetch hub catalog products for broader catalog browsing / search
+  const catalog = await listHubCatalogProducts({ page: page || 1, limit: limit || 100, q });
 
-  // 3. Merge in-stock products with catalog products
-  const productMap = new Map();
+  // 4. Also fetch stock levels for catalog items
+  const catalogProductIds = catalog.items.map((p) => p._id);
+  const catalogOnHand = await ledgerQtyMap(franchisePartnerId, catalogProductIds);
 
-  for (const [id, product] of inStockProductsMap.entries()) {
-    productMap.set(id, product);
+  for (const [pId, qty] of catalogOnHand.entries()) {
+    if (!inStockQtyMap.has(pId)) {
+      inStockQtyMap.set(pId, qty);
+    }
   }
 
-  catalog.items.forEach((p) => {
-    productMap.set(String(p._id), p);
-  });
+  // 5. Merge in-stock products and catalog items into a unique map by product ID
+  const mergedMap = new Map();
 
-  const allProductIds = Array.from(productMap.keys());
-  const onHand = await ledgerQtyMap(franchisePartnerId, allProductIds);
+  for (const prod of inStockProducts) {
+    mergedMap.set(String(prod._id), prod);
+  }
 
-  let items = Array.from(productMap.values()).map((product) => {
-    const id = String(product._id);
-    const onHandQty = onHand.get(id) || 0;
-    const unitPrice = resolveSellingPrice(product);
-    const name = product.name || product.productName || product.title || "Unnamed Product";
-    return {
-      ...product,
-      name,
-      onHandQty,
-      unitPrice,
-      canSell: onHandQty > 0,
-    };
-  });
+  for (const prod of catalog.items) {
+    const id = String(prod._id);
+    if (!mergedMap.has(id)) {
+      mergedMap.set(id, prod);
+    }
+  }
 
-  // 4. Search query filter
-  if (q && typeof q === "string" && q.trim()) {
-    const searchTerm = q.trim().toLowerCase();
-    items = items.filter((p) => {
-      const nameMatch = (p.name || p.productName || p.title || "").toLowerCase().includes(searchTerm);
-      const descMatch = (p.description || "").toLowerCase().includes(searchTerm);
-      const skuMatch = (p.sku || "").toLowerCase().includes(searchTerm);
-      const brandMatch = (p.brand || "").toLowerCase().includes(searchTerm);
-      return nameMatch || descMatch || skuMatch || brandMatch;
+  // 6. Format products with onHandQty, unitPrice, and canSell
+  const items = Array.from(mergedMap.values())
+    .map((product) => {
+      const id = String(product._id);
+      const onHandQty = inStockQtyMap.get(id) || 0;
+      const unitPrice = resolveSellingPrice(product);
+      return {
+        ...product,
+        onHandQty,
+        unitPrice,
+        canSell: onHandQty > 0,
+      };
+    })
+    .sort((a, b) => {
+      // In-stock (on hand) products first, then higher qty, then name.
+      if (a.canSell !== b.canSell) return a.canSell ? -1 : 1;
+      if (b.onHandQty !== a.onHandQty) return b.onHandQty - a.onHandQty;
+      return String(a.name || "").localeCompare(String(b.name || ""));
     });
-  }
 
-  // 5. Sort: In-stock (onHandQty > 0) first, then higher onHandQty, then name
-  items.sort((a, b) => {
-    if (a.canSell !== b.canSell) return a.canSell ? -1 : 1;
-    if (b.onHandQty !== a.onHandQty) return b.onHandQty - a.onHandQty;
-    return String(a.name || "").localeCompare(String(b.name || ""));
-  });
-
-  return {
-    ...catalog,
-    items,
-    total: items.length,
-  };
+  return { ...catalog, items, total: items.length };
 }
 
 export async function previewPosSale(franchisePartnerId, { items }) {
@@ -192,7 +194,8 @@ export async function previewPosSale(franchisePartnerId, { items }) {
   let subtotal = 0;
   const lineItems = [];
   for (const line of lines) {
-    const hubOk = await isHubProduct(line.productId);
+    const available = onHand.get(line.productId) || 0;
+    const hubOk = available > 0 || (await isHubProduct(line.productId));
     if (!hubOk) {
       const err = new Error("Product is not available in hub catalog");
       err.statusCode = 422;
@@ -204,7 +207,6 @@ export async function previewPosSale(franchisePartnerId, { items }) {
       err.statusCode = 404;
       throw err;
     }
-    const available = onHand.get(line.productId) || 0;
     if (line.quantity > available) {
       const err = new Error(
         `Insufficient stock for ${product.name || "product"} (on hand: ${available})`,
@@ -282,68 +284,28 @@ function buildReceiptDto(order, partner) {
   };
 }
 
-export async function lookupPosCustomerByPhone(rawQuery) {
+export async function lookupPosCustomerByPhone(rawPhone) {
   await assertPosEnabled();
-  const q = String(rawQuery || "").trim();
-  if (!q) {
-    const err = new Error("Phone number or Customer ID is required");
+  const phone = normalizePhoneNumber(rawPhone);
+  if (!phone || phone.length < 10) {
+    const err = new Error("Valid phone number is required");
     err.statusCode = 400;
     throw err;
   }
-
-  const searchConditions = [];
-
-  // Check Mongo ObjectId
-  if (mongoose.Types.ObjectId.isValid(q)) {
-    searchConditions.push({ _id: new mongoose.Types.ObjectId(q) });
-  }
-
-  // Check Customer ID / referralCode (case-insensitive)
-  const codeRegex = new RegExp(`^${q}$`, "i");
-  searchConditions.push({ userId: codeRegex });
-  searchConditions.push({ referralCode: codeRegex });
-  searchConditions.push({ "mlm.referralCode": codeRegex });
-
-  // Check Phone number
-  const phone = normalizePhoneNumber(q);
-  if (phone) {
-    const phoneDigits = phone.replace(/^\+91/, "");
-    const phoneRegex = new RegExp(phoneDigits + "$");
-    searchConditions.push({ phone: phoneRegex });
-    searchConditions.push({ phone: phone });
-    searchConditions.push({ phone: `+91${phoneDigits}` });
-  } else if (q.replace(/\D/g, "").length >= 5) {
-    const digits = q.replace(/\D/g, "");
-    searchConditions.push({ phone: new RegExp(digits + "$") });
-  }
-
-  const user = await Customer.findOne({ $or: searchConditions })
-    .select("_id name phone userId referralCode shoppingWallet earningWallet wallet")
-    .lean();
-
+  const user = await Customer.findOne({ phone }).select("_id name phone").lean();
   if (!user) {
-    const err = new Error("No registered customer found for this Phone or Customer ID");
+    const err = new Error("No registered customer found for this phone");
     err.statusCode = 404;
     throw err;
   }
-
-  // Fetch balances from Wallet collection
-  const walletDoc = await Wallet.findOne({ ownerId: user._id }).lean();
-
-  const shoppingWallet = Number(
-    walletDoc?.shoppingBalance !== undefined ? walletDoc.shoppingBalance : (user.shoppingWallet || 0)
-  );
-  const earningWallet = Number(
-    walletDoc?.earningsBalance !== undefined ? walletDoc.earningsBalance : (user.earningWallet || user.wallet || 0)
-  );
-
+  const wallet = await getOrCreateWallet(OWNER_TYPE.CUSTOMER, user._id);
   return {
     id: user._id,
     name: user.name || "",
-    phone: user.phone || q,
-    userId: user.userId || "",
-    shoppingWallet,
-    earningWallet,
+    phone: user.phone || phone,
+    shoppingWalletBalance: wallet?.shoppingBalance || 0,
+    earningsWalletBalance: wallet?.earningsBalance || 0,
+    availableWalletBalance: wallet?.availableBalance || 0,
   };
 }
 
@@ -429,18 +391,25 @@ export async function createPosSale({
 
   const preview = await previewPosSale(franchisePartnerId, { items });
   const paymentMethod = String(payment?.method || "").toLowerCase();
-  const selectedWalletType = String(payment?.walletType || "SHOPPING").toUpperCase();
-  if (
-    paymentMethod !== FRANCHISE_POS_PAYMENT_METHOD.CASH &&
-    paymentMethod !== FRANCHISE_POS_PAYMENT_METHOD.UPI_PARTNER &&
-    paymentMethod !== "wallet"
-  ) {
+  const validMethods = Object.values(FRANCHISE_POS_PAYMENT_METHOD);
+  if (!validMethods.includes(paymentMethod)) {
     const err = new Error("Invalid POS payment method");
     err.statusCode = 400;
     throw err;
   }
 
   const { orderCustomerId, posBuyer } = await resolveBuyerCustomerId(buyer || { kind: "guest" });
+
+  if (
+    (paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.SHOPPING_WALLET ||
+      paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.EARNINGS_WALLET) &&
+    (posBuyer.kind !== FRANCHISE_POS_BUYER_KIND.REGISTERED || !posBuyer.customerId)
+  ) {
+    const err = new Error("Wallet payment requires selecting a registered customer");
+    err.statusCode = 400;
+    throw err;
+  }
+
   const upiRef =
     paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.UPI_PARTNER
       ? String(payment?.upiReference || "").trim().slice(0, 120)
@@ -451,48 +420,6 @@ export async function createPosSale({
 
   try {
     await session.withTransaction(async () => {
-      if (paymentMethod === "wallet") {
-        if (!posBuyer || posBuyer.kind !== FRANCHISE_POS_BUYER_KIND.REGISTERED || !orderCustomerId) {
-          const err = new Error("Registered customer is required for wallet payment");
-          err.statusCode = 400;
-          throw err;
-        }
-
-        const walletDoc = await Wallet.findOne({ ownerId: orderCustomerId }).session(session);
-        const walletField = selectedWalletType === "EARNING" ? "earningsBalance" : "shoppingBalance";
-
-        let currentBal = 0;
-        if (walletDoc) {
-          currentBal = Number(walletDoc[walletField] || 0);
-        } else {
-          const cust = await Customer.findById(orderCustomerId).session(session);
-          if (cust) {
-            currentBal = Number(cust[selectedWalletType === "EARNING" ? "earningWallet" : "shoppingWallet"] || 0);
-          }
-        }
-
-        if (currentBal < preview.grandTotal) {
-          const err = new Error(
-            `Insufficient customer ${selectedWalletType === "EARNING" ? "Earning Wallet" : "Shopping Wallet"} balance (available: ₹${currentBal}, total: ₹${preview.grandTotal})`
-          );
-          err.statusCode = 422;
-          throw err;
-        }
-
-        if (walletDoc) {
-          walletDoc[walletField] = currentBal - preview.grandTotal;
-          walletDoc.totalDebited = Number(walletDoc.totalDebited || 0) + preview.grandTotal;
-          await walletDoc.save({ session });
-        } else {
-          const cust = await Customer.findById(orderCustomerId).session(session);
-          if (cust) {
-            const field = selectedWalletType === "EARNING" ? "earningWallet" : "shoppingWallet";
-            cust[field] = Math.max(0, Number(cust[field] || 0) - preview.grandTotal);
-            await cust.save({ session });
-          }
-        }
-      }
-
       const publicOrderId = await generateUniquePublicOrderId({ session });
       const now = new Date();
       const storeAddress = formatFranchiseAddress(partner);
@@ -512,10 +439,14 @@ export async function createPosSale({
           name: partner.displayName || "Franchise Store",
           address: storeAddress || "Franchise store",
         },
-        paymentMode: "COD",
+        paymentMode:
+          paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.SHOPPING_WALLET ||
+          paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.EARNINGS_WALLET
+            ? "WALLET"
+            : "COD",
         paymentStatus: ORDER_PAYMENT_STATUS.PAID,
         payment: {
-          method: "cash",
+          method: paymentMethod,
           status: "completed",
         },
         pricing: {
@@ -551,6 +482,28 @@ export async function createPosSale({
         },
         mlmBonusesDisbursed: true,
       });
+
+      if (
+        paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.SHOPPING_WALLET ||
+        paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.EARNINGS_WALLET
+      ) {
+        const bucket =
+          paymentMethod === FRANCHISE_POS_PAYMENT_METHOD.SHOPPING_WALLET
+            ? "shopping"
+            : "earnings";
+        await debitWallet({
+          ownerType: OWNER_TYPE.CUSTOMER,
+          ownerId: posBuyer.customerId,
+          amount: preview.grandTotal,
+          bucket,
+          session,
+          ledgerType: LEDGER_TRANSACTION_TYPE.WALLET_PAYMENT,
+          ledgerReference: publicOrderId,
+          ledgerDescription: `POS sale #${publicOrderId} payment via ${bucket === "shopping" ? "Shopping" : "Earning"} Wallet`,
+          orderId: order._id,
+          idempotencyKey: `${idempotencyKey}-wallet-debit`,
+        });
+      }
 
       freezeFinancialSnapshot(order, buildPosPaymentBreakdown(preview.grandTotal));
       await order.save({ session });

@@ -3,6 +3,7 @@ export const CURRENCY = "INR";
 export const PAYMENT_MODE = {
   ONLINE: "ONLINE",
   COD: "COD",
+  WALLET: "WALLET",
 };
 
 export const ORDER_PAYMENT_STATUS = {
