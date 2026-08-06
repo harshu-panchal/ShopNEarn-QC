@@ -209,6 +209,8 @@ const LEGACY_INDEX_DROPS = [
   // Let new users register with the same phone number as a soft-deleted account
   // by dropping the global unique index. The new partial index enforces uniqueness.
   { collection: "users", indexName: "phone_1" },
+  // Legacy 2-field unique index on franchisestockledgers replaced by (franchisePartnerId, productId, variantSku)
+  { collection: "franchisestockledgers", indexName: "franchisePartnerId_1_productId_1" },
 ];
 
 async function dropLegacyIndexes() {

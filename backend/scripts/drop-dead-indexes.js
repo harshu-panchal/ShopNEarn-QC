@@ -37,6 +37,9 @@ const DROP_LIST = [
   // ledgerentries: fields are `actorType` + `actorId`, not `ownerType` + `ownerId`.
   { coll: "ledgerentries", name: "idx_ownerType_ownerId_created" },
 
+  // franchisestockledgers: legacy 2-field unique index replaced by (franchisePartnerId, productId, variantSku)
+  { coll: "franchisestockledgers", name: "franchisePartnerId_1_productId_1" },
+
   // withdrawals indexes (the collection itself is dropped below if empty).
   { coll: "withdrawals", name: "idx_status_created" },
   { coll: "withdrawals", name: "idx_user_userModel_created" },

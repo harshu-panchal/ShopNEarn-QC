@@ -250,6 +250,7 @@ export async function approveFranchiseWalletTopUp({ topUpId, adminId, adminRemar
             note: `First top-up transfer to franchise (${publicOrderId})`,
             orderId: stockOrderDocId,
             transferGroupId,
+            variantSku: line.variantSku || line.sku || null,
           });
 
           await incrementFranchiseStock({
@@ -262,6 +263,8 @@ export async function approveFranchiseWalletTopUp({ topUpId, adminId, adminRemar
             orderId: stockOrderDocId,
             transferGroupId,
             createdBy: adminId || topUp.userId,
+            variantSku: line.variantSku || line.sku || "",
+            variantName: line.variantName || line.variant || "",
           });
         }
 
