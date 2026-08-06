@@ -159,11 +159,55 @@ export async function decrementFranchiseStock({
   const qty = Math.max(1, Number(quantity) || 0);
   const normVariantSku = String(variantSku || "").trim();
 
-  const ledger = await FranchiseStockLedger.findOneAndUpdate(
-    { franchisePartnerId, productId, variantSku: normVariantSku, quantity: { $gte: qty } },
-    { $inc: { quantity: -qty } },
-    { new: true, session },
-  );
+  // 1. Try exact variant SKU match if provided
+  let ledger;
+  if (normVariantSku) {
+    ledger = await FranchiseStockLedger.findOneAndUpdate(
+      { franchisePartnerId, productId, variantSku: normVariantSku, quantity: { $gte: qty } },
+      { $inc: { quantity: -qty } },
+      { new: true, session },
+    );
+  }
+
+  // 2. Try default (empty variantSku) match
+  if (!ledger) {
+    ledger = await FranchiseStockLedger.findOneAndUpdate(
+      { franchisePartnerId, productId, variantSku: "", quantity: { $gte: qty } },
+      { $inc: { quantity: -qty } },
+      { new: true, session },
+    );
+  }
+
+  // 3. Try any single ledger row with sufficient quantity
+  if (!ledger) {
+    ledger = await FranchiseStockLedger.findOneAndUpdate(
+      { franchisePartnerId, productId, quantity: { $gte: qty } },
+      { $inc: { quantity: -qty } },
+      { new: true, session },
+    );
+  }
+
+  // 4. Fallback: split decrement across multiple ledger rows if stock is fragmented
+  if (!ledger) {
+    const rows = await FranchiseStockLedger.find(
+      { franchisePartnerId, productId, quantity: { $gt: 0 } },
+      null,
+      { session },
+    ).sort({ quantity: -1 });
+
+    const totalAvailable = rows.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
+    if (totalAvailable >= qty) {
+      let remaining = qty;
+      for (const row of rows) {
+        if (remaining <= 0) break;
+        const take = Math.min(row.quantity, remaining);
+        row.quantity -= take;
+        remaining -= take;
+        await row.save({ session });
+        ledger = row;
+      }
+    }
+  }
 
   if (!ledger) {
     const err = new Error("Insufficient franchise stock to fulfill");

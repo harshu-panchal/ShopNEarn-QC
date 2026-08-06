@@ -84,7 +84,13 @@ async function ledgerQtyMap(franchisePartnerId, productIds = []) {
   })
     .select("productId quantity")
     .lean();
-  return new Map(rows.map((r) => [String(r.productId), Number(r.quantity) || 0]));
+
+  const qtyMap = new Map();
+  for (const r of rows) {
+    const key = String(r.productId);
+    qtyMap.set(key, (qtyMap.get(key) || 0) + (Number(r.quantity) || 0));
+  }
+  return qtyMap;
 }
 
 function normalizeCartItems(items = []) {
@@ -113,9 +119,11 @@ export async function listPosProducts(franchisePartnerId, { q, page, limit } = {
     quantity: { $gt: 0 },
   }).lean();
 
-  const inStockQtyMap = new Map(
-    stockRows.map((r) => [String(r.productId), Number(r.quantity) || 0]),
-  );
+  const inStockQtyMap = new Map();
+  for (const r of stockRows) {
+    const key = String(r.productId);
+    inStockQtyMap.set(key, (inStockQtyMap.get(key) || 0) + (Number(r.quantity) || 0));
+  }
   const inStockProductIds = Array.from(inStockQtyMap.keys());
 
   // 2. Hydrate full product details for all in-stock products
@@ -521,6 +529,7 @@ export async function createPosSale({
           note: `POS sale #${publicOrderId}`,
           orderId: order._id,
           createdBy: userId,
+          variantSku: line.variantSku || line.sku || "",
         });
       }
 

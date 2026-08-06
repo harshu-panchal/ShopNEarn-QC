@@ -443,6 +443,7 @@ export async function fulfillFranchiseOrder({ franchisePartnerId, orderId }) {
             type: FRANCHISE_STOCK_TYPES.FULFILLMENT,
             note: `Fulfilled order #${order.orderId}`,
             orderId: order._id,
+            variantSku: item.variantSku || item.sku || "",
           });
         }
         order.franchiseStockConsumed = true;
