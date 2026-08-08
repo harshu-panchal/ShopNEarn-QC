@@ -20,6 +20,9 @@ import {
   rejectReturnPickup,
   updateReturnStatus,
   uploadReturnPickupProof,
+  getSellerFranchiseStockOrders,
+  dispatchSellerFranchiseStockOrder,
+  cancelSellerFranchiseStockOrder,
 } from "../controller/orderController.js";
 import {
   createOrderWithFinancialSnapshot,
@@ -135,6 +138,30 @@ router.get(
   requireApprovedSeller,
   requireAdminPermissionIfAdmin("orders:view"),
   getSellerOrders,
+);
+router.get(
+  "/seller-franchise-stock-orders",
+  verifyToken,
+  allowRoles("admin", "seller"),
+  requireApprovedSeller,
+  requireAdminPermissionIfAdmin("orders:view"),
+  getSellerFranchiseStockOrders,
+);
+router.post(
+  "/seller-franchise-stock-orders/:orderId/dispatch",
+  verifyToken,
+  allowRoles("admin", "seller"),
+  requireApprovedSeller,
+  requireAdminPermissionIfAdmin("orders:update"),
+  dispatchSellerFranchiseStockOrder,
+);
+router.post(
+  "/seller-franchise-stock-orders/:orderId/cancel",
+  verifyToken,
+  allowRoles("admin", "seller"),
+  requireApprovedSeller,
+  requireAdminPermissionIfAdmin("orders:update"),
+  cancelSellerFranchiseStockOrder,
 );
 router.put(
   "/status/:orderId",

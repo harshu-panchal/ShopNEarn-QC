@@ -12,6 +12,8 @@ import {
   listMyTopUps,
   getTransactionHistory,
   purchaseStock,
+  listMyStockOrders,
+  approveStockOrderReceipt,
   getStock,
   getInventorySummary,
   getInventoryMovements,
@@ -49,6 +51,8 @@ router.post("/wallet/submit-proof", verifyToken, submitTopUpProof);
 router.get("/wallet/topups", verifyToken, listMyTopUps);
 router.get("/wallet/transactions", verifyToken, getTransactionHistory);
 router.post("/stock/purchase", verifyToken, purchaseStock);
+router.get("/stock/orders", verifyToken, listMyStockOrders);
+router.post("/stock/orders/:orderId/approve-receipt", verifyToken, approveStockOrderReceipt);
 router.get("/stock", verifyToken, getStock);
 router.get("/inventory/summary", verifyToken, getInventorySummary);
 router.get("/inventory/movements", verifyToken, getInventoryMovements);

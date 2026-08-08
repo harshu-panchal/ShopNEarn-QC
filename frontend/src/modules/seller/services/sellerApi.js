@@ -36,6 +36,12 @@ export const sellerApi = {
   getStats: (range) =>
     axiosInstance.get("/seller/stats", { params: { range } }),
   getOrders: (params) => axiosInstance.get("/orders/seller-orders", { params }),
+  getFranchiseStockOrders: (params) =>
+    axiosInstance.get("/orders/seller-franchise-stock-orders", { params }),
+  dispatchFranchiseStockOrder: (orderId) =>
+    axiosInstance.post(`/orders/seller-franchise-stock-orders/${orderId}/dispatch`),
+  cancelFranchiseStockOrder: (orderId, data) =>
+    axiosInstance.post(`/orders/seller-franchise-stock-orders/${orderId}/cancel`, data || {}),
   updateOrderStatus: (orderId, data) =>
     axiosInstance.put(`/orders/status/${orderId}`, data),
   getEarnings: () => axiosInstance.get("/seller/earnings"),

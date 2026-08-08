@@ -16,6 +16,9 @@ export const franchiseApi = {
   listTransactions: (params) =>
     axiosInstance.get("/customer/franchise/wallet/transactions", { params }),
   purchaseStock: (data) => axiosInstance.post("/customer/franchise/stock/purchase", data),
+  listStockOrders: (params) => axiosInstance.get("/customer/franchise/stock/orders", { params }),
+  approveStockOrderReceipt: (orderId) =>
+    axiosInstance.post(`/customer/franchise/stock/orders/${orderId}/approve-receipt`),
   getStock: () => axiosInstance.get("/customer/franchise/stock"),
   getInventorySummary: () => axiosInstance.get("/customer/franchise/inventory/summary"),
   getInventoryMovements: (params) =>
@@ -81,6 +84,11 @@ export const adminFranchiseApi = {
   listDispatchOrders: (params) => axiosInstance.get("/admin/franchise/orders", { params }),
   assignOrderDelivery: (orderId, data) =>
     axiosInstance.post(`/admin/franchise/orders/${orderId}/assign-delivery`, data),
+  listStockOrders: (params) => axiosInstance.get("/admin/franchise/stock-orders", { params }),
+  dispatchStockOrder: (orderId) =>
+    axiosInstance.post(`/admin/franchise/stock-orders/${orderId}/dispatch`),
+  approveStockOrderReceipt: (orderId) =>
+    axiosInstance.post(`/admin/franchise/stock-orders/${orderId}/approve-receipt`),
 };
 
 export default franchiseApi;

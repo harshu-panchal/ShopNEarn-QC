@@ -27,6 +27,11 @@ import {
 } from "../services/orderWorkflowService.js";
 import { applyDeliveredSettlement } from "../services/orderSettlement.js";
 import { markFranchiseOrderDeliveredFromWorkflow } from "../services/franchise/franchiseOrderService.js";
+import {
+  listFranchiseStockOrders,
+  dispatchFranchiseStockOrder,
+  cancelFranchiseStockOrder,
+} from "../services/franchise/franchiseStockService.js";
 import { compensateOrderCancellation } from "../services/orderCompensation.js";
 import {
   freezeFinancialSnapshot,
@@ -1588,5 +1593,61 @@ export const uploadReturnPickupProof = async (req, res) => {
     });
   } catch (error) {
     return handleResponse(res, 500, error.message);
+  }
+};
+
+export const getSellerFranchiseStockOrders = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const role = req.user.role;
+    const sellerId = role === "admin" ? null : userId;
+    const result = await listFranchiseStockOrders({
+      sellerId,
+      status: req.query.status,
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    return handleResponse(res, 200, "Franchise stock orders", result);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+export const dispatchSellerFranchiseStockOrder = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const role = req.user.role;
+    const sellerId = role === "admin" ? null : userId;
+    const order = await dispatchFranchiseStockOrder({
+      sellerId,
+      orderId: req.params.orderId,
+      adminId: role === "admin" ? userId : null,
+    });
+    return handleResponse(res, 200, "Franchise stock order dispatched", {
+      orderId: order.orderId,
+      franchiseStockStatus: order.franchiseStockStatus,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+export const cancelSellerFranchiseStockOrder = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const role = req.user.role;
+    const sellerId = role === "admin" ? null : userId;
+    const order = await cancelFranchiseStockOrder({
+      sellerId,
+      orderId: req.params.orderId,
+      reason: req.body?.reason,
+      adminId: role === "admin" ? userId : null,
+    });
+    return handleResponse(res, 200, "Franchise stock order cancelled", {
+      orderId: order.orderId,
+      franchiseStockStatus: order.franchiseStockStatus,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
   }
 };

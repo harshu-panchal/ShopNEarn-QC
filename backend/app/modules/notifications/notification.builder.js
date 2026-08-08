@@ -248,6 +248,46 @@ function eventDefinition(eventType) {
             ? `Order #${payload.orderId} was routed to your franchise location. Please accept or reject.`
             : "A new customer order was routed to your franchise location.",
       };
+    case NOTIFICATION_EVENTS.FRANCHISE_STOCK_ORDER_REQUESTED:
+      return {
+        role: NOTIFICATION_ROLES.SELLER,
+        recipientIds: (payload) => normalizeIdList(payload.userId || payload.sellerId),
+        title: () => "New Franchise Stock Purchase Request",
+        body: (payload) =>
+          payload.orderId
+            ? `Franchise partner placed stock order #${payload.orderId}. Please dispatch when ready.`
+            : "A new franchise stock purchase request was placed.",
+      };
+    case NOTIFICATION_EVENTS.FRANCHISE_STOCK_ORDER_DISPATCHED:
+      return {
+        role: NOTIFICATION_ROLES.CUSTOMER,
+        recipientIds: (payload) => normalizeIdList(payload.userId),
+        title: () => "Stock Order Dispatched",
+        body: (payload) =>
+          payload.orderId
+            ? `Harsh's Hub dispatched stock order #${payload.orderId}. Please confirm receipt once delivered.`
+            : "Harsh's Hub dispatched your stock order.",
+      };
+    case NOTIFICATION_EVENTS.FRANCHISE_STOCK_ORDER_RECEIVED:
+      return {
+        role: NOTIFICATION_ROLES.SELLER,
+        recipientIds: (payload) => normalizeIdList(payload.userId || payload.sellerId),
+        title: () => "Stock Order Received & Confirmed",
+        body: (payload) =>
+          payload.orderId
+            ? `Franchise partner confirmed receipt of stock order #${payload.orderId}.`
+            : "Franchise partner confirmed receipt of stock order.",
+      };
+    case NOTIFICATION_EVENTS.FRANCHISE_STOCK_ORDER_CANCELLED:
+      return {
+        role: NOTIFICATION_ROLES.CUSTOMER,
+        recipientIds: (payload) => normalizeIdList(payload.userId),
+        title: () => "Stock Order Cancelled",
+        body: (payload) =>
+          payload.orderId
+            ? `Stock order #${payload.orderId} was cancelled. Wallet has been refunded.`
+            : "Stock order was cancelled. Wallet has been refunded.",
+      };
     case NOTIFICATION_EVENTS.DELIVERY_ASSIGNED:
       return {
         role: NOTIFICATION_ROLES.DELIVERY,

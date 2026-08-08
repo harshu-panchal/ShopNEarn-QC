@@ -261,3 +261,51 @@ export async function restoreFranchiseStock({
     createdBy,
   });
 }
+
+/**
+ * Restore hub Product.stock when a dispatched transfer is cancelled.
+ */
+export async function restoreHubProductStock({
+  productId,
+  sellerId,
+  quantity,
+  session,
+  type = HUB_STOCK_TYPES.ADJUSTMENT_IN,
+  note,
+  orderId = null,
+  transferGroupId = null,
+  variantSku = null,
+}) {
+  const qty = Math.max(1, Number(quantity) || 0);
+  const normVariantSku = String(variantSku || "").trim();
+  const filter = { _id: productId, sellerId };
+  const update = { $inc: { stock: qty } };
+  const options = { new: true, session };
+
+  if (normVariantSku) {
+    update.$inc["variants.$[v].stock"] = qty;
+    options.arrayFilters = [
+      { $or: [{ "v.sku": normVariantSku }, { "v.name": normVariantSku }] },
+    ];
+  }
+
+  const updated = await Product.findOneAndUpdate(filter, update, options);
+  await StockHistory.create(
+    [
+      {
+        product: productId,
+        seller: sellerId,
+        type,
+        quantity: qty,
+        note: note || `Stock restored (${type})`,
+        order: orderId,
+        transferGroupId,
+        variantSku: normVariantSku || null,
+      },
+    ],
+    { session },
+  );
+
+  return { product: updated, newStock: updated?.stock || 0 };
+}
+

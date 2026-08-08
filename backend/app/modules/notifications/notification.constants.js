@@ -48,6 +48,14 @@ export const NOTIFICATION_EVENTS = Object.freeze({
   FRANCHISE_HUB_ACCEPTED: "FRANCHISE_HUB_ACCEPTED",
   /** Hub customer order routed to franchise partner — partner must accept first. */
   FRANCHISE_ORDER_ROUTED: "FRANCHISE_ORDER_ROUTED",
+  /** Franchise stock purchase requested from Harsh's Hub */
+  FRANCHISE_STOCK_ORDER_REQUESTED: "FRANCHISE_STOCK_ORDER_REQUESTED",
+  /** Harsh's Hub dispatched franchise stock order */
+  FRANCHISE_STOCK_ORDER_DISPATCHED: "FRANCHISE_STOCK_ORDER_DISPATCHED",
+  /** Franchise partner approved receipt of stock order */
+  FRANCHISE_STOCK_ORDER_RECEIVED: "FRANCHISE_STOCK_ORDER_RECEIVED",
+  /** Franchise stock order cancelled */
+  FRANCHISE_STOCK_ORDER_CANCELLED: "FRANCHISE_STOCK_ORDER_CANCELLED",
 });
 
 export const NOTIFICATION_ROLES = Object.freeze({

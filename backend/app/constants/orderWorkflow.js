@@ -20,6 +20,8 @@ export const WORKFLOW_STATUS = {
   OUT_FOR_DELIVERY: "OUT_FOR_DELIVERY",
   DELIVERED: "DELIVERED",
   CANCELLED: "CANCELLED",
+  PENDING_HUB_DISPATCH: "PENDING_HUB_DISPATCH",
+  DISPATCHED_PENDING_RECEIPT: "DISPATCHED_PENDING_RECEIPT",
 };
 
 /** Milliseconds — override via env in services */
@@ -51,7 +53,10 @@ export function legacyStatusFromWorkflow(workflowStatus) {
       return "pending";
     case WORKFLOW_STATUS.SELLER_PENDING:
     case WORKFLOW_STATUS.FRANCHISE_PENDING:
+    case WORKFLOW_STATUS.PENDING_HUB_DISPATCH:
       return "pending";
+    case WORKFLOW_STATUS.DISPATCHED_PENDING_RECEIPT:
+      return "shipped";
     case WORKFLOW_STATUS.FRANCHISE_ACCEPTED:
       return "confirmed";
     case WORKFLOW_STATUS.SELLER_ACCEPTED:
