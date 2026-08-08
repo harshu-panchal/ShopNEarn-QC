@@ -127,6 +127,7 @@ const Orders = () => {
           franchisePartnerId: order.franchisePartnerId,
           shipmentStatus: order.shipmentStatus,
           isFranchiseStockOrder: order.isFranchiseStockOrder,
+          franchiseStockStatus: order.franchiseStockStatus,
           statusLabel: getOrderStatusLabel(order),
           franchiseStatus: order.franchiseStatus,
           hubAcceptanceStatus: order.hubAcceptanceStatus,
@@ -224,6 +225,15 @@ const Orders = () => {
   const isAwaitingFranchisePartner = (order) =>
     isHubFranchiseOrder(order) && order.franchiseStatus === "pending";
 
+  const getEffectiveStockStatus = (order) => {
+    const stockUpper = String(order.franchiseStockStatus || "").toUpperCase();
+    const statusLower = String(order.status || "").toLowerCase();
+    if (stockUpper === "CANCELLED" || statusLower === "cancelled" || Boolean(order.cancelReason)) return "CANCELLED";
+    if (stockUpper === "DELIVERED" || statusLower === "delivered") return "DELIVERED";
+    if (stockUpper === "DISPATCHED_PENDING_RECEIPT" || statusLower === "shipped") return "DISPATCHED_PENDING_RECEIPT";
+    return stockUpper || "REQUESTED";
+  };
+
   const stats = useMemo(
     () => [
       {
@@ -281,6 +291,20 @@ const Orders = () => {
         error?.response?.data?.message || "Failed to update status";
       showToast(message, "error");
       fetchOrders();
+    }
+  };
+
+  const handleDispatchStockOrder = async (orderId) => {
+    try {
+      await sellerApi.dispatchFranchiseStockOrder(orderId);
+      showToast("Franchise stock purchase order dispatched & confirmation request sent to partner", "success");
+      fetchOrders();
+      if (selectedOrder && selectedOrder.id === orderId) {
+        setSelectedOrder({ ...selectedOrder, franchiseStockStatus: "DISPATCHED_PENDING_RECEIPT", status: "shipped" });
+      }
+    } catch (error) {
+      console.error("Failed to dispatch stock order:", error);
+      showToast(error?.response?.data?.message || "Failed to dispatch stock order", "error");
     }
   };
 
@@ -602,10 +626,43 @@ const Orders = () => {
                                   Awaiting franchise partner
                                 </p>
                               )}
-                              {isFranchisePartnerHandling(order) && (
+                              {isHubFranchiseOrder(order) && !order.isFranchiseStockOrder && (
                                 <p className="text-[10px] font-bold uppercase tracking-wide text-indigo-700 mt-2">
                                   Franchise partner fulfilling
                                 </p>
+                              )}
+                              {order.isFranchiseStockOrder && (
+                                <div className="mt-2 space-y-1">
+                                  <span className="inline-block text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded bg-purple-100 text-purple-800">
+                                    Franchise Stock Order
+                                  </span>
+                                  {getEffectiveStockStatus(order) === "REQUESTED" && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDispatchStockOrder(order.id);
+                                      }}
+                                      className="w-full mt-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] uppercase tracking-wider rounded-lg transition-colors">
+                                      Dispatch Stock & Request Approval
+                                    </button>
+                                  )}
+                                  {getEffectiveStockStatus(order) === "DISPATCHED_PENDING_RECEIPT" && (
+                                    <p className="text-[10px] font-bold text-amber-700 bg-amber-50 p-1 rounded">
+                                      Dispatched — Awaiting Partner Receipt Confirmation
+                                    </p>
+                                  )}
+                                  {getEffectiveStockStatus(order) === "DELIVERED" && (
+                                    <p className="text-[10px] font-bold text-emerald-700 bg-emerald-50 p-1 rounded">
+                                      Received & Confirmed by Franchise Partner
+                                    </p>
+                                  )}
+                                  {getEffectiveStockStatus(order) === "CANCELLED" && (
+                                    <p className="text-[10px] font-bold text-rose-700 bg-rose-50 p-1 rounded">
+                                      Cancelled & Refunded
+                                    </p>
+                                  )}
+                                </div>
                               )}
                             </div>
                             <div className="flex flex-col items-end gap-2 shrink-0">
@@ -764,10 +821,43 @@ const Orders = () => {
                                   className="p-1.5 hover:bg-white hover:text-primary rounded-lg transition-all text-slate-600 shadow-sm ring-1 ring-slate-100">
                                   <HiOutlineEye className="h-4 w-4" />
                                 </button>
-                                {isHubFranchiseOrder(order) && (
+                                {isHubFranchiseOrder(order) && !order.isFranchiseStockOrder && (
                                   <span className="px-2 py-1 text-[10px] font-black uppercase bg-indigo-100 text-indigo-700 rounded-lg">
                                     Partner order
                                   </span>
+                                )}
+                                {order.isFranchiseStockOrder && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="px-2 py-1 text-[10px] font-black uppercase bg-purple-100 text-purple-800 rounded-lg">
+                                      Stock Order
+                                    </span>
+                                    {getEffectiveStockStatus(order) === "REQUESTED" && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDispatchStockOrder(order.id);
+                                        }}
+                                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors">
+                                        Dispatch & Send Request
+                                      </button>
+                                    )}
+                                    {getEffectiveStockStatus(order) === "DISPATCHED_PENDING_RECEIPT" && (
+                                      <span className="px-2 py-1 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded-lg">
+                                        Awaiting Partner Receipt
+                                      </span>
+                                    )}
+                                    {getEffectiveStockStatus(order) === "DELIVERED" && (
+                                      <span className="px-2 py-1 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg">
+                                        Delivered
+                                      </span>
+                                    )}
+                                    {getEffectiveStockStatus(order) === "CANCELLED" && (
+                                      <span className="px-2 py-1 text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 rounded-lg">
+                                        Cancelled
+                                      </span>
+                                    )}
+                                  </div>
                                 )}
                                 {order.status === "pending" &&
                                   !isHubFranchiseOrder(order) && (

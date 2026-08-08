@@ -25,7 +25,12 @@ import {
 } from "../../services/franchise/franchiseOrderService.js";
 import { getFranchiseConfig, resolveHubSellerId } from "../../services/franchise/franchiseConfigService.js";
 import Setting from "../../models/setting.js";
-import { getFranchiseStockSummary } from "../../services/franchise/franchiseStockService.js";
+import {
+  getFranchiseStockSummary,
+  listFranchiseStockOrders,
+  dispatchFranchiseStockOrder,
+  approveFranchiseStockOrderReceipt,
+} from "../../services/franchise/franchiseStockService.js";
 
 export const getFranchiseAdminDashboard = async (req, res) => {
   try {
@@ -381,6 +386,50 @@ export const assignFranchiseDispatchDelivery = async (req, res) => {
       adminId: req.user?.id,
     });
     return handleResponse(res, 200, "Delivery partner assigned", { orderId: order.orderId });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+export const listAdminStockOrders = async (req, res) => {
+  try {
+    const result = await listFranchiseStockOrders({
+      franchisePartnerId: req.query.franchisePartnerId,
+      status: req.query.status,
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    return handleResponse(res, 200, "Franchise stock orders", result);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+export const dispatchAdminStockOrder = async (req, res) => {
+  try {
+    const order = await dispatchFranchiseStockOrder({
+      orderId: req.params.orderId,
+      adminId: req.user?.id,
+    });
+    return handleResponse(res, 200, "Franchise stock order dispatched", {
+      orderId: order.orderId,
+      franchiseStockStatus: order.franchiseStockStatus,
+    });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+export const approveAdminStockOrderReceipt = async (req, res) => {
+  try {
+    const order = await approveFranchiseStockOrderReceipt({
+      orderId: req.params.orderId,
+      userId: req.user?.id,
+    });
+    return handleResponse(res, 200, "Stock receipt approved successfully", {
+      orderId: order.orderId,
+      franchiseStockStatus: order.franchiseStockStatus,
+    });
   } catch (error) {
     return handleResponse(res, error.statusCode || 400, error.message);
   }

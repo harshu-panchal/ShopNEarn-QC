@@ -6,7 +6,10 @@ import {
   ALL_PAYMENT_MODES,
   CURRENCY,
 } from "../constants/finance.js";
-import { ALL_FRANCHISE_POS_PAYMENT_METHODS } from "../constants/franchise.js";
+import {
+  ALL_FRANCHISE_POS_PAYMENT_METHODS,
+  ALL_FRANCHISE_STOCK_ORDER_STATUSES,
+} from "../constants/franchise.js";
 
 const orderSchema = new mongoose.Schema(
   {
@@ -497,6 +500,14 @@ const orderSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    franchiseStockStatus: {
+      type: String,
+      enum: ALL_FRANCHISE_STOCK_ORDER_STATUSES,
+      default: null,
+      index: true,
+    },
+    hubDispatchedAt: { type: Date, default: null },
+    franchiseReceivedAt: { type: Date, default: null },
     /** True after franchise ledger was decremented for customer-order fulfillment. */
     franchiseStockConsumed: {
       type: Boolean,

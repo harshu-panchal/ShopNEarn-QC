@@ -106,6 +106,17 @@ export const FRANCHISE_MERCHANT_PREFIX = {
   TOPUP: "FRANCHISE-TOPUP",
 };
 
+export const FRANCHISE_STOCK_ORDER_STATUS = {
+  REQUESTED: "REQUESTED",
+  DISPATCHED_PENDING_RECEIPT: "DISPATCHED_PENDING_RECEIPT",
+  DELIVERED: "DELIVERED",
+  CANCELLED: "CANCELLED",
+};
+
+export const ALL_FRANCHISE_STOCK_ORDER_STATUSES = Object.values(
+  FRANCHISE_STOCK_ORDER_STATUS,
+);
+
 export const FRANCHISE_DEFAULTS = {
   enabled: true,
   registrationPrice: 10000,
@@ -116,3 +127,4 @@ export const FRANCHISE_DEFAULTS = {
   posEnabled: false,
   posShowOutOfStockInCatalog: true,
 };
+

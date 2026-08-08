@@ -18,6 +18,9 @@ import {
   issueHubSellerImpersonationToken,
   listFranchiseDispatchOrders,
   assignFranchiseDispatchDelivery,
+  listAdminStockOrders,
+  dispatchAdminStockOrder,
+  approveAdminStockOrderReceipt,
 } from "../controller/admin/franchiseAdminController.js";
 
 const router = express.Router();
@@ -51,5 +54,9 @@ router.post(
   ...adminPermissionGuard("franchise:dispatch"),
   assignFranchiseDispatchDelivery,
 );
+
+router.get("/stock-orders", ...adminPermissionGuard("franchise:view"), listAdminStockOrders);
+router.post("/stock-orders/:orderId/dispatch", ...adminPermissionGuard("franchise:approve"), dispatchAdminStockOrder);
+router.post("/stock-orders/:orderId/approve-receipt", ...adminPermissionGuard("franchise:approve"), approveAdminStockOrderReceipt);
 
 export default router;

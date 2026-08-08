@@ -4,9 +4,13 @@ import FranchisePartner from "../../models/franchisePartner.js";
 import Product from "../../models/product.js";
 import Order from "../../models/order.js";
 import { generateUniquePublicOrderId } from "../orderIdService.js";
-import { FRANCHISE_IDEMPOTENCY_PREFIX } from "../../constants/franchise.js";
+import {
+  FRANCHISE_IDEMPOTENCY_PREFIX,
+  FRANCHISE_STOCK_ORDER_STATUS,
+} from "../../constants/franchise.js";
 import { OWNER_TYPE, LEDGER_TRANSACTION_TYPE } from "../../constants/finance.js";
-import { debitWallet } from "../finance/walletService.js";
+import { WORKFLOW_STATUS } from "../../constants/orderWorkflow.js";
+import { debitWallet, creditWallet } from "../finance/walletService.js";
 import { listHubCatalogProducts } from "./franchiseCatalogService.js";
 import { getFranchiseWalletBalance } from "./franchiseWalletService.js";
 import {
@@ -18,8 +22,12 @@ import {
   createTransferGroupId,
   decrementHubProductStock,
   incrementFranchiseStock,
+  restoreHubProductStock,
 } from "../inventory/inventoryMovementService.js";
 import { HUB_STOCK_TYPES, FRANCHISE_STOCK_TYPES } from "../../constants/inventory.js";
+import { emitNotificationEvent } from "../../modules/notifications/notification.emitter.js";
+import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.constants.js";
+import { requireCanonicalOrderId } from "../../utils/orderLookup.js";
 
 export async function getFranchiseStockSummary(franchisePartnerId) {
   const rows = await FranchiseStockLedger.find({ franchisePartnerId }).lean();
@@ -39,7 +47,8 @@ export async function getFranchiseStockSummary(franchisePartnerId) {
 
 /**
  * Franchise B2B stock purchase from Harsh's Hub catalog using wallet balance.
- * Atomically: hub stock out + franchise ledger in (linked transferGroupId).
+ * Creates a Franchise Stock Order in REQUESTED status.
+ * Wallet is debited, order is sent to Harsh's Hub seller.
  */
 export async function purchaseFranchiseStock({
   franchisePartnerId,
@@ -166,9 +175,10 @@ export async function purchaseFranchiseStock({
             })),
             isFranchiseStockOrder: true,
             franchisePartnerId,
-            status: "delivered",
-            orderStatus: "delivered",
-            workflowStatus: "DELIVERED",
+            franchiseStockStatus: FRANCHISE_STOCK_ORDER_STATUS.REQUESTED,
+            status: "pending",
+            orderStatus: "pending",
+            workflowStatus: WORKFLOW_STATUS.PENDING_HUB_DISPATCH,
             paymentMode: "ONLINE",
             paymentStatus: "PAID",
             pricing: { total: totalCost, grandTotal: totalCost },
@@ -178,37 +188,286 @@ export async function purchaseFranchiseStock({
       );
       stockOrderDocId = order[0]._id;
       stockOrderId = publicOrderId;
-
-      for (const line of lineItems) {
-        await decrementHubProductStock({
-          productId: line.productId,
-          sellerId: catalog.hubSellerId,
-          quantity: line.qty,
-          session,
-          type: HUB_STOCK_TYPES.TRANSFER_OUT,
-          note: `Transfer to franchise partner (${publicOrderId})`,
-          orderId: stockOrderDocId,
-          transferGroupId,
-          variantSku: line.variantSku || null,
-        });
-
-        await incrementFranchiseStock({
-          franchisePartnerId,
-          productId: line.productId,
-          quantity: line.qty,
-          session,
-          type: FRANCHISE_STOCK_TYPES.TRANSFER_IN,
-          note: `Stock purchase from hub (${publicOrderId})`,
-          orderId: stockOrderDocId,
-          transferGroupId,
-          createdBy: userId,
-          variantSku: line.variantSku || "",
-          variantName: line.variantName || "",
-        });
-      }
     });
+
+    emitNotificationEvent(NOTIFICATION_EVENTS.FRANCHISE_STOCK_ORDER_REQUESTED, {
+      orderId: stockOrderId,
+      sellerId: catalog.hubSellerId,
+      franchisePartnerId: String(franchisePartnerId),
+    });
+
     return { stockOrderId, stockOrderDocId, totalCost, lineItems, transferGroupId };
   } finally {
     await session.endSession();
   }
+}
+
+/**
+ * Harsh's Hub seller (or Admin) dispatches a Franchise Stock Order.
+ * Hub product stock is decremented and status changes to DISPATCHED_PENDING_RECEIPT.
+ * Sends a confirmation request to the franchise partner.
+ */
+export async function dispatchFranchiseStockOrder({ sellerId, orderId, adminId }) {
+  const canonicalOrderId = await requireCanonicalOrderId(orderId);
+  const order = await Order.findOne({ orderId: canonicalOrderId, isFranchiseStockOrder: true });
+  if (!order) {
+    const err = new Error("Franchise stock order not found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (sellerId && String(order.seller) !== String(sellerId)) {
+    const err = new Error("Only the hub seller or admin can dispatch this stock order");
+    err.statusCode = 403;
+    throw err;
+  }
+  if (order.franchiseStockStatus !== FRANCHISE_STOCK_ORDER_STATUS.REQUESTED) {
+    const err = new Error("Stock order is not in REQUESTED state");
+    err.statusCode = 422;
+    throw err;
+  }
+
+  const session = await mongoose.startSession();
+  const transferGroupId = createTransferGroupId();
+  try {
+    await session.withTransaction(async () => {
+      for (const item of order.items || []) {
+        const productId = item.product?._id || item.product;
+        const qty = Math.max(1, Number(item.quantity) || 1);
+        if (!productId) continue;
+
+        await decrementHubProductStock({
+          productId,
+          sellerId: order.seller,
+          quantity: qty,
+          session,
+          type: HUB_STOCK_TYPES.TRANSFER_OUT,
+          note: `Transfer to franchise partner (${order.orderId})`,
+          orderId: order._id,
+          transferGroupId,
+          variantSku: item.variantSku || null,
+        });
+      }
+
+      order.franchiseStockStatus = FRANCHISE_STOCK_ORDER_STATUS.DISPATCHED_PENDING_RECEIPT;
+      order.status = "shipped";
+      order.orderStatus = "shipped";
+      order.workflowStatus = WORKFLOW_STATUS.DISPATCHED_PENDING_RECEIPT;
+      order.hubDispatchedAt = new Date();
+      await order.save({ session });
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  emitNotificationEvent(NOTIFICATION_EVENTS.FRANCHISE_STOCK_ORDER_DISPATCHED, {
+    orderId: order.orderId,
+    userId: String(order.customer),
+    franchisePartnerId: String(order.franchisePartnerId),
+  });
+
+  return order;
+}
+
+/**
+ * Franchise Partner approves receipt of products for a dispatched stock order.
+ * Updates stock in FranchiseStockLedger and sets status to DELIVERED.
+ */
+export async function approveFranchiseStockOrderReceipt({ franchisePartnerId, orderId, userId }) {
+  const canonicalOrderId = await requireCanonicalOrderId(orderId);
+  const order = await Order.findOne({ orderId: canonicalOrderId, isFranchiseStockOrder: true });
+  if (!order) {
+    const err = new Error("Franchise stock order not found");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (franchisePartnerId && String(order.franchisePartnerId) !== String(franchisePartnerId)) {
+    const err = new Error("Order does not belong to this franchise partner");
+    err.statusCode = 403;
+    throw err;
+  }
+  if (order.franchiseStockStatus !== FRANCHISE_STOCK_ORDER_STATUS.DISPATCHED_PENDING_RECEIPT) {
+    const err = new Error("Stock order is not awaiting franchise receipt confirmation");
+    err.statusCode = 422;
+    throw err;
+  }
+
+  const session = await mongoose.startSession();
+  const transferGroupId = createTransferGroupId();
+  try {
+    await session.withTransaction(async () => {
+      for (const item of order.items || []) {
+        const productId = item.product?._id || item.product;
+        const qty = Math.max(1, Number(item.quantity) || 1);
+        if (!productId) continue;
+
+        await incrementFranchiseStock({
+          franchisePartnerId: order.franchisePartnerId,
+          productId,
+          quantity: qty,
+          session,
+          type: FRANCHISE_STOCK_TYPES.TRANSFER_IN,
+          note: `Stock purchase received from hub (${order.orderId})`,
+          orderId: order._id,
+          transferGroupId,
+          createdBy: userId || null,
+          variantSku: item.variantSku || "",
+          variantName: item.variantName || "",
+        });
+      }
+
+      order.franchiseStockStatus = FRANCHISE_STOCK_ORDER_STATUS.DELIVERED;
+      order.status = "delivered";
+      order.orderStatus = "delivered";
+      order.workflowStatus = WORKFLOW_STATUS.DELIVERED;
+      order.franchiseReceivedAt = new Date();
+      await order.save({ session });
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  emitNotificationEvent(NOTIFICATION_EVENTS.FRANCHISE_STOCK_ORDER_RECEIVED, {
+    orderId: order.orderId,
+    sellerId: String(order.seller),
+    franchisePartnerId: String(order.franchisePartnerId),
+  });
+
+  return order;
+}
+
+/**
+ * Cancel a Franchise Stock Order.
+ * If dispatched previously, restores Hub product stock.
+ * Refunds the total cost back to Franchise wallet.
+ */
+export async function cancelFranchiseStockOrder({ sellerId, franchisePartnerId, orderId, reason, adminId }) {
+  const canonicalOrderId = await requireCanonicalOrderId(orderId);
+  const order = await Order.findOne({ orderId: canonicalOrderId, isFranchiseStockOrder: true });
+  if (!order) {
+    const err = new Error("Franchise stock order not found");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (sellerId && String(order.seller) !== String(sellerId)) {
+    const err = new Error("Not authorized to cancel this stock order");
+    err.statusCode = 403;
+    throw err;
+  }
+
+  if (franchisePartnerId && String(order.franchisePartnerId) !== String(franchisePartnerId)) {
+    const err = new Error("Not authorized to cancel this stock order");
+    err.statusCode = 403;
+    throw err;
+  }
+
+  if (
+    ![
+      FRANCHISE_STOCK_ORDER_STATUS.REQUESTED,
+      FRANCHISE_STOCK_ORDER_STATUS.DISPATCHED_PENDING_RECEIPT,
+    ].includes(order.franchiseStockStatus)
+  ) {
+    const err = new Error("Stock order cannot be cancelled in its current state");
+    err.statusCode = 422;
+    throw err;
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      // If already dispatched, restore Hub seller stock
+      if (order.franchiseStockStatus === FRANCHISE_STOCK_ORDER_STATUS.DISPATCHED_PENDING_RECEIPT) {
+        for (const item of order.items || []) {
+          const productId = item.product?._id || item.product;
+          const qty = Math.max(1, Number(item.quantity) || 1);
+          if (!productId) continue;
+          await restoreHubProductStock({
+            productId,
+            sellerId: order.seller,
+            quantity: qty,
+            session,
+            note: `Restored stock for cancelled order #${order.orderId}`,
+            orderId: order._id,
+            variantSku: item.variantSku || null,
+          });
+        }
+      }
+
+      // Refund franchise wallet
+      const refundAmount = Number(order.pricing?.grandTotal || order.pricing?.total || 0);
+      if (refundAmount > 0) {
+        const idempotencyKey = `${FRANCHISE_IDEMPOTENCY_PREFIX.STOCK_PURCHASE}-refund-${order._id}`;
+        await creditWallet({
+          ownerType: OWNER_TYPE.FRANCHISE,
+          ownerId: order.franchisePartnerId,
+          amount: refundAmount,
+          bucket: "available",
+          session,
+          ledgerType: LEDGER_TRANSACTION_TYPE.FRANCHISE_STOCK_PURCHASE,
+          ledgerReference: idempotencyKey,
+          ledgerDescription: `Refund for cancelled stock order #${order.orderId}`,
+          idempotencyKey,
+          metadata: { orderId: String(order._id), reason: reason || "" },
+          syncUserWalletBalance: false,
+        });
+      }
+
+      order.franchiseStockStatus = FRANCHISE_STOCK_ORDER_STATUS.CANCELLED;
+      order.status = "cancelled";
+      order.orderStatus = "cancelled";
+      order.workflowStatus = WORKFLOW_STATUS.CANCELLED;
+      if (reason) order.cancelReason = String(reason).slice(0, 240);
+      await order.save({ session });
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  emitNotificationEvent(NOTIFICATION_EVENTS.FRANCHISE_STOCK_ORDER_CANCELLED, {
+    orderId: order.orderId,
+    userId: String(order.customer),
+    franchisePartnerId: String(order.franchisePartnerId),
+  });
+
+  return order;
+}
+
+/**
+ * List Franchise Stock Orders history for Franchise, Seller, or Admin.
+ */
+export async function listFranchiseStockOrders({
+  franchisePartnerId,
+  sellerId,
+  status,
+  page = 1,
+  limit = 25,
+} = {}) {
+  const safePage = Math.max(parseInt(page, 10) || 1, 1);
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 25, 1), 100);
+  const skip = (safePage - 1) * safeLimit;
+
+  const query = { isFranchiseStockOrder: true };
+  if (franchisePartnerId) query.franchisePartnerId = franchisePartnerId;
+  if (sellerId) query.seller = sellerId;
+  if (status && status !== "ALL") query.franchiseStockStatus = status;
+
+  const [items, total] = await Promise.all([
+    Order.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .populate("customer", "name phone email")
+      .populate("franchisePartnerId", "displayName referralCode phone address")
+      .populate("items.product", "name mainImage price salePrice variants")
+      .lean(),
+    Order.countDocuments(query),
+  ]);
+
+  return {
+    items,
+    page: safePage,
+    limit: safeLimit,
+    total,
+    totalPages: Math.ceil(total / safeLimit) || 1,
+  };
 }
