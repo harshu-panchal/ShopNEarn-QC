@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, AlertCircle, Wallet, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { ChevronLeft, AlertCircle, Wallet, CheckCircle2, XCircle, Clock, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { mlmApi } from '../../services/mlmApi';
 
@@ -33,6 +33,13 @@ const MlmWithdrawalPage = () => {
         ifsc: '',
         panNumber: '',
     });
+    const [savedFields, setSavedFields] = useState({
+        upiId: false,
+        accountHolderName: false,
+        accountNumber: false,
+        ifsc: false,
+        panNumber: false,
+    });
     const [preview, setPreview] = useState(null);
 
     const loadData = async () => {
@@ -43,7 +50,14 @@ const MlmWithdrawalPage = () => {
             ]);
             const membershipPayload = m.data?.result ?? m.data?.data;
             setMembership(membershipPayload);
-            const savedBeneficiary = membershipPayload?.membership?.payoutBeneficiary;
+            const withdrawalItems = (w.data?.result ?? w.data?.data)?.items || [];
+            setRequests(withdrawalItems);
+
+            const savedBeneficiary =
+                membershipPayload?.membership?.payoutBeneficiary ||
+                membershipPayload?.payoutBeneficiary ||
+                withdrawalItems[0]?.beneficiary;
+
             if (savedBeneficiary && typeof savedBeneficiary === 'object') {
                 setForm((prev) => ({
                     ...prev,
@@ -54,8 +68,14 @@ const MlmWithdrawalPage = () => {
                     ifsc: savedBeneficiary.ifsc || prev.ifsc || '',
                     panNumber: savedBeneficiary.panNumber || prev.panNumber || '',
                 }));
+                setSavedFields({
+                    upiId: Boolean(savedBeneficiary.upiId),
+                    accountHolderName: Boolean(savedBeneficiary.accountHolderName),
+                    accountNumber: Boolean(savedBeneficiary.accountNumber),
+                    ifsc: Boolean(savedBeneficiary.ifsc),
+                    panNumber: Boolean(savedBeneficiary.panNumber),
+                });
             }
-            setRequests((w.data?.result ?? w.data?.data)?.items || []);
         } catch (err) {
             toast.error(err?.response?.data?.message || 'Failed to load withdrawals');
         } finally {
@@ -217,51 +237,76 @@ const MlmWithdrawalPage = () => {
                     </div>
 
                     {form.method === 'upi' ? (
-                        <Field label="UPI ID">
+                        <Field label="UPI ID" isSaved={savedFields.upiId}>
                             <input
                                 type="text"
+                                readOnly={savedFields.upiId}
                                 value={form.upiId}
                                 onChange={(e) => setForm({ ...form, upiId: e.target.value })}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-500"
+                                className={`w-full border rounded-xl px-4 py-3 text-sm font-semibold outline-none transition-colors ${
+                                    savedFields.upiId
+                                        ? 'bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed select-none'
+                                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-indigo-500'
+                                }`}
                                 placeholder="yourname@upi"
                             />
                         </Field>
                     ) : (
                         <>
-                            <Field label="Account Holder Name">
+                            <Field label="Account Holder Name" isSaved={savedFields.accountHolderName}>
                                 <input
                                     type="text"
+                                    readOnly={savedFields.accountHolderName}
                                     value={form.accountHolderName}
                                     onChange={(e) => setForm({ ...form, accountHolderName: e.target.value })}
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-500"
+                                    className={`w-full border rounded-xl px-4 py-3 text-sm font-semibold outline-none transition-colors ${
+                                        savedFields.accountHolderName
+                                            ? 'bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed select-none'
+                                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-indigo-500'
+                                    }`}
                                 />
                             </Field>
-                            <Field label="Account Number">
+                            <Field label="Account Number" isSaved={savedFields.accountNumber}>
                                 <input
                                     type="text"
+                                    readOnly={savedFields.accountNumber}
                                     value={form.accountNumber}
                                     onChange={(e) => setForm({ ...form, accountNumber: e.target.value.replace(/\D/g, '') })}
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-500"
+                                    className={`w-full border rounded-xl px-4 py-3 text-sm font-semibold outline-none transition-colors ${
+                                        savedFields.accountNumber
+                                            ? 'bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed select-none'
+                                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-indigo-500'
+                                    }`}
                                 />
                             </Field>
-                            <Field label="IFSC">
+                            <Field label="IFSC" isSaved={savedFields.ifsc}>
                                 <input
                                     type="text"
+                                    readOnly={savedFields.ifsc}
                                     value={form.ifsc}
                                     onChange={(e) => setForm({ ...form, ifsc: e.target.value.toUpperCase() })}
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-500 uppercase"
+                                    className={`w-full border rounded-xl px-4 py-3 text-sm font-semibold outline-none transition-colors uppercase ${
+                                        savedFields.ifsc
+                                            ? 'bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed select-none'
+                                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-indigo-500'
+                                    }`}
                                     maxLength={11}
                                 />
                             </Field>
                         </>
                     )}
 
-                    <Field label="PAN Number (optional)">
+                    <Field label="PAN Number (optional)" isSaved={savedFields.panNumber}>
                         <input
                             type="text"
+                            readOnly={savedFields.panNumber}
                             value={form.panNumber}
                             onChange={(e) => setForm({ ...form, panNumber: e.target.value.toUpperCase() })}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-500 uppercase"
+                            className={`w-full border rounded-xl px-4 py-3 text-sm font-semibold outline-none transition-colors uppercase ${
+                                savedFields.panNumber
+                                    ? 'bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed select-none'
+                                    : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-indigo-500'
+                            }`}
                             maxLength={10}
                         />
                     </Field>
@@ -339,9 +384,16 @@ const MlmWithdrawalPage = () => {
     );
 };
 
-const Field = ({ label, children }) => (
+const Field = ({ label, isSaved, children }) => (
     <label className="block">
-        <span className="text-xs font-bold uppercase tracking-wide text-slate-600 mb-1.5 block">{label}</span>
+        <span className="text-xs font-bold uppercase tracking-wide text-slate-600 mb-1.5 flex items-center justify-between">
+            <span>{label}</span>
+            {isSaved && (
+                <span className="normal-case text-[11px] font-semibold text-slate-500 flex items-center gap-1">
+                    <Lock size={12} className="text-slate-400" /> Saved
+                </span>
+            )}
+        </span>
         {children}
     </label>
 );
