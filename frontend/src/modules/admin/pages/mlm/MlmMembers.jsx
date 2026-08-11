@@ -224,7 +224,7 @@ const MlmMembers = () => {
                 instead of having columns collide. */}
             <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[1080px]">
+                <table className="w-full text-sm min-w-[1180px]">
                     <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-600">
                         <tr>
                             <th className="text-left px-4 py-3">Customer</th>
@@ -234,7 +234,8 @@ const MlmMembers = () => {
                             <th className="text-left px-4 py-3">Leg</th>
                             <th className="text-left px-4 py-3">Sponsor</th>
                             <th className="text-right px-4 py-3">Directs</th>
-                            <th className="text-right px-4 py-3">Lifetime</th>
+                            <th className="text-right px-4 py-3">Earning Wallet</th>
+                            <th className="text-right px-4 py-3">Shopping Wallet</th>
                             <th className="text-left px-4 py-3">Joined</th>
                             <th className="text-left px-4 py-3">Activation Date</th>
                             <th></th>
@@ -242,9 +243,9 @@ const MlmMembers = () => {
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-500">Loading...</td></tr>
+                            <tr><td colSpan={12} className="px-4 py-10 text-center text-slate-500">Loading...</td></tr>
                         ) : items.length === 0 ? (
-                            <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-500">No members match the current filters.</td></tr>
+                            <tr><td colSpan={12} className="px-4 py-10 text-center text-slate-500">No members match the current filters.</td></tr>
                         ) : items.map((m) => {
                             const badge = statusBadge(m);
                             const isCustomerOnly = Boolean(m.customerOnly || m.status === 'no_membership');
@@ -300,7 +301,10 @@ const MlmMembers = () => {
                                 </td>
                                 <td className="px-4 py-3 text-right font-semibold">{m.directReferralsCount || 0}</td>
                                 <td className="px-4 py-3 text-right font-semibold">
-                                    {formatINR((m.lifetimePlanAEarnings || 0) + (m.lifetimePlanBEarnings || 0))}
+                                    {formatINR(m.earningsWalletBalance || 0)}
+                                </td>
+                                <td className="px-4 py-3 text-right font-semibold">
+                                    {formatINR(m.shoppingWalletBalance || 0)}
                                 </td>
                                 <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
                                     {formatMemberJoinedAt(m.joinedAt)}

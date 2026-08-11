@@ -127,6 +127,7 @@ export async function fetchSellerOrdersPage({
       .populate("items.product", "name mainImage price salePrice")
       .populate("deliveryBoy", "name phone")
       .populate("seller", "shopName name")
+      .populate("franchisePartnerId", "displayName referralCode")
       .lean(),
     Order.countDocuments(query),
     Order.aggregate([

@@ -1,7 +1,9 @@
 import ExcelJS from "exceljs";
 import Customer from "../../models/customer.js";
 import MlmMembership from "../../models/mlmMembership.js";
+import Wallet from "../../models/wallet.js";
 import { ALL_MLM_PLAN_TYPES } from "../../constants/mlm.js";
+import { OWNER_TYPE } from "../../constants/finance.js";
 import { resolveMemberRegistrationAt } from "../../utils/mlmMemberJoinedAt.js";
 
 const EXPORT_MAX_ROWS = 50_000;
@@ -97,6 +99,8 @@ function toCustomerOnlyRow(customer) {
     directReferralsCount: 0,
     lifetimePlanAEarnings: 0,
     lifetimePlanBEarnings: 0,
+    earningsWalletBalance: 0,
+    shoppingWalletBalance: 0,
     joinedAt: customer.createdAt || null,
     activatedAt: null,
     isVerified: customer.isVerified !== false,
@@ -252,37 +256,60 @@ async function enrichMlmMemberRows(items) {
     ),
   );
 
-  let sponsorMap = new Map();
-  if (sponsorIds.length > 0) {
-    const sponsors = await MlmMembership.find({
-      userId: { $in: sponsorIds },
-    })
-      .select({ userId: 1, referralCode: 1, createdAt: 1 })
-      .populate("userId", "name phone userId createdAt")
-      .lean();
-    sponsorMap = new Map(
-      sponsors.map((sponsor) => [String(sponsor.userId?._id || sponsor.userId), sponsor]),
-    );
-  }
+  const customerIds = Array.from(
+    new Set(
+      items
+        .map((member) => member.userId?._id)
+        .filter(Boolean)
+        .map((id) => String(id)),
+    ),
+  );
 
-  return items.map((row) => ({
-    ...row,
-    joinedAt: resolveMemberRegistrationAt(row),
-    activatedAt: row.planAJoinedAt || null,
-    sponsor: row.sponsorId
-      ? (() => {
-          const sponsor = sponsorMap.get(String(row.sponsorId));
-          if (!sponsor) return null;
-          return {
-            name: sponsor.userId?.name || null,
-            phone: sponsor.userId?.phone || null,
-            userId: sponsor.userId?.userId || null,
-            referralCode: sponsor.referralCode || null,
-            joinedAt: resolveMemberRegistrationAt(sponsor),
-          };
-        })()
-      : null,
-  }));
+  const [sponsors, wallets] = await Promise.all([
+    sponsorIds.length > 0
+      ? MlmMembership.find({ userId: { $in: sponsorIds } })
+          .select({ userId: 1, referralCode: 1, createdAt: 1 })
+          .populate("userId", "name phone userId createdAt")
+          .lean()
+      : Promise.resolve([]),
+    customerIds.length > 0
+      ? Wallet.find({
+          ownerType: OWNER_TYPE.CUSTOMER,
+          ownerId: { $in: customerIds },
+        })
+          .select({ ownerId: 1, earningsBalance: 1, shoppingBalance: 1 })
+          .lean()
+      : Promise.resolve([]),
+  ]);
+
+  const sponsorMap = new Map(
+    sponsors.map((sponsor) => [String(sponsor.userId?._id || sponsor.userId), sponsor]),
+  );
+  const walletMap = new Map(wallets.map((wallet) => [String(wallet.ownerId), wallet]));
+
+  return items.map((row) => {
+    const wallet = walletMap.get(String(row.userId?._id));
+    return {
+      ...row,
+      joinedAt: resolveMemberRegistrationAt(row),
+      activatedAt: row.planAJoinedAt || null,
+      earningsWalletBalance: wallet?.earningsBalance || 0,
+      shoppingWalletBalance: wallet?.shoppingBalance || 0,
+      sponsor: row.sponsorId
+        ? (() => {
+            const sponsor = sponsorMap.get(String(row.sponsorId));
+            if (!sponsor) return null;
+            return {
+              name: sponsor.userId?.name || null,
+              phone: sponsor.userId?.phone || null,
+              userId: sponsor.userId?.userId || null,
+              referralCode: sponsor.referralCode || null,
+              joinedAt: resolveMemberRegistrationAt(sponsor),
+            };
+          })()
+        : null,
+    };
+  });
 }
 
 async function fetchMembersByOrderedIds(orderedIds) {

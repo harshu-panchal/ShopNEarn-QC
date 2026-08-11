@@ -125,6 +125,7 @@ const InvoiceModal = ({ isOpen, onClose, order }) => {
                             <th className="px-4 py-3">Item</th>
                             <th className="px-4 py-3 text-right">Qty</th>
                             <th className="px-4 py-3 text-right">Price</th>
+                            <th className="px-4 py-3 text-right">Total</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
@@ -136,8 +137,11 @@ const InvoiceModal = ({ isOpen, onClose, order }) => {
                               <td className="px-4 py-3 text-slate-500 text-right">
                                 {item.quantity}
                               </td>
-                              <td className="px-4 py-3 text-slate-800 font-bold text-right">
+                              <td className="px-4 py-3 text-slate-500 text-right">
                                 {formatINR(item.price)}
+                              </td>
+                              <td className="px-4 py-3 text-slate-800 font-bold text-right">
+                                {formatINR(item.quantity * item.price)}
                               </td>
                             </tr>
                           ))}

@@ -28,6 +28,7 @@ import {
     getLegacyStatusFromOrder,
     getOrderStatusLabel,
     adminRouteMatchesOrder,
+    getFranchisePartnerDisplayName,
 } from '@/shared/utils/orderStatus';
 
 const OrdersList = () => {
@@ -100,25 +101,30 @@ const OrdersList = () => {
             if (response.data.success) {
                 const payload = response.data.result || {};
                 const dbOrders = Array.isArray(payload.items) ? payload.items : (response.data.results || []);
-                const formatted = dbOrders.map(o => ({
-                    id: o.orderId || 'UNSET',
-                    _id: o._id,
-                    customer: o.customer?.name || 'Unknown',
-                    seller: o.seller?.shopName || 'Unknown',
-                    items: o.items?.length || 0,
-                    amount: o.pricing?.total || 0,
-                    status: getLegacyStatusFromOrder(o),
-                    statusLabel: getOrderStatusLabel(o),
-                    workflowStatus: o.workflowStatus,
-                    workflowVersion: o.workflowVersion,
-                    franchisePartnerId: o.franchisePartnerId,
-                    franchiseStatus: o.franchiseStatus,
-                    shipmentStatus: o.shipmentStatus,
-                    isFranchiseStockOrder: o.isFranchiseStockOrder,
-                    returnStatus: o.returnStatus,
-                    date: new Date(o.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
-                    payment: o.payment?.method === 'cod' ? 'COD' : 'Digital',
-                }));
+                const formatted = dbOrders.map(o => {
+                    const franchisePartnerName = o.isFranchiseStockOrder !== true
+                        ? getFranchisePartnerDisplayName(o)
+                        : null;
+                    return {
+                        id: o.orderId || 'UNSET',
+                        _id: o._id,
+                        customer: o.customer?.name || 'Unknown',
+                        seller: franchisePartnerName || o.seller?.shopName || 'Unknown',
+                        items: o.items?.length || 0,
+                        amount: o.pricing?.total || 0,
+                        status: getLegacyStatusFromOrder(o),
+                        statusLabel: getOrderStatusLabel(o),
+                        workflowStatus: o.workflowStatus,
+                        workflowVersion: o.workflowVersion,
+                        franchisePartnerId: o.franchisePartnerId,
+                        franchiseStatus: o.franchiseStatus,
+                        shipmentStatus: o.shipmentStatus,
+                        isFranchiseStockOrder: o.isFranchiseStockOrder,
+                        returnStatus: o.returnStatus,
+                        date: new Date(o.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+                        payment: o.payment?.method === 'cod' ? 'COD' : 'Digital',
+                    };
+                });
                 setOrders(formatted);
                 setSummary({
                     totalOrders: Number(payload.summary?.totalOrders || payload.total || formatted.length || 0),
