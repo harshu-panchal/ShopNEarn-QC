@@ -34,6 +34,7 @@ import {
 import { freezeFinancialSnapshot } from "../finance/orderFinanceService.js";
 import { resolveSellingPrice } from "../../utils/productStockUtils.js";
 import { normalizePhoneNumber } from "../../utils/phone.js";
+import { computeReturnWindowDates } from "../../utils/returnWindow.js";
 
 function roundCurrency(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
@@ -434,6 +435,7 @@ export async function createPosSale({
       const publicOrderId = await generateUniquePublicOrderId({ session });
       const now = new Date();
       const storeAddress = formatFranchiseAddress(partner);
+      const { eligibleAt, windowExpiresAt } = computeReturnWindowDates(now);
 
       const order = new Order({
         orderId: publicOrderId,
@@ -491,7 +493,16 @@ export async function createPosSale({
           riderPayout: "NOT_APPLICABLE",
           adminEarningCredited: false,
         },
-        mlmBonusesDisbursed: true,
+        // MLM bonuses (repurchase chain) are credited further down in this
+        // same transaction, once paymentBreakdown is persisted — NOT
+        // pre-marked here. `returnEligibleAt`/`returnWindowExpiresAt` are
+        // stamped now (same helper `settleDeliveredOrder` uses) purely so
+        // `returnWindowReleaseJob` has a window to release the pending
+        // repurchase bonus into `earnings` — POS sales have no return
+        // workflow of their own, so this just governs bonus maturity.
+        returnEligibleAt: eligibleAt,
+        returnWindowExpiresAt: windowExpiresAt,
+        returnDeadline: windowExpiresAt,
       });
 
       if (
@@ -518,6 +529,32 @@ export async function createPosSale({
 
       freezeFinancialSnapshot(order, buildPosPaymentBreakdown(preview.grandTotal));
       await order.save({ session });
+
+      // MLM: Plan B repurchase bonus chain — POS sales are a purchase by
+      // `orderCustomerId` same as any online order, so their MLM upline
+      // (if any) earns the same repurchase bonus. For guest/walk-in sales
+      // `orderCustomerId` is the shared walk-in placeholder user, which has
+      // no MlmMembership, so this safely no-ops. Failures abort the whole
+      // POS sale — the network's accounting must agree with the sale.
+      try {
+        const { computeAndCreditRepurchaseBonusChain } = await import("../mlm/mlmBonusEngineService.js");
+        await computeAndCreditRepurchaseBonusChain({
+          orderId: order._id,
+          downlineUserId: orderCustomerId,
+          session,
+          correlationId: `POS-${order._id}`,
+        });
+        order.mlmBonusesDisbursed = true;
+        await order.save({ session });
+      } catch (error) {
+        if (typeof console !== "undefined" && console.warn) {
+          console.warn("[franchisePosService] MLM repurchase chain failed during POS sale; aborting", {
+            orderId: String(order._id),
+            error: error.message,
+          });
+        }
+        throw error;
+      }
 
       for (const line of preview.lineItems) {
         await decrementFranchiseStock({
