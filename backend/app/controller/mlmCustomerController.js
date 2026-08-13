@@ -218,6 +218,7 @@ async function buildEarningsSummaryPayload(userId, membership) {
     earningsLedgerCredits,
     shoppingLedgerCredits,
     signupLedgerCredits,
+    repurchaseByLevelRows,
   ] = await Promise.all([
     MlmCommissionEvent.aggregate([
       { $match: creditedEarningsEventMatch(userId) },
@@ -253,9 +254,33 @@ async function buildEarningsSummaryPayload(userId, membership) {
     sumLedgerCredits(userId, "earnings"),
     sumLedgerCredits(userId, "shopping"),
     sumLedgerCredits(userId, "signup"),
+    // Repurchase bonus (Plan B) — earned as one of the 6-level upline
+    // whenever a downline places a paid+delivered order. Grouped by
+    // level (1-6) so the earnings UI can show a per-level breakdown
+    // instead of one lump REPURCHASE_BONUS total.
+    MlmCommissionEvent.aggregate([
+      {
+        $match: creditedEarningsEventMatch(userId, {
+          bonusType: MLM_BONUS_TYPE.REPURCHASE_BONUS,
+        }),
+      },
+      {
+        $group: {
+          _id: "$level",
+          total: { $sum: "$cappedAmount" },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
   ]);
 
   const byType = groupEarningsEventsByDisplayType(earningsEvents);
+  const repurchaseByLevel = repurchaseByLevelRows.map((row) => ({
+    level: row._id,
+    total: row.total,
+    count: row.count,
+  }));
   const shoppingByType = shoppingByTypeRows.map((row) => ({
     bonusType: row._id,
     total: row.total,
@@ -282,6 +307,7 @@ async function buildEarningsSummaryPayload(userId, membership) {
     totalSignupCredited: signupLedgerCredits,
     byType,
     shoppingByType,
+    repurchaseByLevel,
     dailyCapTracker: membership?.dailyCapTracker || null,
   };
 }
@@ -642,6 +668,12 @@ export const getEarningsHistory = async (req, res) => {
     };
     if (req.query.bonusType) query.bonusType = req.query.bonusType;
     if (req.query.status) query.status = req.query.status;
+    // Narrows to a specific upline level (1-6) — used by the Repurchase
+    // Bonus history filter so a member can drill into e.g. "L3 only".
+    if (req.query.level) {
+      const level = parseInt(req.query.level, 10);
+      if (Number.isFinite(level)) query.level = level;
+    }
 
     const [items, total] = await Promise.all([
       MlmCommissionEvent.find(query)

@@ -228,6 +228,36 @@ const NetworkMemberDetailPage = () => {
                   </div>
                 )}
 
+                {earnings.repurchaseByLevel?.length > 0 && (
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden mb-4">
+                    <div className="px-4 py-3 border-b border-slate-100 bg-indigo-50/50">
+                      <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide">
+                        Repurchase bonus — 6 upline levels
+                      </p>
+                    </div>
+                    <ul className="divide-y divide-slate-100">
+                      {earnings.repurchaseByLevel.map((row) => (
+                        <li
+                          key={row.level}
+                          className="px-4 py-3 flex items-center justify-between gap-3"
+                        >
+                          <div>
+                            <p className="text-sm font-semibold text-slate-800">
+                              Level {row.level}
+                            </p>
+                            <p className="text-[10px] text-slate-500">
+                              {row.count} {row.count === 1 ? "credit" : "credits"}
+                            </p>
+                          </div>
+                          <p className="text-sm font-bold text-indigo-700">
+                            {formatINR(row.total)}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 {earnings.byType?.length > 0 ? (
                   <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
                     <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">

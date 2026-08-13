@@ -303,6 +303,8 @@ export const getMlmMemberDetail = async (req, res) => {
       sponsorMembership,
       heldBonusEvents,
       pendingJoiningPayment,
+      repurchaseBonusByLevel,
+      repurchaseBonusEvents,
     ] = await Promise.all([
       MlmMembership.find({ sponsorId: memberUserId })
         .populate("userId", "name phone email userId createdAt")
@@ -352,6 +354,36 @@ export const getMlmMemberDetail = async (req, res) => {
           createdAt: 1,
         })
         .lean(),
+      // Repurchase bonus (Plan B) — credited to this member as one of the
+      // 6-level upline whenever a downline places a paid+delivered order.
+      // Grouped by level (1-6) so the admin can see the level breakdown
+      // separately from the mixed `commissionHistory` list above.
+      MlmCommissionEvent.aggregate([
+        {
+          $match: {
+            recipientId: memberUserId,
+            bonusType: MLM_BONUS_TYPE.REPURCHASE_BONUS,
+          },
+        },
+        {
+          $group: {
+            _id: "$level",
+            count: { $sum: 1 },
+            totalBonusAmount: { $sum: "$cappedAmount" },
+            totalBaseAmount: { $sum: "$baseAmount" },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+      MlmCommissionEvent.find({
+        recipientId: memberUserId,
+        bonusType: MLM_BONUS_TYPE.REPURCHASE_BONUS,
+      })
+        .populate("sourceUserId", "name phone userId")
+        .populate("sourceOrderId", "orderId")
+        .sort({ createdAt: -1 })
+        .limit(200)
+        .lean(),
     ]);
 
     return handleResponse(res, 200, "Member detail", {
@@ -380,6 +412,15 @@ export const getMlmMemberDetail = async (req, res) => {
           }
         : null,
       heldBonusEvents,
+      repurchaseBonus: {
+        byLevel: repurchaseBonusByLevel.map((row) => ({
+          level: row._id,
+          count: row.count,
+          totalBonusAmount: row.totalBonusAmount,
+          totalBaseAmount: row.totalBaseAmount,
+        })),
+        events: repurchaseBonusEvents,
+      },
       pendingJoiningPayment: pendingJoiningPayment
         ? {
             paymentId: String(pendingJoiningPayment._id),

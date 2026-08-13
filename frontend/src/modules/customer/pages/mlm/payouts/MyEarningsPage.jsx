@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { TrendingUp, ArrowDownLeft, Loader2 } from "lucide-react";
+import { TrendingUp, ArrowDownLeft, Loader2, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { mlmApi } from "../../../services/mlmApi";
 import MemberJoinedSubtitle from "@shared/components/mlm/MemberJoinedSubtitle";
@@ -80,6 +80,10 @@ const MyEarningsPage = () => {
     totalPages: 1,
   });
   const [filter, setFilter] = useState("");
+  // Upline level sub-filter (1-6) — only meaningful while
+  // `filter === "REPURCHASE_BONUS"`. Cleared whenever the top-level
+  // bonus-type filter changes away from repurchase.
+  const [level, setLevel] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
 
@@ -90,6 +94,7 @@ const MyEarningsPage = () => {
       try {
         const params = { page, limit: 20 };
         if (filter) params.bonusType = filter;
+        if (filter === "REPURCHASE_BONUS" && level) params.level = level;
         const [s, h] = await Promise.all([
           mlmApi.getEarningsSummary(),
           mlmApi.getEarningsHistory(params),
@@ -109,7 +114,7 @@ const MyEarningsPage = () => {
     return () => {
       mounted = false;
     };
-  }, [page, filter]);
+  }, [page, filter, level]);
 
   return (
     // Desktop layout (lg:+) — 3-col grid where the lifetime hero +
@@ -212,6 +217,45 @@ const MyEarningsPage = () => {
             </div>
           </div>
         )}
+
+        {/* Repurchase Bonus paid to a member's 6-level upline: each
+            row is one of `repurchaseBonusLevels` L1-L6 (see
+            backend `constants/mlm.js`). Only rendered once the
+            member has at least one repurchase credit so the card
+            doesn't show up empty for Plan A-only members. */}
+        {summary?.repurchaseByLevel?.length > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-4">
+            <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+              <Layers size={16} /> Repurchase Bonus — 6 Upline Levels
+            </h3>
+            <div className="space-y-2">
+              {summary.repurchaseByLevel.map((row) => (
+                <button
+                  key={row.level}
+                  type="button"
+                  onClick={() => {
+                    setFilter("REPURCHASE_BONUS");
+                    setLevel(String(row.level));
+                    setPage(1);
+                  }}
+                  className={`w-full flex items-center justify-between gap-2 text-sm rounded-lg px-2 py-1.5 -mx-2 transition-colors hover:bg-slate-50 ${
+                    filter === "REPURCHASE_BONUS" && String(level) === String(row.level)
+                      ? "bg-indigo-50"
+                      : ""
+                  }`}
+                >
+                  <span className="text-slate-700">Level {row.level}</span>
+                  <span className="font-bold text-slate-900 shrink-0 whitespace-nowrap">
+                    {formatINR(row.total)}
+                    <span className="text-xs font-normal text-slate-500 ml-1">
+                      ({row.count})
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </aside>
 
       <div className="lg:col-span-2 space-y-4">
@@ -227,6 +271,7 @@ const MyEarningsPage = () => {
               key={t || "all"}
               onClick={() => {
                 setFilter(t);
+                setLevel("");
                 setPage(1);
               }}
               className={`text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap transition-colors ${
@@ -239,6 +284,30 @@ const MyEarningsPage = () => {
             </button>
           ))}
         </div>
+
+        {/* Level sub-filter — only meaningful for Repurchase Bonus,
+            which is credited per upline level (1-6). Hidden for
+            every other bonus type since they don't carry a level. */}
+        {filter === "REPURCHASE_BONUS" && (
+          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+            {["", "1", "2", "3", "4", "5", "6"].map((l) => (
+              <button
+                key={l || "all-levels"}
+                onClick={() => {
+                  setLevel(l);
+                  setPage(1);
+                }}
+                className={`text-[11px] font-bold px-2.5 py-1 rounded-full whitespace-nowrap border transition-colors ${
+                  level === l
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "bg-white border-slate-200 text-slate-600"
+                }`}
+              >
+                {l ? `Level ${l}` : "All Levels"}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl border border-slate-200">
           <div className="px-5 py-4 border-b border-slate-100">

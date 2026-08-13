@@ -114,6 +114,11 @@ const MlmMemberDetail = () => {
     const [blockReason, setBlockReason] = useState('');
     const [blocking, setBlocking] = useState(false);
 
+    // Repurchase Bonus card — client-side level filter (1-6, '' = all).
+    // The full event list (up to 200 rows) is already loaded with the
+    // member, so narrowing by level doesn't need another round-trip.
+    const [repurchaseLevelFilter, setRepurchaseLevelFilter] = useState('');
+
     const load = async () => {
         setLoading(true);
         try {
@@ -610,6 +615,14 @@ const MlmMemberDetail = () => {
         await load();
     }, [downlineDepth, downlineRootId]);
 
+    // Repurchase Bonus card — events narrowed to the selected upline
+    // level ('' = all 6 levels).
+    const repurchaseEvents = useMemo(() => {
+        const events = data?.repurchaseBonus?.events || [];
+        if (!repurchaseLevelFilter) return events;
+        return events.filter((row) => String(row.level) === repurchaseLevelFilter);
+    }, [data?.repurchaseBonus?.events, repurchaseLevelFilter]);
+
     const isViewingAnchor = String(downlineRootId) === String(id);
 
     // Current root's display info — pulled from the loaded sub-tree
@@ -1073,6 +1086,95 @@ const MlmMemberDetail = () => {
                         )}
                     />
                 </Card>
+            </div>
+
+            {/* Repurchase Bonus — Plan B pays every ACTIVE member up to 6
+                levels of upline whenever a downline places a paid+delivered
+                order (`repurchaseBonusLevels` in constants/mlm.js: L1 6% ...
+                L6 1%). Commission History above mixes this in with every
+                other bonus type and caps at 50 rows, so admins had no way
+                to audit this member's repurchase income level-by-level —
+                this card pulls a dedicated, un-mixed record set (up to 200
+                events) grouped by level. */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-5">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide flex items-center gap-2">
+                        <Award size={16} /> Repurchase Bonus — 6-Level Upline
+                    </h3>
+                </div>
+
+                {(data.repurchaseBonus?.byLevel?.length || 0) === 0 ? (
+                    <p className="text-sm text-slate-500">No repurchase bonus credited yet.</p>
+                ) : (
+                    <>
+                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
+                            {Array.from({ length: 6 }, (_, i) => i + 1).map((lvl) => {
+                                const row = data.repurchaseBonus.byLevel.find((r) => r.level === lvl);
+                                const active = repurchaseLevelFilter === String(lvl);
+                                return (
+                                    <button
+                                        key={lvl}
+                                        type="button"
+                                        onClick={() => setRepurchaseLevelFilter(active ? '' : String(lvl))}
+                                        disabled={!row}
+                                        className={`text-left rounded-xl border px-2.5 py-2 transition-colors ${
+                                            active
+                                                ? 'bg-indigo-600 border-indigo-600 text-white'
+                                                : row
+                                                  ? 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-900'
+                                                  : 'bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        <p className={`text-[10px] font-bold uppercase tracking-wide ${active ? 'text-indigo-100' : 'text-slate-500'}`}>
+                                            Level {lvl}
+                                        </p>
+                                        <p className="text-sm font-black mt-0.5">{formatINR(row?.totalBonusAmount || 0)}</p>
+                                        <p className={`text-[10px] ${active ? 'text-indigo-100' : 'text-slate-400'}`}>
+                                            {row?.count || 0} credit{row?.count === 1 ? '' : 's'}
+                                        </p>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {repurchaseLevelFilter && (
+                            <button
+                                type="button"
+                                onClick={() => setRepurchaseLevelFilter('')}
+                                className="text-xs font-bold text-indigo-600 hover:underline mb-3"
+                            >
+                                Clear level filter (showing all)
+                            </button>
+                        )}
+                        <PaginatedList
+                            items={repurchaseEvents}
+                            pageSize={8}
+                            emptyMessage="No repurchase bonus events at this level."
+                            ulClassName="divide-y divide-slate-100 text-sm"
+                            renderItem={(row) => (
+                                <li key={row._id} className="py-2 flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="font-semibold text-slate-800">
+                                            L{row.level} · {row.sourceUserId?.name || 'Unknown'}
+                                            {row.sourceUserId?.userId ? ` (${row.sourceUserId.userId})` : ''}
+                                        </p>
+                                        <p className="text-[11px] text-slate-500">
+                                            {formatDate(row.createdAt)} · {row.status}
+                                            {row.sourceOrderId?.orderId ? ` · Order ${row.sourceOrderId.orderId}` : ''}
+                                        </p>
+                                        {row.ratePercent != null && (
+                                            <p className="text-[10px] text-slate-400">
+                                                {row.ratePercent}% of {formatINR(row.baseAmount)}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <span className="font-bold text-emerald-700 shrink-0">
+                                        {formatINR(row.cappedAmount || row.bonusAmount)}
+                                    </span>
+                                </li>
+                            )}
+                        />
+                    </>
+                )}
             </div>
 
             <Card title="Direct Referrals">
