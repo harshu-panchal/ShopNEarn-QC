@@ -26,18 +26,31 @@ async function createFinanceAuditLog(data, { session } = {}) {
   return await FinanceAuditLog.create([data], { session });
 }
 
-export async function createPendingPayoutForOrder({
-  order,
-  payoutType,
-  beneficiaryId,
-  amount,
-  remarks = "Automatic payout creation on delivery.",
-  metadata = {},
-}) {
+export async function createPendingPayoutForOrder(
+  {
+    order,
+    payoutType,
+    beneficiaryId,
+    amount,
+    remarks = "Automatic payout creation on delivery.",
+    metadata = {},
+  },
+  { session: externalSession } = {},
+) {
   if (!order || !beneficiaryId || amount <= 0) return null;
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  // Every caller in `orderFinanceService.js` already passes `{ session }`
+  // as this second argument expecting it to join the caller's own
+  // settlement transaction — this function used to ignore it entirely
+  // and always open its own independent transaction instead. That let
+  // a payout commit and stay committed even when the enclosing
+  // settlement transaction (e.g. `settleDeliveredOrder`, which also
+  // runs the MLM bonus chain afterward and can still throw) later
+  // rolled back — an order could end up looking unsettled while the
+  // seller/rider had already been paid for it.
+  const session = externalSession || (await mongoose.startSession());
+  const managedSession = !externalSession;
+  if (managedSession) session.startTransaction();
 
   try {
     const existing = await Payout.findOne({
@@ -47,7 +60,7 @@ export async function createPendingPayoutForOrder({
     }).session(session);
 
     if (existing) {
-      await session.abortTransaction();
+      if (managedSession) await session.abortTransaction();
       return existing;
     }
 
@@ -91,13 +104,13 @@ export async function createPendingPayoutForOrder({
       { session },
     );
 
-    await session.commitTransaction();
+    if (managedSession) await session.commitTransaction();
     return payout[0];
   } catch (error) {
-    await session.abortTransaction();
+    if (managedSession) await session.abortTransaction();
     throw error;
   } finally {
-    session.endSession();
+    if (managedSession) session.endSession();
   }
 }
 

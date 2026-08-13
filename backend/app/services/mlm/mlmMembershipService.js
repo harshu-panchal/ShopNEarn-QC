@@ -469,6 +469,34 @@ export async function transitionUplineDownlineStatus(
 }
 
 /**
+ * Inverse of `transitionUplineDownlineStatus` — call when a member who
+ * WAS counted as ACTIVE in their upline's counters stops being ACTIVE
+ * (admin deactivate ACTIVE->REGISTERED_UNPAID, or block ACTIVE->SUSPENDED).
+ * Without this, `deactivateMember`/`toggleBlockMember` only flipped the
+ * member's own status and never applied the inverse `$inc` across
+ * `sponsorChain` — every ancestor's `activeDownlineCount` stayed
+ * permanently overstated, and a later re-activation (which DOES call
+ * `transitionUplineDownlineStatus`) would then increment it a second
+ * time for the same person, compounding the drift on repeated cycles.
+ *
+ * Caller is responsible for only invoking this when the member was
+ * actually ACTIVE beforehand (e.g. blocking an already-REGISTERED_UNPAID
+ * member should not double-decrement a counter it was never counted in).
+ */
+export async function reverseUplineDownlineStatus(
+  sponsorChain,
+  { session } = {},
+) {
+  if (!Array.isArray(sponsorChain) || sponsorChain.length === 0) return;
+
+  await MlmMembership.updateMany(
+    { userId: { $in: sponsorChain } },
+    { $inc: { activeDownlineCount: -1, inactiveDownlineCount: 1 } },
+    session ? { session } : {},
+  );
+}
+
+/**
  * Create a new MlmMembership row for `userId`. Idempotent — if the
  * customer already has a membership row, that row is returned as-is.
  *
@@ -638,8 +666,18 @@ export async function assignSponsor({
 
 /**
  * Walk the upline chain for `userId` up to `maxDepth` levels. Returns
- * an array of memberships in order [L1, L2, ...]. Excludes the user
- * itself.
+ * an array of ACTIVE memberships, each carrying a `.uplineLevel`
+ * (1-based) property that reflects the member's TRUE position in
+ * `sponsorChain` — L1, L2, ... — not their position in the returned
+ * array. Excludes the user itself.
+ *
+ * Why this matters: `sponsorChain` is filtered to ACTIVE members
+ * before it's returned (suspended/terminated/registered-unpaid rows
+ * are dropped), so the returned array is *compacted* — it can have
+ * gaps relative to the real chain. A caller that used to treat array
+ * position as the level (`upline[i]` = level `i+1`) would silently
+ * shift every member below a gap up one rate tier. `uplineLevel` is
+ * the level to use for any rate-table lookup; array position is not.
  */
 export async function getUplineChain(userId, maxDepth, { session } = {}) {
   const membership = await getMembershipByUserId(userId, { session });
@@ -654,15 +692,16 @@ export async function getUplineChain(userId, maxDepth, { session } = {}) {
     null,
     session ? { session } : {},
   );
-  // Re-order to match `chain` ordering (the find() may not preserve it).
+  // Re-order to match `chain` ordering (the find() may not preserve it)
+  // and stamp each doc with its true 1-based level in that chain.
   const indexByUserId = new Map(chain.map((id, idx) => [String(id), idx]));
   return memberships
     .slice()
-    .sort(
-      (a, b) =>
-        (indexByUserId.get(String(a.userId)) ?? 0) -
-        (indexByUserId.get(String(b.userId)) ?? 0),
-    );
+    .map((m) => {
+      m.uplineLevel = (indexByUserId.get(String(m.userId)) ?? 0) + 1;
+      return m;
+    })
+    .sort((a, b) => a.uplineLevel - b.uplineLevel);
 }
 
 /**

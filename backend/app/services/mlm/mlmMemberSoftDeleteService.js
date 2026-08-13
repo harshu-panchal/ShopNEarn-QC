@@ -56,6 +56,7 @@ import { MLM_WITHDRAWAL_STATUS, MLM_MEMBERSHIP_STATUS } from "../../constants/ml
 import { rejectWithdrawalRequest } from "./mlmWithdrawalService.js";
 import { syncCustomerMlmProjection } from "./mlmMembershipService.js";
 import { classifyDirectReferralsByLegUnderRoot } from "./mlmBinaryTreeBuilder.js";
+import { emitNotificationEvent } from "../../modules/notifications/notification.emitter.js";
 
 const SPILLOVER_MAX_HOPS = 500;
 
@@ -179,8 +180,14 @@ export async function softDeleteMlmMember({
 
   const session = await mongoose.startSession();
   let summary;
+  let pendingNotifications = [];
   try {
     await session.withTransaction(async () => {
+      // `withTransaction` can retry this whole callback on a transient
+      // write-conflict error — reset per-attempt so a retry after a
+      // partially-completed earlier attempt can't accumulate duplicate
+      // notification entries.
+      const notificationsThisAttempt = [];
       // ---------- STEP 1 — load + guards ----------
       const target = await loadMembershipIncludingDeleted(membershipId, { session });
       if (!target) {
@@ -415,13 +422,20 @@ export async function softDeleteMlmMember({
       );
       const withdrawalsCancelled = [];
       for (const w of pendingWithdrawals) {
-        await rejectWithdrawalRequest({
+        const rejected = await rejectWithdrawalRequest({
           requestId: w._id,
           adminId,
           reason: `Auto-rejected: ${reason}`,
           session,
         });
         withdrawalsCancelled.push(String(w._id));
+        // `rejectWithdrawalRequest` defers its notification back to us
+        // (see its `_pendingNotification`) instead of firing it inside
+        // this still-open transaction — collect it and emit only after
+        // this whole soft-delete commits.
+        if (rejected?._pendingNotification) {
+          notificationsThisAttempt.push(rejected._pendingNotification);
+        }
       }
 
       // ---------- STEP 9 — hard delete the membership and customer ----------
@@ -466,9 +480,22 @@ export async function softDeleteMlmMember({
         withdrawalsCancelled,
         uplineClawback,
       };
+      pendingNotifications = notificationsThisAttempt;
     });
   } finally {
     await session.endSession();
   }
+
+  // Only safe to notify now that the transaction has actually
+  // committed — see the comment on `rejectWithdrawalRequest`'s
+  // `_pendingNotification` handoff.
+  for (const notification of pendingNotifications) {
+    try {
+      emitNotificationEvent(notification.event, notification.payload);
+    } catch (_) {
+      /* non-fatal */
+    }
+  }
+
   return summary;
 }

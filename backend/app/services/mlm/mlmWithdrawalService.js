@@ -170,10 +170,16 @@ export async function createWithdrawalRequest({
       syncUserWalletBalance: false,
     });
 
-    // 2. Informational admin-charge ledger row (no wallet movement)
+    // 2. Informational admin-charge ledger row. Deliberately carries NO
+    // `walletId` — it records the deduction for the customer's
+    // transaction history but doesn't move this (or any) wallet
+    // balance, and `mlmWalletLedgerVerifierJob.aggregateLedgerForWallet`
+    // sums every ledger row for a `walletId` with no type filter.
+    // Stamping `walletId` here would double-count against the gross
+    // debit above and produce a permanent, guaranteed false drift on
+    // every member who has ever withdrawn.
     const adminChargeLedger = await createLedgerEntry(
       {
-        walletId: grossDebit.wallet._id,
         actorType: OWNER_TYPE.CUSTOMER,
         actorId: userId,
         type: LEDGER_TRANSACTION_TYPE.MLM_WITHDRAWAL_ADMIN_CHARGE,
@@ -187,10 +193,9 @@ export async function createWithdrawalRequest({
       { session },
     );
 
-    // 3. Informational GST ledger row (no wallet movement)
+    // 3. Informational GST ledger row (no wallet movement — see above).
     const gstLedger = await createLedgerEntry(
       {
-        walletId: grossDebit.wallet._id,
         actorType: OWNER_TYPE.CUSTOMER,
         actorId: userId,
         type: LEDGER_TRANSACTION_TYPE.MLM_WITHDRAWAL_GST_CHARGE,
@@ -203,6 +208,34 @@ export async function createWithdrawalRequest({
       },
       { session },
     );
+
+    // 3b. The admin/GST charge amounts are the platform's actual cut of
+    // this withdrawal — until now they were recorded only as
+    // informational customer-side ledger rows and never landed
+    // anywhere, making this revenue invisible to the admin wallet UI.
+    // Credit them into the real ADMIN wallet so they show up like any
+    // other platform revenue.
+    if (charges.adminCharge + charges.gst > 0) {
+      await creditWallet({
+        ownerType: OWNER_TYPE.ADMIN,
+        ownerId: null,
+        amount: charges.adminCharge + charges.gst,
+        bucket: "available",
+        session,
+        ledgerType: LEDGER_TRANSACTION_TYPE.MLM_WITHDRAWAL_ADMIN_CHARGE,
+        ledgerReference: key,
+        ledgerDescription: `MLM withdrawal admin charge + GST (${charges.adminChargePercent}% + ${charges.gstOnChargePercent}% on charge)`,
+        idempotencyKey: `${MLM_IDEMPOTENCY_PREFIX.WITHDRAWAL_ADMIN_CHARGE}-CREDIT-${key}`,
+        correlationId,
+        metadata: {
+          mlmEvent: "WITHDRAWAL_ADMIN_CHARGE_CREDITED",
+          requestIdempotencyKey: key,
+          adminCharge: charges.adminCharge,
+          gst: charges.gst,
+        },
+        syncUserWalletBalance: false,
+      });
+    }
 
     // 4. Create the pending Payout row (admin processes this manually)
     const [payout] = await Payout.create(
@@ -226,11 +259,13 @@ export async function createWithdrawalRequest({
       { session },
     );
 
-    // 5. Paired ledger entry for the Payout queue event
+    // 5. Paired ledger entry for the Payout queue event — informational
+    // like the two rows above (no `walletId`): the money already left
+    // the wallet in the gross debit (step 1); this just records that
+    // `charges.net` of it is queued for payout.
     const payoutQueueLedger = await createLedgerEntry(
       {
         payoutId: payout._id,
-        walletId: grossDebit.wallet._id,
         actorType: OWNER_TYPE.CUSTOMER,
         actorId: userId,
         type: LEDGER_TRANSACTION_TYPE.MLM_WITHDRAWAL_NET_PAYOUT_QUEUED,
@@ -357,7 +392,7 @@ export async function rejectWithdrawalRequest({
   reason,
   session: externalSession,
 }) {
-  return runInSession(externalSession, async (session) => {
+  const request = await runInSession(externalSession, async (session) => {
     const request = await MlmWithdrawalRequest.findById(requestId, null, { session });
     if (!request) throw new Error("Withdrawal request not found");
     if (request.status !== MLM_WITHDRAWAL_STATUS.PENDING) {
@@ -373,21 +408,41 @@ export async function rejectWithdrawalRequest({
     request.updatedBy = adminId || null;
     await request.save({ session });
 
+    return request;
+  });
+
+  const notification = {
+    event: NOTIFICATION_EVENTS.MLM_WITHDRAWAL_REJECTED,
+    payload: {
+      userId: String(request.userId),
+      data: {
+        requestId: String(request._id),
+        amount: request.amount,
+        reason: request.rejectionReason,
+      },
+    },
+  };
+
+  if (externalSession) {
+    // Called from inside a caller-managed transaction (e.g.
+    // `mlmMemberSoftDeleteService`'s pending-withdrawal auto-cancel
+    // step) — that transaction hasn't committed yet at this point, so
+    // firing the notification now could tell a customer their
+    // withdrawal was rejected for a change that then rolls back.
+    // Hand it back for the caller to emit AFTER its own commit.
+    request._pendingNotification = notification;
+  } else {
+    // This call owned its transaction via `runInSession` — it has
+    // already committed by the time we get here, so it's safe to
+    // notify immediately.
     try {
-      emitNotificationEvent(NOTIFICATION_EVENTS.MLM_WITHDRAWAL_REJECTED, {
-        userId: String(request.userId),
-        data: {
-          requestId: String(request._id),
-          amount: request.amount,
-          reason: request.rejectionReason,
-        },
-      });
+      emitNotificationEvent(notification.event, notification.payload);
     } catch (_) {
       /* non-fatal */
     }
+  }
 
-    return request;
-  });
+  return request;
 }
 
 /**
@@ -422,14 +477,19 @@ export async function cancelWithdrawalRequestByCustomer({
 
 async function reverseWithdrawalDebit(request, { adminId, session }) {
   const key = request.idempotencyKey || `REVERSE-${request._id}`;
-  // Reverse the gross debit by crediting `earningsBalance` back.
+  // Reverse the gross debit by crediting `earningsBalance` back. Uses
+  // the dedicated reversal type (not the generic `ADJUSTMENT`) so this
+  // credit-back actually matches `WITHDRAWAL_LEDGER_TYPES` in
+  // `walletHistoryQuery.js` and shows up in the customer's own
+  // "Withdrawals" history tab — otherwise the original debit is
+  // visible but the refund looks like it never happened.
   await creditWallet({
     ownerType: OWNER_TYPE.CUSTOMER,
     ownerId: request.userId,
     amount: request.amount,
     bucket: "earnings",
     session,
-    ledgerType: LEDGER_TRANSACTION_TYPE.ADJUSTMENT,
+    ledgerType: LEDGER_TRANSACTION_TYPE.MLM_WITHDRAWAL_REVERSAL,
     ledgerReference: `REVERSE-${key}`,
     ledgerDescription: "MLM withdrawal request reversed",
     idempotencyKey: `REVERSE-${MLM_IDEMPOTENCY_PREFIX.WITHDRAWAL_GROSS}-${key}`,
@@ -440,6 +500,35 @@ async function reverseWithdrawalDebit(request, { adminId, session }) {
     },
     syncUserWalletBalance: false,
   });
+
+  // Mirror reversal on the admin side: the admin charge + GST credited
+  // at request time (see `createWithdrawalRequest`) was never actually
+  // earned if the withdrawal didn't go through. `allowNegative: true`
+  // because this specific debit reverses a specific prior credit we
+  // know exists — it must always succeed, not get blocked by an
+  // unrelated balance-timing hiccup and leave the reject/cancel itself
+  // failing.
+  const adminChargeTotal =
+    roundCurrency((request.adminChargeAmount || 0) + (request.gstAmount || 0));
+  if (adminChargeTotal > 0) {
+    await debitWallet({
+      ownerType: OWNER_TYPE.ADMIN,
+      ownerId: null,
+      amount: adminChargeTotal,
+      bucket: "available",
+      session,
+      ledgerType: LEDGER_TRANSACTION_TYPE.MLM_WITHDRAWAL_REVERSAL,
+      ledgerReference: `REVERSE-${key}`,
+      ledgerDescription: "MLM withdrawal admin charge + GST reversed",
+      idempotencyKey: `REVERSE-${MLM_IDEMPOTENCY_PREFIX.WITHDRAWAL_ADMIN_CHARGE}-${key}`,
+      metadata: {
+        mlmEvent: "WITHDRAWAL_ADMIN_CHARGE_REVERSED",
+        requestId: String(request._id),
+        adminId: adminId ? String(adminId) : null,
+      },
+      allowNegative: true,
+    });
+  }
 
   if (request.payoutId) {
     const payout = await Payout.findById(request.payoutId, null, { session });

@@ -947,18 +947,19 @@ export async function computeAndCreditRepurchaseBonusChain({
   const baseAmount = roundCurrency((pb.grandTotal || 0) + (pb.walletAmount || 0));
   if (baseAmount <= 0) return [];
 
-  // Walk the upline. We use `getUplineChain` which already returns
-  // ACTIVE memberships in level order [L1, L2, ...].
+  // Walk the upline. `getUplineChain` returns ACTIVE memberships only —
+  // the array is compacted around any suspended/terminated/unpaid member
+  // in the chain, so we key off each recipient's real `.uplineLevel`
+  // (their true L1/L2/.../L6 position), never their position in this array.
   const upline = await getUplineChain(downlineUserId, maxLevel, { session });
   if (upline.length === 0) return [];
 
   const events = [];
-  for (let i = 0; i < upline.length; i += 1) {
-    const level = i + 1;
+  for (const recipient of upline) {
+    const level = recipient.uplineLevel;
     const ratePercent = levels.find((r) => Number(r.level) === level)?.ratePercent;
     if (!ratePercent || ratePercent <= 0) continue;
 
-    const recipient = upline[i];
     if (recipient.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) continue;
 
     const bonusAmount = roundCurrency((baseAmount * Number(ratePercent)) / 100);
@@ -1367,12 +1368,15 @@ export async function computeAndCreditHomeShoppingCommissions({
   if (levels.length === 0) return [];
 
   const maxLevel = Math.max(...levels.map((r) => r.level));
+  // Compacted array (see `getUplineChain` doc) — look recipients up by
+  // their real `.uplineLevel`, not by array position.
   const upline = await getUplineChain(downlineUserId, maxLevel, { session });
   if (upline.length === 0) return [];
+  const uplineByLevel = new Map(upline.map((m) => [m.uplineLevel, m]));
 
   const events = [];
   for (const { level, ratePercent, prefix, type } of levels) {
-    const recipient = upline[level - 1];
+    const recipient = uplineByLevel.get(level);
     if (!recipient) continue;
     if (recipient.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) continue;
 
@@ -1453,12 +1457,11 @@ export async function computeAndCreditMentorRoyaltyForCommission({
   if (upline.length === 0) return [];
 
   const events = [];
-  for (let i = 0; i < upline.length; i += 1) {
-    const level = i + 1;
+  for (const mentor of upline) {
+    const level = mentor.uplineLevel;
     const ratePercent = levels.find((r) => Number(r.level) === level)?.ratePercent;
     if (!ratePercent || ratePercent <= 0) continue;
 
-    const mentor = upline[i];
     if (mentor.planType !== MLM_PLAN_TYPE.B) continue;
     if (mentor.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) continue;
 

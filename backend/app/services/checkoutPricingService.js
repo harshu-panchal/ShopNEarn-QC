@@ -562,7 +562,15 @@ export async function buildCheckoutPricingSnapshot({
   // cannot self-credit themselves a discount by editing the payload.
   // When the flag is OFF, the legacy client-trust path is preserved
   // bit-for-bit so rollback is an env flip.
-  let effectiveDiscount = round2(discountTotal);
+  //
+  // With the engine ON, `effectiveDiscount` defaults to 0 rather than
+  // the client-supplied `discountTotal` — a discount only ever comes
+  // from a coupon that actually resolves below. Falling back to the
+  // client value here (as an earlier version of this function did)
+  // left the exact price-tampering hole the engine exists to close: a
+  // request with no `couponCode`/`couponId` but a non-zero
+  // `discountTotal` would sail straight through untouched.
+  let effectiveDiscount = isServerSideCouponEngineEnabled() ? 0 : round2(discountTotal);
   let resolvedCouponSnapshot = null;
   let resolvedCoupon = null;
   let applyFreeDelivery = false;

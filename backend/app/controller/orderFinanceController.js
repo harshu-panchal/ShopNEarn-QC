@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Order from "../models/order.js";
 import handleResponse from "../utils/helper.js";
 import {
@@ -239,26 +240,46 @@ export const markOrderDeliveredAndSettle = async (req, res) => {
       return handleResponse(res, 403, "Only order seller can mark this order delivered");
     }
 
-    const updated = await settleDeliveredOrder(order._id, {
-      actorId: req.user?.id || null,
-    });
+    // "Mark delivered" and, for COD orders, "record COD cash collection"
+    // used to be two independently-committed transactions — a crash (or
+    // any error) between them left an order that looked delivered and
+    // settled while the cash the rider is holding was never reconciled
+    // into the system float. Both `settleDeliveredOrder` and
+    // `handleCodOrderFinance` accept an external session precisely so
+    // this one request can run them as a single atomic unit.
+    const session = await mongoose.startSession();
+    let updated;
+    try {
+      await session.withTransaction(async () => {
+        updated = await settleDeliveredOrder(order._id, {
+          actorId: req.user?.id || null,
+          session,
+        });
 
-    // For COD orders, "delivery" implies cash is collected by the assigned delivery partner.
-    // This updates System Float (COD) as: grandTotal - riderPayoutTotal.
-    if (
-      updated?.paymentMode === "COD" &&
-      updated?.deliveryBoy &&
-      !updated?.financeFlags?.codMarkedCollected
-    ) {
-      const deliveryPartnerId = updated.deliveryBoy;
-      const updatedWithCod = await handleCodOrderFinance(updated._id, {
-        deliveryPartnerId,
-        actorId: req.user?.id || null,
+        // For COD orders, "delivery" implies cash is collected by the
+        // assigned delivery partner. This updates System Float (COD)
+        // as: grandTotal - riderPayoutTotal.
+        if (
+          updated?.paymentMode === "COD" &&
+          updated?.deliveryBoy &&
+          !updated?.financeFlags?.codMarkedCollected
+        ) {
+          updated = await handleCodOrderFinance(updated._id, {
+            deliveryPartnerId: updated.deliveryBoy,
+            actorId: req.user?.id || null,
+            session,
+          });
+        }
       });
-      return handleResponse(res, 200, "Order delivered and COD cash collected", updatedWithCod);
+    } finally {
+      session.endSession();
     }
 
-    return handleResponse(res, 200, "Order delivered and settlement queued", updated);
+    const message =
+      updated?.paymentMode === "COD" && updated?.financeFlags?.codMarkedCollected
+        ? "Order delivered and COD cash collected"
+        : "Order delivered and settlement queued";
+    return handleResponse(res, 200, message, updated);
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
   }

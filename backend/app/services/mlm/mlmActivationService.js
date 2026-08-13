@@ -33,6 +33,7 @@ import {
 import { getMlmConfig, resolveJoiningPackageShoppingCredit } from "./mlmConfigService.js";
 import { emitNotificationEvent } from "../../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.constants.js";
+import logger from "../logger.js";
 
 /**
  * mlmActivationService — orchestrates everything that happens between
@@ -167,6 +168,7 @@ export async function activateMembershipFromJoiningPayment(
       null;
 
     let sponsorMembership = null;
+    let sponsorAssignmentError = null;
     if (!membership.sponsorId && sponsorCodeForActivation) {
       try {
         const updated = await assignSponsor({
@@ -188,12 +190,29 @@ export async function activateMembershipFromJoiningPayment(
           );
         }
       } catch (error) {
-        if (typeof console !== "undefined" && console.warn) {
-          console.warn(
-            "[mlmActivationService] assignSponsor failed; continuing without sponsor",
-            { userId: String(customerId), error: error.message },
-          );
-        }
+        // Deliberately NOT re-thrown: aborting the whole activation
+        // transaction here would leave a customer who has already paid
+        // with no membership activation at all — worse than activating
+        // sponsorless. But a silent `console.warn` meant this failure
+        // was invisible to everyone; log at error severity (so it hits
+        // whatever alerting the deployment has) AND persist it on the
+        // membership itself so it's queryable/visible on the admin
+        // member-detail page instead of only existing in a log line.
+        sponsorAssignmentError = error.message;
+        logger.error("[mlmActivationService] assignSponsor failed during activation; continuing without sponsor", {
+          userId: String(customerId),
+          attemptedReferralCode: sponsorCodeForActivation,
+          error: error.message,
+        });
+        const meta = membership.meta || {};
+        meta.sponsorAssignmentFailed = {
+          at: new Date(),
+          attemptedReferralCode: sponsorCodeForActivation,
+          error: error.message,
+        };
+        membership.meta = meta;
+        membership.markModified("meta");
+        await membership.save({ session });
       }
     } else if (membership.sponsorId) {
       sponsorMembership = await MlmMembership.findOne(
@@ -207,7 +226,16 @@ export async function activateMembershipFromJoiningPayment(
       session,
     });
     let shoppingCreditResult = null;
-    if (shoppingCreditAmount > 0) {
+    // Guard against a cross-path double-credit: this paid-activation path
+    // keys its ledger idempotency on `payment._id`, while
+    // `adminActivateMembership` below keys on `ADMIN-<membership._id>` —
+    // two disjoint namespaces. A member who pays (credited here), gets
+    // admin-deactivated, then admin-reactivated would otherwise be
+    // credited a SECOND time via the other path's key, since neither the
+    // wallet balance write nor the ledger dedup in `creditWallet` is
+    // aware of the other path's key. This flag is the single source of
+    // truth both paths check, independent of which key fired first.
+    if (shoppingCreditAmount > 0 && !membership.meta?.joiningPackageShoppingCreditAppliedAt) {
       shoppingCreditResult = await creditWallet({
         ownerType: OWNER_TYPE.CUSTOMER,
         ownerId: customerId,
@@ -226,6 +254,11 @@ export async function activateMembershipFromJoiningPayment(
         },
         syncUserWalletBalance: false,
       });
+      const meta = membership.meta || {};
+      meta.joiningPackageShoppingCreditAppliedAt = new Date();
+      membership.meta = meta;
+      membership.markModified("meta");
+      await membership.save({ session });
     }
 
     // Plan A binary team pair income (client PHP spec).
@@ -297,6 +330,7 @@ export async function activateMembershipFromJoiningPayment(
       activated: true,
       membership,
       sponsorMembership,
+      sponsorAssignmentError,
       shoppingCreditAmount,
       shoppingCreditResult,
       pairBonusEvents,
@@ -404,7 +438,13 @@ export async function adminActivateMembership({
     const shoppingCreditAmount =
       Number(cfg.joiningPackageShoppingWalletCredit) || 0;
     let shoppingCreditResult = null;
-    if (shoppingCreditAmount > 0) {
+    // Same cross-path double-credit guard as the paid-activation path in
+    // `activateMembershipFromJoiningPayment` — this admin path keys its
+    // ledger idempotency on `ADMIN-<membership._id>`, a disjoint
+    // namespace from the paid path's `<payment._id>` key, so a
+    // pay → deactivate → admin-reactivate cycle would otherwise credit
+    // the shopping wallet seed a second time.
+    if (shoppingCreditAmount > 0 && !membership.meta?.joiningPackageShoppingCreditAppliedAt) {
       shoppingCreditResult = await creditWallet({
         ownerType: OWNER_TYPE.CUSTOMER,
         ownerId: customerId,
@@ -424,6 +464,10 @@ export async function adminActivateMembership({
         },
         syncUserWalletBalance: false,
       });
+      meta.joiningPackageShoppingCreditAppliedAt = new Date();
+      membership.meta = meta;
+      membership.markModified("meta");
+      await membership.save({ session });
     }
 
     let pairBonusEvents = [];

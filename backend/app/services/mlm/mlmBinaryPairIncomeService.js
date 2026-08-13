@@ -502,7 +502,8 @@ export async function computeAndCreditBinaryTeamPairIncome({
 
     let currentPairIncome = defaultPairIncome;
     if (!isTopup) {
-      currentPairIncome = await getPlanAPairBonusForPairIndex(pairIndex);
+      const tierIncome = await getPlanAPairBonusForPairIndex(pairIndex);
+      currentPairIncome = Math.max(defaultPairIncome, tierIncome);
     }
 
     if (currentPairIncome <= 0) continue;

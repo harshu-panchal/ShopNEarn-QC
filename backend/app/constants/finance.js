@@ -146,6 +146,13 @@ export const LEDGER_TRANSACTION_TYPE = {
   FRANCHISE_WALLET_TOPUP_CREDIT: "FRANCHISE_WALLET_TOPUP_CREDIT",
   FRANCHISE_STOCK_PURCHASE: "FRANCHISE_STOCK_PURCHASE",
   FRANCHISE_MANUAL_ADJUSTMENT: "FRANCHISE_MANUAL_ADJUSTMENT",
+  // POS sale settlement: credited to the franchise partner's wallet
+  // ONLY for wallet-paid POS sales (shopping/earnings wallet). Cash
+  // and UPI-to-partner sales never touch a platform ledger — the
+  // partner already holds that money outside the platform — but a
+  // wallet-paid sale debits the customer's platform wallet, and that
+  // value has to land somewhere or it's destroyed.
+  FRANCHISE_POS_SALE_CREDIT: "FRANCHISE_POS_SALE_CREDIT",
 };
 
 export const PAYOUT_TYPE = {

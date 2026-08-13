@@ -515,3 +515,145 @@ export async function executeBinaryMove({
     }).catch(() => null),
   };
 }
+
+export async function executeChangeDirectSponsor({
+  membershipId,
+  newSponsorQuery,
+  adminId = null,
+  reason = null,
+}) {
+  let member = null;
+  if (mongoose.Types.ObjectId.isValid(membershipId)) {
+    member = await MlmMembership.findById(membershipId);
+  }
+  if (!member) {
+    member = await MlmMembership.findOne({
+      $or: [
+        { userId: mongoose.Types.ObjectId.isValid(membershipId) ? membershipId : null },
+        { referralCode: String(membershipId).toUpperCase().trim() },
+      ].filter(Boolean),
+    });
+  }
+  if (!member) throw makeError("Target member not found.", 404, "MEMBER_NOT_FOUND");
+
+  const qStr = String(newSponsorQuery || "").trim().toUpperCase();
+  if (!qStr) throw makeError("New sponsor referral code or ID is required.", 422, "SPONSOR_QUERY_REQUIRED");
+
+  const Customer = mongoose.model("User");
+  let newSponsorUser = await Customer.findOne({
+    $or: [
+      { userId: qStr },
+      { referralCode: qStr },
+      ...(mongoose.Types.ObjectId.isValid(newSponsorQuery) ? [{ _id: newSponsorQuery }] : []),
+    ],
+  }).select("_id name userId").lean();
+
+  if (!newSponsorUser) {
+    throw makeError(`New sponsor '${newSponsorQuery}' not found.`, 404, "NEW_SPONSOR_NOT_FOUND");
+  }
+
+  const newSponsor = await MlmMembership.findOne({ userId: newSponsorUser._id });
+  if (!newSponsor) {
+    throw makeError(`New sponsor membership profile not found.`, 404, "NEW_SPONSOR_MEMBERSHIP_NOT_FOUND");
+  }
+
+  if (String(member.userId) === String(newSponsor.userId)) {
+    throw makeError("A member cannot be their own sponsor.", 422, "SELF_SPONSOR_FORBIDDEN");
+  }
+
+  if (String(member.sponsorId) === String(newSponsor.userId)) {
+    throw makeError(`Member is ALREADY sponsored by ${newSponsorUser.name} (${newSponsorUser.userId}).`, 422, "ALREADY_SPONSORED");
+  }
+
+  // Cycle check
+  const inSubtree = await MlmMembership.exists({
+    userId: newSponsor.userId,
+    sponsorChain: member.userId,
+  });
+  if (inSubtree) {
+    throw makeError("New sponsor is inside the member's downline (cycle detected).", 422, "CYCLE_DETECTED");
+  }
+
+  const oldSponsorUserId = member.sponsorId;
+  const stats = await countUnilevelSubtree(member.userId);
+
+  const session = await mongoose.startSession();
+  try {
+    const runInSession = async (sess) => {
+      const m = sess ? await MlmMembership.findById(member._id).session(sess) : await MlmMembership.findById(member._id);
+      const ns = sess ? await MlmMembership.findById(newSponsor._id).session(sess) : await MlmMembership.findById(newSponsor._id);
+
+      m.sponsorId = ns.userId;
+      m.sponsorMembershipId = ns._id;
+      m.sponsorChain = await buildSponsorChain(ns, { session: sess });
+
+      if (sess) await m.save({ session: sess });
+      else await m.save();
+
+      await rebuildSponsorChainsFrom(m.userId, { session: sess });
+
+      if (oldSponsorUserId) {
+        const opts = sess ? { session: sess } : {};
+        await MlmMembership.updateOne(
+          { userId: oldSponsorUserId },
+          {
+            $inc: {
+              directReferralsCount: -1,
+              totalDownlineCount: -(stats.total || 0),
+              activeDownlineCount: -(stats.active || 0),
+              inactiveDownlineCount: -(stats.inactive || 0),
+            },
+          },
+          opts,
+        );
+      }
+
+      const nsOpts = sess ? { session: sess } : {};
+      await MlmMembership.updateOne(
+        { userId: ns.userId },
+        {
+          $inc: {
+            directReferralsCount: 1,
+            totalDownlineCount: stats.total || 0,
+            activeDownlineCount: stats.active || 0,
+            inactiveDownlineCount: stats.inactive || 0,
+          },
+        },
+        nsOpts,
+      );
+
+      const syncOpts = sess ? { session: sess } : {};
+      await syncCustomerMlmProjection(m.userId, syncOpts);
+      await syncCustomerMlmProjection(ns.userId, syncOpts);
+      if (oldSponsorUserId) {
+        await syncCustomerMlmProjection(oldSponsorUserId, syncOpts);
+      }
+    };
+
+    try {
+      await session.withTransaction(async () => {
+        await runInSession(session);
+      });
+    } catch (txnErr) {
+      await runInSession(null);
+    }
+  } finally {
+    await session.endSession();
+  }
+
+  const oldSponsorUser = oldSponsorUserId
+    ? await Customer.findById(oldSponsorUserId).select("_id name userId").lean()
+    : null;
+
+  return {
+    success: true,
+    member: {
+      id: String(member._id),
+      userId: String(member.userId),
+    },
+    oldSponsor: oldSponsorUser ? { name: oldSponsorUser.name, userId: oldSponsorUser.userId } : null,
+    newSponsor: { name: newSponsorUser.name, userId: newSponsorUser.userId },
+    unilevelSubtreeSize: stats,
+  };
+}
+

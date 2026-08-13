@@ -4,6 +4,16 @@ import { ChevronLeft, AlertCircle, Wallet, CheckCircle2, XCircle, Clock, Lock } 
 import { toast } from 'sonner';
 import { mlmApi } from '../../services/mlmApi';
 
+// A fresh key is minted per submit attempt and reused for that
+// attempt's request only — the backend's own fallback (keyed on
+// `Date.now()`) is different on every millisecond and can't actually
+// deduplicate a network-level retry of the same click. Reusing this
+// key across a retry lets the backend's unique-index guard turn a
+// double-send into a clean no-op instead of a second real debit.
+function newWithdrawalIdempotencyKey() {
+    return `wd-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDate = (d) => new Date(d).toLocaleString('en-IN', {
     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -130,8 +140,9 @@ const MlmWithdrawalPage = () => {
         if (form.panNumber) beneficiary.panNumber = form.panNumber.trim().toUpperCase();
 
         setSubmitting(true);
+        const idempotencyKey = newWithdrawalIdempotencyKey();
         try {
-            await mlmApi.requestWithdrawal({ amount, beneficiary });
+            await mlmApi.requestWithdrawal({ amount, beneficiary, idempotencyKey });
             toast.success('Withdrawal request submitted');
             setForm({ ...form, amount: '' });
             await loadData();

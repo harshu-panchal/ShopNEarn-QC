@@ -34,6 +34,7 @@ import {
   runMlmMaintenanceJob,
   previewMoveBinaryMember,
   moveBinaryMember,
+  changeMemberSponsor,
   listMlmPayoutReports,
   getMlmPayoutReport,
   generateMlmPayoutReport,
@@ -59,6 +60,7 @@ router.post("/members/:id/approve", ...adminPermissionGuard("mlm:approve"), appr
 router.post("/members/:id/add-child", ...adminPermissionGuard("mlm:move"), addChildMember);
 router.post("/members/:id/move-binary/preview", ...adminPermissionGuard("mlm:move"), previewMoveBinaryMember);
 router.post("/members/:id/move-binary", ...adminPermissionGuard("mlm:move"), moveBinaryMember);
+router.post("/members/:id/change-sponsor", ...adminPermissionGuard("mlm:move"), changeMemberSponsor);
 router.post("/members/:id/impersonation-token", ...adminPermissionGuard("mlm:impersonate"), issueImpersonationToken);
 router.post("/members/:id/soft-delete", ...adminPermissionGuard("mlm:adjust"), softDeleteMember);
 router.post("/customers/:customerId/delete-non-member", ...adminPermissionGuard("customers:view"), deleteNonMlmCustomer);

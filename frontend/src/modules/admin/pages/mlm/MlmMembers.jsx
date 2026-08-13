@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Check, Loader2, Download, Trash2 } from 'lucide-react';
+import { Search, Check, Loader2, Download, Trash2, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminMlmApi } from '../../services/api/mlmApi';
 import { formatMemberJoinedAt } from '@shared/utils/mlmMemberDisplay';
 import MemberJoinedSubtitle from '@shared/components/mlm/MemberJoinedSubtitle';
+import ChangeSponsorModal from './ChangeSponsorModal';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -64,6 +65,7 @@ const MlmMembers = () => {
     // its own spinner and disables independently.
     const [approvingId, setApprovingId] = useState(null);
     const [deletingCustomerId, setDeletingCustomerId] = useState(null);
+    const [selectedMemberForSponsorChange, setSelectedMemberForSponsorChange] = useState(null);
 
     const fetchMembers = async ({ signal } = {}) => {
         setLoading(true);
@@ -314,14 +316,25 @@ const MlmMembers = () => {
                                 </td>
                                 <td className="px-4 py-3 text-right">
                                     <div className="flex items-center justify-end gap-2">
-                                        {!isCustomerOnly && (
-                                            <Link
-                                                to={`/admin/mlm/members/${m._id}`}
-                                                className="text-xs font-bold text-indigo-600 hover:underline"
-                                            >
-                                                View
-                                            </Link>
-                                        )}
+                                         {!isCustomerOnly && (
+                                             <>
+                                                 <Link
+                                                     to={`/admin/mlm/members/${m._id}`}
+                                                     className="text-xs font-bold text-indigo-600 hover:underline"
+                                                 >
+                                                     View
+                                                 </Link>
+                                                 <button
+                                                     type="button"
+                                                     onClick={() => setSelectedMemberForSponsorChange(m)}
+                                                     className="text-xs font-bold text-amber-700 hover:underline inline-flex items-center gap-1"
+                                                     title="Change direct sponsor"
+                                                 >
+                                                     <UserCheck size={12} />
+                                                     Sponsor
+                                                 </button>
+                                             </>
+                                         )}
                                         {isCustomerOnly && (
                                             <button
                                                 type="button"
@@ -384,6 +397,19 @@ const MlmMembers = () => {
                     </div>
                 )}
             </div>
+
+            <ChangeSponsorModal
+                open={Boolean(selectedMemberForSponsorChange)}
+                onClose={() => setSelectedMemberForSponsorChange(null)}
+                member={{
+                    _id: selectedMemberForSponsorChange?._id,
+                    name: selectedMemberForSponsorChange?.userId?.name || selectedMemberForSponsorChange?.name,
+                    publicUserId: selectedMemberForSponsorChange?.userId?.userId || selectedMemberForSponsorChange?.referralCode,
+                    sponsorName: selectedMemberForSponsorChange?.sponsor?.name,
+                    sponsorUserId: selectedMemberForSponsorChange?.sponsor?.referralCode,
+                }}
+                onSuccess={() => fetchMembers()}
+            />
         </div>
     );
 };

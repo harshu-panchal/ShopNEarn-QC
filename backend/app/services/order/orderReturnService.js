@@ -289,6 +289,55 @@ export class OrderReturnService {
     const settings = await Setting.findOne({});
     const returnCommission = settings?.returnDeliveryCommission ?? 0;
 
+    let sellerInfo = null;
+    try {
+      sellerInfo = await Seller.findById(order.seller)
+        .select("shopName address phone")
+        .lean();
+    } catch {
+      sellerInfo = null;
+    }
+
+    let customerInfo = null;
+    try {
+      customerInfo = await User.findById(order.customer)
+        .select("name phone addresses")
+        .lean();
+    } catch {
+      customerInfo = null;
+    }
+
+    // `order.address` is the pickup location for a normal online order
+    // (it's the delivery address the customer checked out with). For a
+    // franchise POS sale it is instead the STORE's address with no
+    // coordinates — using it here would silently break the pickup
+    // broadcast for any registered customer returning an in-store
+    // purchase through the app. Fall back to the customer's own saved
+    // address in that case; if they have none on file, fail loudly here
+    // — BEFORE any order state changes — instead of leaving the return
+    // silently stuck in "approved" with no delivery partner ever
+    // notified.
+    let pickupAddress = order.address?.address || "Customer Address";
+    let pickupLocation = order.address?.location;
+    let pickupPhone = order.address?.phone || customerInfo?.phone || "";
+    let pickupName = order.address?.name || customerInfo?.name || "Customer";
+
+    if (order.isFranchisePosSale) {
+      const savedAddress = Array.isArray(customerInfo?.addresses)
+        ? customerInfo.addresses[0]
+        : null;
+      if (!savedAddress?.location?.lat || !savedAddress?.location?.lng) {
+        throw err(
+          "This return can't be broadcast for pickup — the customer has no saved address with a location on file. Ask them to add one, then approve again.",
+          422,
+        );
+      }
+      pickupAddress = savedAddress.fullAddress || pickupAddress;
+      pickupLocation = savedAddress.location;
+      pickupPhone = customerInfo?.phone || pickupPhone;
+      pickupName = customerInfo?.name || pickupName;
+    }
+
     order.returnItems = order.returnItems.map((item) => ({
       ...(item.toObject?.() ?? item),
       status: "approved",
@@ -312,32 +361,14 @@ export class OrderReturnService {
       },
     });
 
-    let sellerInfo = null;
-    try {
-      sellerInfo = await Seller.findById(order.seller)
-        .select("shopName address phone")
-        .lean();
-    } catch {
-      sellerInfo = null;
-    }
-
-    let customerInfo = null;
-    try {
-      customerInfo = await User.findById(order.customer)
-        .select("name phone")
-        .lean();
-    } catch {
-      customerInfo = null;
-    }
-
     const broadcastPayload = {
       orderId: order.orderId,
       type: "RETURN_PICKUP",
       commission: returnCommission,
       preview: {
-        pickup: order.address?.address || "Customer Address",
-        pickupPhone: order.address?.phone || customerInfo?.phone || "",
-        customerName: order.address?.name || customerInfo?.name || "Customer",
+        pickup: pickupAddress,
+        pickupPhone,
+        customerName: pickupName,
         drop: sellerInfo?.shopName || "Seller Store",
         dropAddress: sellerInfo?.address || "",
         total: order.pricing?.total || 0,
@@ -354,8 +385,7 @@ export class OrderReturnService {
       deliverySearchExpiresAt: new Date(Date.now() + 60 * 1000).toISOString(),
     };
 
-    const customerLocation = order.address?.location;
-    emitReturnBroadcastForCustomer(customerLocation, broadcastPayload);
+    emitReturnBroadcastForCustomer(pickupLocation, broadcastPayload);
     emitNotificationEvent(NOTIFICATION_EVENTS.RETURN_PICKUP_ASSIGNED, {
       orderId: order.orderId,
       sellerId: order.seller,
@@ -516,7 +546,23 @@ export class OrderReturnService {
           }
 
           // 2. Seller adjustment.
-          if (order.seller && (refundAmount > 0 || commission > 0)) {
+          //
+          // `sellerPayout === "NOT_APPLICABLE"` (franchise POS sales,
+          // see `franchisePosService.js`) means the hub seller was
+          // deliberately never paid a payout for this order in the
+          // first place — `settleDeliveredOrder` skips seller-payout
+          // creation for these entirely. Treating that the same as
+          // "already paid, claw it back" (the previous `else` branch
+          // did, since it only special-cased HOLD) would debit a
+          // seller wallet for money that account never received.
+          const sellerPayoutNotApplicable =
+            order.settlementStatus?.sellerPayout === "NOT_APPLICABLE";
+
+          if (
+            order.seller &&
+            (refundAmount > 0 || commission > 0) &&
+            !sellerPayoutNotApplicable
+          ) {
             const isHeld =
               order.settlementStatus?.sellerPayout === "HOLD" ||
               order.financeFlags?.sellerPayoutHeld;
@@ -661,13 +707,20 @@ export class OrderReturnService {
             const { clawbackBonusesOnReturn } = await import(
               "../mlm/mlmBonusEngineService.js"
             );
+            // MLM bonuses are earned on `grandTotal + walletAmount` (see
+            // `computeAndCreditRepurchaseBonusChain` /
+            // `computeAndCreditHomeShoppingCommissions`), so the clawback
+            // ratio's denominator has to match that same base — omitting
+            // `walletAmount` here understates the base and over-claws-back
+            // every partial return on a wallet-part-paid order.
+            const originalBonusBaseAmount = order.paymentBreakdown?.grandTotal
+              ? order.paymentBreakdown.grandTotal +
+                (order.paymentBreakdown.walletAmount || 0)
+              : order.pricing?.total || refundAmount;
             await clawbackBonusesOnReturn({
               orderId: order._id,
               refundedItemsValue: refundAmount,
-              originalGrandTotal:
-                order.paymentBreakdown?.grandTotal ||
-                order.pricing?.total ||
-                refundAmount,
+              originalGrandTotal: originalBonusBaseAmount,
               session,
               correlationId,
             });

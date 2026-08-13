@@ -183,6 +183,24 @@ function buildClickIdempotencyKey(userId) {
 }
 
 /**
+ * Given an error thrown by `MlmJoiningPayment.create()`, checks whether
+ * it's the specific duplicate-key race this module already knows how to
+ * treat as a no-op (same customer + idempotencyKey slipping past the
+ * earlier `existingForKey` lookup) and returns the winning row. Any
+ * other error — including a `gatewayOrderId` collision, which would
+ * mean two payments legitimately disagree about identity — rethrows.
+ */
+async function duplicateJoiningPaymentFromRaceOrThrow(error, { userId, idempotencyKey }) {
+  if (error?.code !== 11000) throw error;
+  const existing = await MlmJoiningPayment.findOne({
+    customer: userId,
+    idempotencyKey,
+  });
+  if (!existing) throw error;
+  return existing;
+}
+
+/**
  * Initiate a joining payment for the customer. Returns the gateway
  * redirect URL. Idempotent on `idempotencyKey`.
  */
@@ -329,34 +347,55 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     const manualQr = await getManualQrConfig();
     const customerRedirectUrl = `${process.env.FRONTEND_URL || ""}/mlm/manual-payment/${paymentId.toString()}`;
 
-    const payment = await MlmJoiningPayment.create({
-      _id: paymentId,
-      customer: userId,
-      gatewayName: PAYMENT_GATEWAY.MANUAL_QR,
-      gatewayOrderId: merchantOrderId,
-      paymentMode: MLM_PAYMENT_MODE.MANUAL_QR,
-      amountPaise,
-      currency: "INR",
-      status: PAYMENT_STATUS.CREATED,
-      joiningPriceSnapshot: joiningPrice,
-      shoppingCreditSnapshot: shoppingCredit,
-      sponsorReferralCodeSnapshot: customer.pendingSponsorReferralCode || null,
-      idempotencyKey: effectiveIdempotencyKey,
-      rawGatewayResponse: {
-        redirectUrl: customerRedirectUrl,
-        merchantOrderId,
+    let payment;
+    try {
+      payment = await MlmJoiningPayment.create({
+        _id: paymentId,
+        customer: userId,
+        gatewayName: PAYMENT_GATEWAY.MANUAL_QR,
+        gatewayOrderId: merchantOrderId,
+        paymentMode: MLM_PAYMENT_MODE.MANUAL_QR,
         amountPaise,
-        manualQrSnapshot: manualQr,
-      },
-      statusHistory: [
-        {
-          fromStatus: PAYMENT_STATUS.CREATED,
-          toStatus: PAYMENT_STATUS.CREATED,
-          source: PAYMENT_EVENT_SOURCE.SYSTEM,
-          reason: "Manual QR joining intent created",
+        currency: "INR",
+        status: PAYMENT_STATUS.CREATED,
+        joiningPriceSnapshot: joiningPrice,
+        shoppingCreditSnapshot: shoppingCredit,
+        sponsorReferralCodeSnapshot: customer.pendingSponsorReferralCode || null,
+        idempotencyKey: effectiveIdempotencyKey,
+        rawGatewayResponse: {
+          redirectUrl: customerRedirectUrl,
+          merchantOrderId,
+          amountPaise,
+          manualQrSnapshot: manualQr,
         },
-      ],
-    });
+        statusHistory: [
+          {
+            fromStatus: PAYMENT_STATUS.CREATED,
+            toStatus: PAYMENT_STATUS.CREATED,
+            source: PAYMENT_EVENT_SOURCE.SYSTEM,
+            reason: "Manual QR joining intent created",
+          },
+        ],
+      });
+    } catch (error) {
+      // Backstop for the race between the `existingForKey` lookup above
+      // and this insert: a near-simultaneous double-click (or a network
+      // retry that reused the same idempotencyKey) can lose the race on
+      // the `{customer, idempotencyKey}` unique index. Treat it as a
+      // duplicate instead of surfacing a raw 500 to "Join Now".
+      const existing = await duplicateJoiningPaymentFromRaceOrThrow(error, {
+        userId,
+        idempotencyKey: effectiveIdempotencyKey,
+      });
+      return {
+        paymentId: String(existing._id),
+        merchantOrderId: existing.gatewayOrderId,
+        redirectUrl: existing.rawGatewayResponse?.redirectUrl || customerRedirectUrl,
+        paymentMode: MLM_PAYMENT_MODE.MANUAL_QR,
+        manualQr,
+        duplicate: true,
+      };
+    }
 
     logger.info("mlm_joining_payment_created", {
       paymentId: payment._id.toString(),
@@ -386,34 +425,53 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     description: `MLM joining ${merchantOrderId}`,
   });
 
-  const payment = await MlmJoiningPayment.create({
-    _id: paymentId,
-    customer: userId,
-    gatewayName: provider.providerName,
-    gatewayOrderId: merchantOrderId,
-    paymentMode: MLM_PAYMENT_MODE.RAZORPAY,
-    amountPaise,
-    currency: "INR",
-    status: PAYMENT_STATUS.PENDING,
-    joiningPriceSnapshot: joiningPrice,
-    shoppingCreditSnapshot: shoppingCredit,
-    sponsorReferralCodeSnapshot: customer.pendingSponsorReferralCode || null,
-    idempotencyKey: effectiveIdempotencyKey,
-    rawGatewayResponse: {
-      checkout: initResult.checkout,
-      razorpayOrderId: initResult.gatewayOrderId,
-      merchantOrderId,
+  let payment;
+  try {
+    payment = await MlmJoiningPayment.create({
+      _id: paymentId,
+      customer: userId,
+      gatewayName: provider.providerName,
+      gatewayOrderId: merchantOrderId,
+      paymentMode: MLM_PAYMENT_MODE.RAZORPAY,
       amountPaise,
-    },
-    statusHistory: [
-      {
-        fromStatus: PAYMENT_STATUS.CREATED,
-        toStatus: PAYMENT_STATUS.PENDING,
-        source: PAYMENT_EVENT_SOURCE.SYSTEM,
-        reason: `${provider.providerName} joining checkout initiated`,
+      currency: "INR",
+      status: PAYMENT_STATUS.PENDING,
+      joiningPriceSnapshot: joiningPrice,
+      shoppingCreditSnapshot: shoppingCredit,
+      sponsorReferralCodeSnapshot: customer.pendingSponsorReferralCode || null,
+      idempotencyKey: effectiveIdempotencyKey,
+      rawGatewayResponse: {
+        checkout: initResult.checkout,
+        razorpayOrderId: initResult.gatewayOrderId,
+        merchantOrderId,
+        amountPaise,
       },
-    ],
-  });
+      statusHistory: [
+        {
+          fromStatus: PAYMENT_STATUS.CREATED,
+          toStatus: PAYMENT_STATUS.PENDING,
+          source: PAYMENT_EVENT_SOURCE.SYSTEM,
+          reason: `${provider.providerName} joining checkout initiated`,
+        },
+      ],
+    });
+  } catch (error) {
+    // Same race backstop as the manual-QR branch above. The Razorpay
+    // order this losing call created is simply left unused — a minor
+    // resource leak, not a money-safety issue — while the customer
+    // transparently gets the winning attempt's checkout session back.
+    const existing = await duplicateJoiningPaymentFromRaceOrThrow(error, {
+      userId,
+      idempotencyKey: effectiveIdempotencyKey,
+    });
+    return {
+      paymentId: String(existing._id),
+      merchantOrderId: existing.gatewayOrderId,
+      checkout: existing.rawGatewayResponse?.checkout || null,
+      paymentMode: MLM_PAYMENT_MODE.RAZORPAY,
+      duplicate: true,
+    };
+  }
 
   logger.info("mlm_joining_payment_created", {
     paymentId: payment._id.toString(),

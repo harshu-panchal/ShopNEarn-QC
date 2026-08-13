@@ -46,6 +46,9 @@ export const adminMlmApi = {
     moveBinary: (membershipId, data) =>
         axiosInstance.post(`/admin/mlm/members/${membershipId}/move-binary`, data),
 
+    changeSponsor: (membershipId, data) =>
+        axiosInstance.post(`/admin/mlm/members/${membershipId}/change-sponsor`, data),
+
     /**
      * Admin support tool (PO-request Jun 2026): mint a short-lived
      * customer JWT for the member identified by `membershipId`. The

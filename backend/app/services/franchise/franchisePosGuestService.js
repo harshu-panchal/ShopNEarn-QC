@@ -9,24 +9,32 @@ let cachedWalkInUserId = null;
 export async function getFranchisePosWalkInUserId({ session } = {}) {
   if (cachedWalkInUserId) return cachedWalkInUserId;
 
-  let q = Customer.findOne({ phone: FRANCHISE_POS_WALKIN_PHONE }).select("_id");
-  if (session) q = q.session(session);
-  let user = await q.lean();
-
-  if (!user) {
-    const created = await Customer.create(
-      [
-        {
-          name: "Franchise POS Walk-in",
-          phone: FRANCHISE_POS_WALKIN_PHONE,
-          role: "user",
-          isVerified: true,
-        },
-      ],
-      session ? { session } : undefined,
-    );
-    user = created[0];
-  }
+  // `phone` carries a unique index, so a plain find-then-create races on
+  // the very first guest sale (or right after a process restart, before
+  // the in-memory cache is warm): two concurrent callers can both find
+  // nothing and both attempt to create the same row, and the loser
+  // throws an uncaught E11000 straight to the cashier terminal. An
+  // atomic upsert makes the "find or create" a single operation — only
+  // one caller ever actually inserts, everyone else just reads it back.
+  const user = await Customer.findOneAndUpdate(
+    { phone: FRANCHISE_POS_WALKIN_PHONE },
+    {
+      $setOnInsert: {
+        name: "Franchise POS Walk-in",
+        phone: FRANCHISE_POS_WALKIN_PHONE,
+        role: "user",
+        isVerified: true,
+      },
+    },
+    {
+      upsert: true,
+      new: true,
+      session,
+      setDefaultsOnInsert: true,
+    },
+  )
+    .select("_id")
+    .lean();
 
   cachedWalkInUserId = user._id;
   return cachedWalkInUserId;

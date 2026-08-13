@@ -34,7 +34,7 @@ import {
 import { freezeFinancialSnapshot } from "../finance/orderFinanceService.js";
 import { resolveSellingPrice } from "../../utils/productStockUtils.js";
 import { normalizePhoneNumber } from "../../utils/phone.js";
-import { computeReturnWindowDates } from "../../utils/returnWindow.js";
+import { computePosBonusReleaseWindowDates } from "../../utils/returnWindow.js";
 
 function roundCurrency(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
@@ -391,6 +391,9 @@ export async function createPosSale({
   }
 
   const idempotencyKey = normalizeIdempotencyKey(franchisePartnerId, clientIdempotencyKey);
+  // Cheap fast-path lookup — not the correctness guarantee (see below),
+  // just avoids re-doing buyer resolution / preview work for the common
+  // case of a client legitimately re-sending an already-processed sale.
   const existing = await Order.findOne({
     franchisePartnerId,
     isFranchisePosSale: true,
@@ -431,11 +434,12 @@ export async function createPosSale({
   let createdOrder;
 
   try {
-    await session.withTransaction(async () => {
+    try {
+      await session.withTransaction(async () => {
       const publicOrderId = await generateUniquePublicOrderId({ session });
       const now = new Date();
       const storeAddress = formatFranchiseAddress(partner);
-      const { eligibleAt, windowExpiresAt } = computeReturnWindowDates(now);
+      const { eligibleAt, windowExpiresAt } = computePosBonusReleaseWindowDates(now);
 
       const order = new Order({
         orderId: publicOrderId,
@@ -496,10 +500,12 @@ export async function createPosSale({
         // MLM bonuses (repurchase chain) are credited further down in this
         // same transaction, once paymentBreakdown is persisted — NOT
         // pre-marked here. `returnEligibleAt`/`returnWindowExpiresAt` are
-        // stamped now (same helper `settleDeliveredOrder` uses) purely so
-        // `returnWindowReleaseJob` has a window to release the pending
-        // repurchase bonus into `earnings` — POS sales have no return
-        // workflow of their own, so this just governs bonus maturity.
+        // stamped now via `computePosBonusReleaseWindowDates` (POS-specific,
+        // independently tunable from the online delivery return window —
+        // see `utils/returnWindow.js`) purely so `returnWindowReleaseJob`
+        // has a window to release the pending repurchase bonus into
+        // `earnings` — POS sales have no return workflow of their own, so
+        // this just governs bonus maturity.
         returnEligibleAt: eligibleAt,
         returnWindowExpiresAt: windowExpiresAt,
         returnDeadline: windowExpiresAt,
@@ -524,6 +530,28 @@ export async function createPosSale({
           ledgerDescription: `POS sale #${publicOrderId} payment via ${bucket === "shopping" ? "Shopping" : "Earning"} Wallet`,
           orderId: order._id,
           idempotencyKey: `${idempotencyKey}-wallet-debit`,
+        });
+
+        // The customer's platform wallet just lost this amount — it has
+        // to land in the franchise partner's platform wallet or it's
+        // simply destroyed (cash/UPI-to-partner sales never hit this
+        // branch because that money never touched the platform to begin
+        // with; it's already in the partner's hands).
+        await creditWallet({
+          ownerType: OWNER_TYPE.FRANCHISE,
+          ownerId: partner._id,
+          amount: preview.grandTotal,
+          bucket: "available",
+          session,
+          ledgerType: LEDGER_TRANSACTION_TYPE.FRANCHISE_POS_SALE_CREDIT,
+          ledgerReference: publicOrderId,
+          ledgerDescription: `POS sale #${publicOrderId} proceeds (${bucket === "shopping" ? "Shopping" : "Earning"} Wallet payment)`,
+          orderId: order._id,
+          idempotencyKey: `${idempotencyKey}-wallet-credit`,
+          metadata: {
+            posPaymentMethod: paymentMethod,
+          },
+          syncUserWalletBalance: false,
         });
       }
 
@@ -573,7 +601,27 @@ export async function createPosSale({
       order.franchiseStockConsumed = true;
       await order.save({ session });
       createdOrder = order;
-    });
+      });
+    } catch (error) {
+      // Final backstop for the race the fast-path lookup above can't
+      // fully close: two concurrent requests carrying the same
+      // idempotency key can both pass that lookup before either
+      // commits. The unique (customer, placement.idempotencyKey) index
+      // on Order guarantees only one of them can actually insert; the
+      // loser lands here instead of surfacing a raw 500 to the
+      // cashier terminal.
+      const isDuplicateIdempotencyKey =
+        error?.code === 11000 &&
+        Object.keys(error?.keyPattern || {}).includes("placement.idempotencyKey");
+      if (!isDuplicateIdempotencyKey) throw error;
+
+      const winner = await Order.findOne({
+        customer: orderCustomerId,
+        "placement.idempotencyKey": idempotencyKey,
+      });
+      if (!winner) throw error;
+      return { order: winner, receipt: buildReceiptDto(winner, partner), duplicate: true };
+    }
   } finally {
     await session.endSession();
   }
@@ -1108,6 +1156,22 @@ export async function updatePosSale({
           orderId: order._id,
           idempotencyKey: `${orderId}-edit-refund-${Date.now()}`,
         });
+        // Mirror on the franchise side: the original sale credited this
+        // amount to the partner's wallet; refunding the customer means
+        // that proceeds no longer belong to the partner.
+        await debitWallet({
+          ownerType: OWNER_TYPE.FRANCHISE,
+          ownerId: partner._id,
+          amount: oldGrandTotal,
+          bucket: "available",
+          session,
+          ledgerType: LEDGER_TRANSACTION_TYPE.FRANCHISE_POS_SALE_CREDIT,
+          ledgerReference: orderId,
+          ledgerDescription: `POS bill edit #${orderId} proceeds reversal (payment method change)`,
+          idempotencyKey: `${orderId}-edit-franchise-reversal-${Date.now()}`,
+          metadata: { direction: "reversal" },
+          syncUserWalletBalance: false,
+        });
       }
 
       if (isNewWallet) {
@@ -1132,6 +1196,18 @@ export async function updatePosSale({
               orderId: order._id,
               idempotencyKey: `${orderId}-edit-debit-${Date.now()}`,
             });
+            await creditWallet({
+              ownerType: OWNER_TYPE.FRANCHISE,
+              ownerId: partner._id,
+              amount: netDelta,
+              bucket: "available",
+              session,
+              ledgerType: LEDGER_TRANSACTION_TYPE.FRANCHISE_POS_SALE_CREDIT,
+              ledgerReference: orderId,
+              ledgerDescription: `POS bill edit #${orderId} extra proceeds (+₹${netDelta})`,
+              idempotencyKey: `${orderId}-edit-franchise-credit-${Date.now()}`,
+              syncUserWalletBalance: false,
+            });
           } else if (netDelta < 0) {
             // Refund difference
             const refundAmt = Math.abs(netDelta);
@@ -1147,6 +1223,19 @@ export async function updatePosSale({
               orderId: order._id,
               idempotencyKey: `${orderId}-edit-refund-${Date.now()}`,
             });
+            await debitWallet({
+              ownerType: OWNER_TYPE.FRANCHISE,
+              ownerId: partner._id,
+              amount: refundAmt,
+              bucket: "available",
+              session,
+              ledgerType: LEDGER_TRANSACTION_TYPE.FRANCHISE_POS_SALE_CREDIT,
+              ledgerReference: orderId,
+              ledgerDescription: `POS bill edit #${orderId} proceeds reversal (-₹${refundAmt})`,
+              idempotencyKey: `${orderId}-edit-franchise-reversal-${Date.now()}`,
+              metadata: { direction: "reversal" },
+              syncUserWalletBalance: false,
+            });
           }
         } else {
           // New wallet payment or customer changed: debit full new amount
@@ -1161,6 +1250,18 @@ export async function updatePosSale({
             ledgerDescription: `POS bill edit #${orderId} payment via ${newBucket === "shopping" ? "Shopping" : "Earning"} Wallet`,
             orderId: order._id,
             idempotencyKey: `${orderId}-edit-debit-${Date.now()}`,
+          });
+          await creditWallet({
+            ownerType: OWNER_TYPE.FRANCHISE,
+            ownerId: partner._id,
+            amount: newGrandTotal,
+            bucket: "available",
+            session,
+            ledgerType: LEDGER_TRANSACTION_TYPE.FRANCHISE_POS_SALE_CREDIT,
+            ledgerReference: orderId,
+            ledgerDescription: `POS bill edit #${orderId} proceeds (${newBucket === "shopping" ? "Shopping" : "Earning"} Wallet payment)`,
+            idempotencyKey: `${orderId}-edit-franchise-credit-${Date.now()}`,
+            syncUserWalletBalance: false,
           });
         }
       }

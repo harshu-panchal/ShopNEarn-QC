@@ -2,6 +2,15 @@ import axiosInstance from "@core/api/axios";
 import { getWithDedupe, invalidateCache } from "@core/api/dedupe";
 
 /**
+ * Mint a fresh key at the start of a "Join Now" click and pass the SAME
+ * value to every `mlmApi.initiateJoin()` call made for that click
+ * (including a caught-error retry) — see the comment on `initiateJoin`.
+ */
+export function newJoinIdempotencyKey() {
+  return `join-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
  * Customer-side MLM API client.
  *
  * Backed by `/api/customer/mlm/*`. Read endpoints are dedupe-cached
@@ -58,9 +67,17 @@ export const mlmApi = {
    *     manualQr?: { imageUrl, upiId, merchantName, instructions },
    *     duplicate }
    */
-  initiateJoin: () => {
+  // `idempotencyKey` should be generated ONCE per click (see
+  // `newJoinIdempotencyKey`) and reused across a network retry of that
+  // same click — the backend only dedupes a repeated "Join Now" tap
+  // against an in-flight/just-created intent when it sees the same key
+  // twice; a fresh key every call defeats that entirely.
+  initiateJoin: (idempotencyKey) => {
     invalidateCache("/customer/mlm/membership");
-    return axiosInstance.post("/customer/mlm/join/initiate");
+    return axiosInstance.post(
+      "/customer/mlm/join/initiate",
+      idempotencyKey ? { idempotencyKey } : {},
+    );
   },
 
   /**

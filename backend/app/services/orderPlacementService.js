@@ -538,14 +538,20 @@ export async function placeOrderAtomic({
     const mlmCfg = await getMlmConfig();
     const homeShoppingProductId = mlmCfg.homeShoppingProductId ? String(mlmCfg.homeShoppingProductId) : null;
     function detectOrderKind(orderItems) {
-      if (!Array.isArray(orderItems) || orderItems.length === 0) {
+      if (!Array.isArray(orderItems) || orderItems.length === 0 || !homeShoppingProductId) {
         return { isHomeShoppingOrder: false };
       }
-      let isHome = false;
-      for (const item of orderItems) {
+      // EVERY item in this order must be the configured home-shopping
+      // product — matches the sibling `isDigitalOnlyMlmCart` check in
+      // checkoutPricingService.js. Any-item matching would let a
+      // customer pad the same order with unrelated products from the
+      // same seller and still have the FULL order total (not just the
+      // home-shopping item's price) count toward the 10/5/2% home
+      // shopping commissions.
+      const isHome = orderItems.every((item) => {
         const productId = item?.product ? String(item.product) : null;
-        if (homeShoppingProductId && productId === homeShoppingProductId) isHome = true;
-      }
+        return productId === homeShoppingProductId;
+      });
       return { isHomeShoppingOrder: isHome };
     }
 

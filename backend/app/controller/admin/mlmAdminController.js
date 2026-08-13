@@ -55,6 +55,8 @@ import { invalidate } from "../../services/cacheService.js";
 import {
   getMembershipByUserId,
   syncCustomerMlmProjection,
+  transitionUplineDownlineStatus,
+  reverseUplineDownlineStatus,
 } from "../../services/mlm/mlmMembershipService.js";
 import { drainAllPendingPlanABonuses } from "../../services/mlm/mlmPairBonusCooldownReleaseService.js";
 import { softDeleteMlmMember } from "../../services/mlm/mlmMemberSoftDeleteService.js";
@@ -69,6 +71,7 @@ import {
 import {
   previewBinaryMove,
   executeBinaryMove,
+  executeChangeDirectSponsor,
 } from "../../services/mlm/mlmBinaryMoveService.js";
 import { buildBinaryTreeBottomUp } from "../../services/mlm/mlmBinaryTreeBuilder.js";
 import {
@@ -1040,7 +1043,16 @@ export const updateMemberProfile = async (req, res) => {
  *
  * Re-activation is the existing "Approve Plan A" button, which
  * also runs the held-bonus release logic. No data is destroyed
- * here; the action is fully reversible.
+ * here — but "reversible" is scoped to the membership's OWN
+ * status/wallet/tree position only, NOT to money that already
+ * moved because of this member. Signup bonuses, per-activation
+ * income, and pair-match bonuses this member's sponsor chain
+ * already received because THIS member originally activated stay
+ * paid; deactivating (or later re-activating) does not claw them
+ * back or re-trigger them. Unlike `mlmMemberSoftDeleteService`'s
+ * explicit upline clawback, there is no reversal of this member's
+ * own historical impact on their upline — only their own future
+ * earning capability is paused.
  *
  * Body (optional): `{ reason: string }` — surfaced into a console
  * audit line for traceability.
@@ -1073,6 +1085,13 @@ export const deactivateMember = async (req, res) => {
         membership.status = MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID;
         membership.updatedBy = req.user?.id || null;
         await membership.save({ session });
+        // Mirror of the increment `adminActivateMembership`/
+        // `activateMembershipFromJoiningPayment` apply on activation —
+        // this member was counted ACTIVE in every ancestor's
+        // `activeDownlineCount` and must be moved back out of it, or
+        // the counters drift further with every deactivate/reactivate
+        // cycle (see `reverseUplineDownlineStatus`'s doc comment).
+        await reverseUplineDownlineStatus(membership.sponsorChain, { session });
         // Keep the denormalised Customer.mlm.active projection in
         // sync so the customer dashboard reflects the change
         // without a forced refetch.
@@ -1126,6 +1145,7 @@ export const toggleBlockMember = async (req, res) => {
 
     const isCurrentlySuspended = membership.status === MLM_MEMBERSHIP_STATUS.SUSPENDED;
     const newStatus = isCurrentlySuspended ? MLM_MEMBERSHIP_STATUS.ACTIVE : MLM_MEMBERSHIP_STATUS.SUSPENDED;
+    const wasActive = membership.status === MLM_MEMBERSHIP_STATUS.ACTIVE;
     const reason = String(req.body?.reason || "").trim().slice(0, 240);
 
     const session = await mongoose.startSession();
@@ -1134,7 +1154,20 @@ export const toggleBlockMember = async (req, res) => {
         membership.status = newStatus;
         membership.updatedBy = req.user?.id || null;
         await membership.save({ session });
-        
+        // Mirror the increment/decrement `activateMembershipFromJoiningPayment`
+        // / `deactivateMember` apply on every ancestor's `activeDownlineCount`
+        // — otherwise blocking an ACTIVE member leaves every ancestor's
+        // counter permanently overstated, and unblocking them later would
+        // never correct it (see `reverseUplineDownlineStatus`'s doc
+        // comment). A member who was already non-ACTIVE (e.g. blocking a
+        // still-unpaid REGISTERED_UNPAID member) was never counted active
+        // in the first place, so neither branch below fires for them.
+        if (wasActive && newStatus !== MLM_MEMBERSHIP_STATUS.ACTIVE) {
+          await reverseUplineDownlineStatus(membership.sponsorChain, { session });
+        } else if (!wasActive && newStatus === MLM_MEMBERSHIP_STATUS.ACTIVE) {
+          await transitionUplineDownlineStatus(membership.sponsorChain, { session });
+        }
+
         // Block/unblock customer login
         if (membership.userId) {
            const user = await Customer.findById(membership.userId._id || membership.userId);
@@ -1365,6 +1398,31 @@ export const moveBinaryMember = async (req, res) => {
       reason: reason ? String(reason).trim().slice(0, 500) : null,
     });
     return handleResponse(res, 200, "Member moved in binary tree", result);
+  } catch (error) {
+    return handleResponse(
+      res,
+      error.statusCode || 500,
+      error.message,
+      error.code ? { code: error.code } : undefined,
+    );
+  }
+};
+
+/** POST /api/admin/mlm/members/:id/change-sponsor */
+export const changeMemberSponsor = async (req, res) => {
+  try {
+    const adminId = req.user?.id || null;
+    const { newSponsorQuery, reason } = req.body || {};
+    if (!newSponsorQuery) {
+      return handleResponse(res, 422, "newSponsorQuery (referral code or user ID) is required");
+    }
+    const result = await executeChangeDirectSponsor({
+      membershipId: req.params.id,
+      newSponsorQuery,
+      adminId,
+      reason: reason ? String(reason).trim().slice(0, 500) : null,
+    });
+    return handleResponse(res, 200, "Direct sponsor changed successfully", result);
   } catch (error) {
     return handleResponse(
       res,

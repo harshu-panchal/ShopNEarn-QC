@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw, Eye, EyeOff, Copy, LogIn, Trash2, X, Pencil, PauseCircle, Move, Ban, Unlock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, ShieldCheck, AlertTriangle, GitBranch, Hourglass, Award, Check, Loader2, ArrowLeft, RotateCcw, Eye, EyeOff, Copy, LogIn, Trash2, X, Pencil, PauseCircle, Move, Ban, Unlock, UserCheck } from 'lucide-react';
 import { adminMlmApi } from '../../services/api/mlmApi';
 import GenealogyTreeCanvas from '@shared/components/mlm/GenealogyTreeCanvas';
 import MemberJoinedSubtitle from '@shared/components/mlm/MemberJoinedSubtitle';
 import MoveMemberWizard from './MoveMemberWizard';
+import ChangeSponsorModal from './ChangeSponsorModal';
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDate = (d) => new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -90,6 +91,7 @@ const MlmMemberDetail = () => {
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [deleteReason, setDeleteReason] = useState('');
     const [deleting, setDeleting] = useState(false);
+    const [changeSponsorModalOpen, setChangeSponsorModalOpen] = useState(false);
     // Profile-edit modal. Initial values are populated from the
     // loaded member on open; the modal owns its own form state so
     // mid-edit cancellations don't pollute the parent component.
@@ -742,7 +744,7 @@ const MlmMemberDetail = () => {
                             }}
                             disabled={deactivating}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white transition-colors shadow-sm"
-                            title="Flip Plan A back to REGISTERED_UNPAID (reversible)"
+                            title="Flip Plan A back to REGISTERED_UNPAID — status is reversible, but bonuses their upline already earned from this member's activation are not clawed back"
                         >
                             <PauseCircle size={14} />
                             Deactivate Plan A
@@ -795,6 +797,16 @@ const MlmMemberDetail = () => {
                     >
                         <Trash2 size={14} />
                         Soft delete
+                    </button>
+                    {/* Change Direct Sponsor action */}
+                    <button
+                        type="button"
+                        onClick={() => setChangeSponsorModalOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white transition-colors shadow-sm"
+                        title="Change direct referral sponsor for this member"
+                    >
+                        <UserCheck size={14} />
+                        Change Sponsor
                     </button>
                     {/* Block/Unblock action — toggles MLM suspended status and Customer login */}
                     <button
@@ -1448,8 +1460,11 @@ const MlmMemberDetail = () => {
             )}
 
             {/* Deactivate-Plan-A confirmation modal. Shorter than the
-                soft-delete modal because the action is reversible
-                via the existing Approve Plan A button. */}
+                soft-delete modal because the STATUS change is reversible
+                via the existing Approve Plan A button — but that
+                reversibility doesn't extend to bonuses this member's
+                upline already earned from their original activation;
+                the modal copy below says so explicitly. */}
             {deactivateModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
@@ -1482,8 +1497,9 @@ const MlmMemberDetail = () => {
                             <ul className="list-disc list-inside space-y-1 text-slate-600 text-xs">
                                 <li>The genealogy canvas will paint them in the <strong>unpaid (red)</strong> colour.</li>
                                 <li>Any pair-match bonuses sponsored through this member's leg get <strong>held</strong> against the sponsor until re-activation.</li>
-                                <li>Reverse anytime with the <strong>Approve Plan A</strong> button (which also releases held bonuses).</li>
+                                <li>Reverse the status anytime with the <strong>Approve Plan A</strong> button (which also releases held bonuses).</li>
                                 <li>No data is destroyed; wallet, commission history, and tree structure stay intact.</li>
+                                <li className="text-amber-700"><strong>Not reversed:</strong> bonuses this member's upline already earned because THIS member originally activated (signup bonus, first-pair income, pair-match) stay paid — deactivating doesn't claw them back.</li>
                             </ul>
 
                             <label className="block pt-2">
@@ -1713,6 +1729,22 @@ const MlmMemberDetail = () => {
                 destination={moveDestination}
                 initialShiftSponsor={shiftSponsorDefault}
                 onMoved={handleMoveDone}
+            />
+
+            <ChangeSponsorModal
+                open={changeSponsorModalOpen}
+                onClose={() => setChangeSponsorModalOpen(false)}
+                member={{
+                    _id: data?.membership?._id || id,
+                    name: data?.user?.name || data?.membership?.userId?.name,
+                    publicUserId: data?.user?.userId || data?.membership?.userId?.userId || data?.membership?.referralCode,
+                    sponsorName: data?.sponsor?.name,
+                    sponsorUserId: data?.sponsor?.referralCode || data?.sponsor?.userId,
+                }}
+                onSuccess={() => {
+                    load();
+                    loadDownline(downlineDepth, downlineRootId);
+                }}
             />
         </div>
     );

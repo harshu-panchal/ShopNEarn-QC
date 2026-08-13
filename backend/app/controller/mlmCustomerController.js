@@ -613,13 +613,16 @@ export const getMyUpline = async (req, res) => {
     const depth = Math.min(Math.max(parseInt(req.query.depth, 10) || 6, 1), 10);
     const chain = await getUplineChain(req.user.id, depth);
     const items = await Promise.all(
-      chain.map(async (m, idx) => {
+      chain.map(async (m) => {
         const customer = await mongoose
           .model("User")
           .findById(m.userId, { name: 1 })
           .lean();
         return {
-          level: idx + 1,
+          // `chain` is compacted to ACTIVE members only — `m.uplineLevel`
+          // is the member's true L1/L2/... position in the sponsor
+          // chain, not their index in this (possibly gappy) array.
+          level: m.uplineLevel,
           userId: m.userId,
           name: customer?.name || null,
           planType: m.planType,

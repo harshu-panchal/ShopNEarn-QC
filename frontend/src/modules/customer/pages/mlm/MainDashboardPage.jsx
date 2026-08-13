@@ -39,7 +39,7 @@ import {
   Edit2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { mlmApi } from "../../services/mlmApi";
+import { mlmApi, newJoinIdempotencyKey } from "../../services/mlmApi";
 import { customerApi } from "../../services/customerApi";
 import { openRazorpayCheckout } from "@/shared/payments/openRazorpayCheckout";
 import { useAuth } from "@core/context/AuthContext";
@@ -223,7 +223,7 @@ const NotMemberView = ({ overview, pendingJoining, navigate }) => {
     }
     setJoining(true);
     try {
-      const res = await mlmApi.initiateJoin();
+      const res = await mlmApi.initiateJoin(newJoinIdempotencyKey());
       const payload = res.data?.result ?? res.data?.data ?? res.data;
       const redirectUrl = payload?.redirectUrl;
       const paymentMode = payload?.paymentMode;
@@ -654,7 +654,9 @@ const MemberDashboard = ({ overview, navigate, user, login, onRefresh }) => {
   );
 };
 
-const ActivationCta = ({ membership, joiningPrice, navigate }) => (
+const ActivationCta = ({ membership, joiningPrice, navigate }) => {
+  const [activating, setActivating] = useState(false);
+  return (
   <div className="rounded-2xl bg-amber-50 border-2 border-amber-300 p-4">
     <div className="flex gap-3 items-start">
       <Sparkles size={22} className="text-amber-600 flex-shrink-0 mt-0.5" />
@@ -668,9 +670,12 @@ const ActivationCta = ({ membership, joiningPrice, navigate }) => (
           earning plan and start receiving bonuses from your team.
         </p>
         <button
+          disabled={activating}
           onClick={async () => {
+            if (activating) return;
+            setActivating(true);
             try {
-              const res = await mlmApi.initiateJoin();
+              const res = await mlmApi.initiateJoin(newJoinIdempotencyKey());
               const payload = res.data?.result ?? res.data?.data ?? res.data;
               const redirectUrl = payload?.redirectUrl;
               const paymentMode = payload?.paymentMode;
@@ -707,16 +712,19 @@ const ActivationCta = ({ membership, joiningPrice, navigate }) => (
                 err?.response?.data?.message ||
                   "Failed to start activation payment",
               );
+            } finally {
+              setActivating(false);
             }
           }}
-          className="mt-3 px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold inline-flex items-center gap-1 hover:bg-amber-700 transition-colors"
+          className="mt-3 px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold inline-flex items-center gap-1 hover:bg-amber-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          Activate Now <ChevronRight size={14} />
+          {activating ? "Starting…" : "Activate Now"} <ChevronRight size={14} />
         </button>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 /**
  * MyPlanCard

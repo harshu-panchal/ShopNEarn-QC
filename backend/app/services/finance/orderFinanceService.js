@@ -463,13 +463,17 @@ export async function handleOnlineOrderFinance(
   }
 }
 
-export async function handleCodOrderFinance(
+/**
+ * Core COD-collection logic, bound to a caller-supplied session. Split
+ * out from `handleCodOrderFinance` for the same reason as
+ * `settleDeliveredOrderInSession` — so `markOrderDeliveredAndSettle` can
+ * run "mark delivered" and "record COD collection" inside ONE shared
+ * transaction instead of two independently-committed ones.
+ */
+async function handleCodOrderFinanceInSession(
   orderOrId,
-  { amount = null, deliveryPartnerId = null, actorId = null } = {},
+  { amount = null, deliveryPartnerId = null, actorId = null, session },
 ) {
-  const session = await mongoose.startSession();
-  try {
-    session.startTransaction();
     const order = await findOrderForUpdate(orderOrId, session);
 
     if (order.paymentMode === "ONLINE") {
@@ -487,7 +491,6 @@ export async function handleCodOrderFinance(
     }
 
     if (order.financeFlags?.codMarkedCollected) {
-      await session.commitTransaction();
       return order;
     }
 
@@ -591,6 +594,39 @@ export async function handleCodOrderFinance(
     // and goes through `mlmJoiningPaymentService` — never through the
     // Order pipeline.
 
+    return order;
+}
+
+/**
+ * Public entry point — same external-session composition pattern as
+ * `settleDeliveredOrder`. When called with no `session`, opens and
+ * manages its own retrying transaction (unchanged behaviour for every
+ * existing caller). When called with a `session` that's already inside
+ * an open transaction (see `markOrderDeliveredAndSettle`), runs against
+ * it directly and lets the caller own commit/abort.
+ */
+export async function handleCodOrderFinance(
+  orderOrId,
+  { amount = null, deliveryPartnerId = null, actorId = null, session: externalSession } = {},
+) {
+  if (externalSession) {
+    return handleCodOrderFinanceInSession(orderOrId, {
+      amount,
+      deliveryPartnerId,
+      actorId,
+      session: externalSession,
+    });
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const order = await handleCodOrderFinanceInSession(orderOrId, {
+      amount,
+      deliveryPartnerId,
+      actorId,
+      session,
+    });
     await session.commitTransaction();
     return order;
   } catch (error) {
@@ -601,10 +637,17 @@ export async function handleCodOrderFinance(
   }
 }
 
-export async function settleDeliveredOrder(orderOrId, { actorId = null } = {}) {
-  const session = await mongoose.startSession();
-  try {
-    session.startTransaction();
+/**
+ * Core settlement logic, bound to a caller-supplied session that is
+ * already inside an open transaction. Split out from `settleDeliveredOrder`
+ * so `markOrderDeliveredAndSettle` can run this AND `handleCodOrderFinance`
+ * inside one shared transaction for COD orders — otherwise "mark
+ * delivered" and "record COD collection" are two independently-committed
+ * transactions, and a crash between them leaves an order that looks
+ * delivered/settled while the cash the rider is holding is never
+ * reconciled into the system float.
+ */
+async function settleDeliveredOrderInSession(orderOrId, { actorId = null, session }) {
     const order = await findOrderForUpdate(orderOrId, session);
 
     if (order.status !== "delivered") {
@@ -627,7 +670,6 @@ export async function settleDeliveredOrder(orderOrId, { actorId = null } = {}) {
     }
 
     if (order.financeFlags?.deliveredSettlementApplied) {
-      await session.commitTransaction();
       return order;
     }
 
@@ -644,7 +686,6 @@ export async function settleDeliveredOrder(orderOrId, { actorId = null } = {}) {
         riderPayout: "NOT_APPLICABLE",
       };
       await order.save({ session });
-      await session.commitTransaction();
       return order;
     }
 
@@ -726,11 +767,38 @@ export async function settleDeliveredOrder(orderOrId, { actorId = null } = {}) {
     order.settlementStatus = computeOverallSettlement(order);
 
     await order.save({ session });
-    await session.commitTransaction();
     return order;
-  } catch (error) {
-    await session.abortTransaction();
-    throw error;
+}
+
+/**
+ * Public entry point. Runs `settleDeliveredOrderInSession` inside its
+ * own retrying transaction UNLESS the caller supplies a `session` that's
+ * already inside one (see `markOrderDeliveredAndSettle`'s COD path) —
+ * in that case we just run the logic against it and let the caller own
+ * the commit/abort/retry lifecycle, exactly like `mlmWithdrawalService`'s
+ * `runInSession` pattern.
+ *
+ * Two different downlines' orders can settle at the same instant into
+ * the same upline recipient's membership/wallet document (daily-cap
+ * tracker, balance) — a real write conflict, not a bug. `withTransaction`
+ * auto-retries the callback on a `TransientTransactionError` so the
+ * credits serialize instead of one settlement failing outright.
+ */
+export async function settleDeliveredOrder(
+  orderOrId,
+  { actorId = null, session: externalSession } = {},
+) {
+  if (externalSession) {
+    return settleDeliveredOrderInSession(orderOrId, { actorId, session: externalSession });
+  }
+
+  const session = await mongoose.startSession();
+  let result;
+  try {
+    await session.withTransaction(async () => {
+      result = await settleDeliveredOrderInSession(orderOrId, { actorId, session });
+    });
+    return result;
   } finally {
     session.endSession();
   }

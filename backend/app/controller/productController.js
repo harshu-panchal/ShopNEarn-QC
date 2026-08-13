@@ -1,5 +1,7 @@
 import crypto from "crypto";
 import Product from "../models/product.js";
+import Cart from "../models/cart.js";
+import Wishlist from "../models/wishlist.js";
 import { handleResponse } from "../utils/helper.js";
 import { slugify } from "../utils/slugify.js";
 import getPagination from "../utils/pagination.js";
@@ -252,6 +254,39 @@ function buildAdminRejectedModerationUpdate(adminId, note = "") {
     approvalNote: sanitizeApprovalNote(note),
     lastSubmittedByRole: "admin",
   };
+}
+
+/**
+ * Remove a product from every customer's cart and wishlist. Rejecting
+ * or deleting a product never used to touch either collection — the
+ * cart's own read path quietly filters the dangling item out via a
+ * populate `match`, so the cart LOOKS clean, but `hydrateOrderItems`
+ * (checkout) reads the raw, unfiltered cart and throws a whole-cart
+ * "not available for purchase" error the customer has no way to trace
+ * back to the one invisible item — they're locked out of checkout
+ * until they clear the entire cart. Best-effort: a failure here must
+ * never block the moderation action itself, since the product row is
+ * already the source of truth.
+ */
+async function purgeProductFromCartsAndWishlists(productId) {
+  try {
+    await Promise.all([
+      Cart.updateMany(
+        { "items.productId": productId },
+        { $pull: { items: { productId } } },
+      ),
+      Wishlist.updateMany(
+        { products: productId },
+        { $pull: { products: productId } },
+      ),
+    ]);
+  } catch (error) {
+    logger.error("Failed to purge product from carts/wishlists", {
+      scope: "purgeProductFromCartsAndWishlists",
+      productId: String(productId),
+      error: error.message,
+    });
+  }
 }
 
 /* ===============================
@@ -1104,7 +1139,9 @@ export const deleteProduct = async (req, res) => {
     if (!product) {
       return handleResponse(res, 404, "Product not found or unauthorized");
     }
-    
+
+    await purgeProductFromCartsAndWishlists(id);
+
     // Enqueue search index removal asynchronously
     await enqueueProductRemoval(id);
     await invalidate(`cache:catalog:product:${id}`);
@@ -1377,6 +1414,8 @@ export const rejectProduct = async (req, res) => {
     if (!updated) {
       return handleResponse(res, 404, "Product not found");
     }
+
+    await purgeProductFromCartsAndWishlists(id);
 
     await enqueueProductIndex(id);
     await invalidate(`cache:catalog:product:${id}`);

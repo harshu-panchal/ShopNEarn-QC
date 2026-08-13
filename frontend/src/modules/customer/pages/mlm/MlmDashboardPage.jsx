@@ -16,7 +16,7 @@ import {
   RefreshCcw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { mlmApi } from "../../services/mlmApi";
+import { mlmApi, newJoinIdempotencyKey } from "../../services/mlmApi";
 import { customerApi } from "../../services/customerApi";
 import { openRazorpayCheckout } from "@/shared/payments/openRazorpayCheckout";
 import { buildBinaryPairHint, isTeamLegWeaker } from "@shared/utils/mlmBinaryDisplay";
@@ -134,7 +134,7 @@ const NotMemberView = ({ data, navigate }) => {
     }
     setJoining(true);
     try {
-      const res = await mlmApi.initiateJoin();
+      const res = await mlmApi.initiateJoin(newJoinIdempotencyKey());
       const payload = res.data?.result ?? res.data?.data ?? res.data;
       const redirectUrl = payload?.redirectUrl;
       const paymentMode = payload?.paymentMode;

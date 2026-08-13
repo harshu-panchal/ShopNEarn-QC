@@ -3,7 +3,19 @@ import handleResponse from "../utils/helper.js";
 
 export const getPublicOffers = async (req, res) => {
   try {
-    const offers = await Offer.find({ status: "active" })
+    // `status: "active"` alone doesn't mean "currently valid" — an
+    // offer with a past `validTo` (or a future `validFrom`) but a
+    // forgotten `status` flip kept displaying on the storefront
+    // indefinitely. Coupon-code redemption already checks these dates
+    // (see `couponService.js`); the public listing needs the same gate.
+    const now = new Date();
+    const offers = await Offer.find({
+      status: "active",
+      $and: [
+        { $or: [{ validFrom: { $exists: false } }, { validFrom: null }, { validFrom: { $lte: now } }] },
+        { $or: [{ validTo: { $exists: false } }, { validTo: null }, { validTo: { $gte: now } }] },
+      ],
+    })
       .sort({ order: 1, createdAt: 1 })
       .populate("categoryIds", "name")
       .lean();
