@@ -45,8 +45,9 @@ const MoveMemberWizard = ({
     sourceMember,
     destination,
     onMoved,
+    initialShiftSponsor = false,
 }) => {
-    const [changeSponsor, setChangeSponsor] = useState(false);
+    const [changeSponsor, setChangeSponsor] = useState(initialShiftSponsor);
     const [reason, setReason] = useState('');
     const [preview, setPreview] = useState(null);
     const [previewLoading, setPreviewLoading] = useState(false);
@@ -57,13 +58,15 @@ const MoveMemberWizard = ({
 
     useEffect(() => {
         if (!open) {
-            setChangeSponsor(false);
+            setChangeSponsor(initialShiftSponsor);
             setReason('');
             setPreview(null);
             setMoveResult(null);
             setJobOutputs([]);
+        } else {
+            setChangeSponsor(initialShiftSponsor);
         }
-    }, [open]);
+    }, [open, initialShiftSponsor]);
 
     useEffect(() => {
         setPreview(null);
@@ -204,24 +207,60 @@ const MoveMemberWizard = ({
 
                     {!moveResult && (
                         <>
-                            <label className="flex items-start gap-2 text-sm cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={changeSponsor}
-                                    onChange={(e) => setChangeSponsor(e.target.checked)}
-                                    className="mt-0.5 rounded border-slate-300"
-                                />
-                                <span>
-                                    <span className="font-semibold text-slate-800 block">
-                                        Make direct referral of destination parent
-                                    </span>
-                                    <span className="text-xs text-slate-500">
-                                        Updates unilevel sponsor and Direct Referrals list.
-                                        Past signup/activation bonuses stay with the original
-                                        sponsor.
-                                    </span>
+                            <div className="space-y-2">
+                                <span className="font-semibold text-slate-800 text-xs block uppercase tracking-wider">
+                                    Direct Referral / Sponsorship Option
                                 </span>
-                            </label>
+                                <div className="grid grid-cols-1 gap-2">
+                                    <label
+                                        className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                                            !changeSponsor
+                                                ? 'bg-indigo-50/70 border-indigo-300 ring-1 ring-indigo-300'
+                                                : 'bg-white border-slate-200 hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <input
+                                            type="radio"
+                                            name="shiftSponsorOption"
+                                            checked={!changeSponsor}
+                                            onChange={() => setChangeSponsor(false)}
+                                            className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        <div>
+                                            <span className="text-xs font-bold text-slate-900 block">
+                                                Keep Original Direct Sponsor (Binary Move Only)
+                                            </span>
+                                            <span className="text-[11px] text-slate-500 block mt-0.5 leading-normal">
+                                                Moves tree placement for binary pair matching. The member's original direct referral/sponsor remains unchanged.
+                                            </span>
+                                        </div>
+                                    </label>
+
+                                    <label
+                                        className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                                            changeSponsor
+                                                ? 'bg-amber-50/80 border-amber-300 ring-1 ring-amber-300'
+                                                : 'bg-white border-slate-200 hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <input
+                                            type="radio"
+                                            name="shiftSponsorOption"
+                                            checked={changeSponsor}
+                                            onChange={() => setChangeSponsor(true)}
+                                            className="mt-0.5 text-amber-600 focus:ring-amber-500"
+                                        />
+                                        <div>
+                                            <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                                                Shift Direct Referral / Sponsor to New Parent
+                                            </span>
+                                            <span className="text-[11px] text-amber-800/80 block mt-0.5 leading-normal">
+                                                Changes direct referral sponsorship to the destination parent. Updates unilevel sponsor chain and direct referral counts.
+                                            </span>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
 
                             <label className="block text-xs">
                                 <span className="font-semibold text-slate-700 block mb-1">

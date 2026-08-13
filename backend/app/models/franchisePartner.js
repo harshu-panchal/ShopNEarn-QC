@@ -41,11 +41,9 @@ const franchisePartnerSchema = new mongoose.Schema(
       type: {
         type: String,
         enum: ["Point"],
-        default: "Point",
       },
       coordinates: {
         type: [Number],
-        default: undefined,
       },
     },
     hubSellerId: {

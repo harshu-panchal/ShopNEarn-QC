@@ -98,10 +98,12 @@ export async function activateFranchiseFromRegistrationPayment(paymentId, { sess
       state: addr.state || "",
     };
 
-    if (addr.lat != null && addr.lng != null && Number.isFinite(addr.lat) && Number.isFinite(addr.lng)) {
+    const nLat = Number(addr?.lat);
+    const nLng = Number(addr?.lng);
+    if (Number.isFinite(nLat) && Number.isFinite(nLng) && nLat >= -90 && nLat <= 90 && nLng >= -180 && nLng <= 180) {
       partnerPayload.location = {
         type: "Point",
-        coordinates: [addr.lng, addr.lat],
+        coordinates: [nLng, nLat],
       };
     }
 

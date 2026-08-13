@@ -71,6 +71,7 @@ const MlmMemberDetail = () => {
     const [downlineRootId, setDownlineRootId] = useState(id);
     const [downlineStack, setDownlineStack] = useState([]);
     const [rearrangeMode, setRearrangeMode] = useState(false);
+    const [shiftSponsorDefault, setShiftSponsorDefault] = useState(false);
     const [moveSource, setMoveSource] = useState(null);
     const [moveDestination, setMoveDestination] = useState(null);
     const [moveWizardOpen, setMoveWizardOpen] = useState(false);
@@ -1209,23 +1210,36 @@ const MlmMemberDetail = () => {
                         background or use the scrollbars to move around.
                     </p>
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setRearrangeMode((v) => !v);
-                            setMoveSource(null);
-                            setMoveDestination(null);
-                            setMoveWizardOpen(false);
-                        }}
-                        className={`shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center gap-1.5 border ${
-                            rearrangeMode
-                                ? 'bg-amber-100 border-amber-300 text-amber-900'
-                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                        }`}
-                    >
-                        <Move size={14} />
-                        {rearrangeMode ? 'Rearrange on' : 'Rearrange'}
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {rearrangeMode && (
+                            <label className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-bold rounded-lg border bg-amber-50 border-amber-300 text-amber-900 cursor-pointer shadow-xs transition-all">
+                                <input
+                                    type="checkbox"
+                                    checked={shiftSponsorDefault}
+                                    onChange={(e) => setShiftSponsorDefault(e.target.checked)}
+                                    className="rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                                />
+                                <span>Shift Direct Referral / Sponsor</span>
+                            </label>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setRearrangeMode((v) => !v);
+                                setMoveSource(null);
+                                setMoveDestination(null);
+                                setMoveWizardOpen(false);
+                            }}
+                            className={`shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg inline-flex items-center gap-1.5 border transition-all ${
+                                rearrangeMode
+                                    ? 'bg-amber-500 border-amber-600 text-white shadow-sm'
+                                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                            }`}
+                        >
+                            <Move size={14} />
+                            {rearrangeMode ? 'Rearrange Mode On' : 'Rearrange'}
+                        </button>
+                    </div>
                 </div>
                 {/* Fixed-height canvas frame. The shared component
                     expects to live inside a `flex-1 min-h-0` parent
@@ -1697,6 +1711,7 @@ const MlmMemberDetail = () => {
                 }}
                 sourceMember={moveSource}
                 destination={moveDestination}
+                initialShiftSponsor={shiftSponsorDefault}
                 onMoved={handleMoveDone}
             />
         </div>
