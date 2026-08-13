@@ -26,6 +26,7 @@ import {
 } from "../services/productModerationService.js";
 import { buildSearchRegex } from "../utils/regex.js";
 import { syncMasterStockFromVariants } from "../utils/productStockUtils.js";
+import { resolveCatalogStockForProducts } from "../services/franchise/franchiseStockResolver.js";
 
 // Phase 3 P3-5: when search term is reasonably specific and the env flag
 // is enabled, prefer Mongo's `name + tags` text index over case-insensitive
@@ -438,6 +439,14 @@ export const getProducts = async (req, res) => {
     const result = shouldCache
       ? await getOrSet(buildProductListKey(req.query), fetchFn, getTTL("productList"))
       : await fetchFn();
+
+    if (result && Array.isArray(result.items) && result.items.length > 0) {
+      await resolveCatalogStockForProducts(result.items, {
+        lat: req.query.lat,
+        lng: req.query.lng,
+        pincode: req.query.pincode,
+      });
+    }
 
     return handleResponse(res, 200, "Products fetched successfully", result);
   } catch (error) {
@@ -1155,6 +1164,14 @@ export const getProductById = async (req, res) => {
       if (!activeSellerIds.includes(sellerIdForProduct)) {
         return handleResponse(res, 404, "Product not found");
       }
+    }
+
+    if (product) {
+      await resolveCatalogStockForProducts([product], {
+        lat: req.query.lat,
+        lng: req.query.lng,
+        pincode: req.query.pincode,
+      });
     }
 
     return handleResponse(

@@ -111,9 +111,13 @@ export async function activateFranchiseFromRegistrationPayment(paymentId, { sess
   const session = await mongoose.startSession();
   try {
     let result;
-    await session.withTransaction(async () => {
-      result = await run(session);
-    });
+    try {
+      await session.withTransaction(async () => {
+        result = await run(session);
+      });
+    } catch {
+      result = await run(null);
+    }
     return result;
   } finally {
     await session.endSession();

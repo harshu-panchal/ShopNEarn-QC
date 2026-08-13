@@ -513,6 +513,20 @@ export async function getFranchiseRegistrationStateForCustomer(userId) {
   }
 
   if (latest.status === PAYMENT_STATUS.CAPTURED) {
+    try {
+      await activateFranchiseFromRegistrationPayment(latest._id);
+      const partner = await FranchisePartner.findOne({
+        userId,
+        status: { $in: [FRANCHISE_PARTNER_STATUS.ACTIVE, FRANCHISE_PARTNER_STATUS.SUSPENDED] },
+      }).lean();
+      if (partner) return { phase: "active" };
+    } catch (err) {
+      logger.error("[franchiseRegistration] activation retry error", {
+        userId: String(userId),
+        paymentId: String(latest._id),
+        error: err.message,
+      });
+    }
     return { phase: "activating", payment };
   }
 
