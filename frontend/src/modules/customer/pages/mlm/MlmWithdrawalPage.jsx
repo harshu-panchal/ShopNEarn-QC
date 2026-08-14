@@ -196,7 +196,7 @@ const MlmWithdrawalPage = () => {
                     <p className="text-xs font-bold uppercase tracking-widest opacity-80">Withdrawable Earnings</p>
                     <h2 className="text-3xl font-black mt-1">{formatINR(earnings)}</h2>
                     <p className="text-xs opacity-80 mt-2">
-                        Min withdrawal {formatINR(minAmt)} · Fees deducted: {membership.config.withdrawalAdminChargePercent}% admin + {membership.config.withdrawalGstOnAdminChargePercent}% GST
+                        Min withdrawal {formatINR(minAmt)} · Fees deducted: {membership.config.withdrawalAdminChargePercent}% admin + {membership.config.withdrawalGstOnAdminChargePercent}% TDS
                     </p>
                 </div>
 

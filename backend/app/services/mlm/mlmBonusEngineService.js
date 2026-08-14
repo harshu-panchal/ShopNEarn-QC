@@ -6,6 +6,7 @@ import {
   LEDGER_TRANSACTION_TYPE,
   OWNER_TYPE,
 } from "../../constants/finance.js";
+import { FRANCHISE_POS_PAYMENT_METHOD } from "../../constants/franchise.js";
 import {
   MLM_BONUS_TYPE,
   MLM_COMMISSION_EVENT_STATUS,
@@ -944,7 +945,20 @@ export async function computeAndCreditRepurchaseBonusChain({
   if (!order) return [];
 
   const pb = order.paymentBreakdown || {};
-  const baseAmount = roundCurrency((pb.grandTotal || 0) + (pb.walletAmount || 0));
+  const orderValue = roundCurrency((pb.grandTotal || 0) + (pb.walletAmount || 0));
+  // Repurchase bonus is not earned on the portion of the order paid out of
+  // the customer's shopping wallet — that balance is itself seed/reward
+  // money (joining package, premium upgrade, milestone rewards), not new
+  // spend, so it must not re-generate more bonus. Online checkouts record
+  // the shopping-wallet portion in `walletSplit.shopping`; POS sales pay
+  // for the whole order out of one bucket (`posPaymentMethod`) and never
+  // populate `walletSplit`, so a shopping-wallet POS sale excludes the
+  // full order value instead.
+  const shoppingWalletUsed =
+    order.posPaymentMethod === FRANCHISE_POS_PAYMENT_METHOD.SHOPPING_WALLET
+      ? orderValue
+      : roundCurrency(pb.walletSplit?.shopping || 0);
+  const baseAmount = roundCurrency(orderValue - shoppingWalletUsed);
   if (baseAmount <= 0) return [];
 
   // Walk the upline. `getUplineChain` returns ACTIVE memberships only —
