@@ -79,6 +79,10 @@ export const MLM_BONUS_TYPE = {
   DIRECT_REFERRAL_ACTIVATION: "DIRECT_REFERRAL_ACTIVATION",
   // Per-direct Plan A activation earnings (each direct activation).
   DIRECT_REFERRAL_PER_ACTIVATION: "DIRECT_REFERRAL_PER_ACTIVATION",
+  // Plan B: Direct Referral Earnings Royalty — cascades on every
+  // earnings wallet credit. L1 upline (Plan B) earns 10%; L2 upline
+  // (Plan B) earns 5% of the original credited amount. Platform-funded.
+  DIRECT_REFERRAL_EARNINGS_ROYALTY: "DIRECT_REFERRAL_EARNINGS_ROYALTY",
 };
 export const ALL_MLM_BONUS_TYPES = Object.values(MLM_BONUS_TYPE);
 
@@ -337,6 +341,19 @@ export const MLM_DEFAULTS = Object.freeze({
     { level: 2, ratePercent: 5 },
   ],
 
+  // Plan B: Direct Referral Earnings Royalty — platform-funded cascade
+  // that fires whenever a Plan B member's L1 or L2 direct referral earns
+  // any income into the earnings wallet.
+  //   L1 upline = 10% of the credited amount.
+  //   L2 upline = 5%  of the credited amount.
+  // Toggle `directReferralEarningsRoyaltyEnabled` false to globally
+  // disable without redeploying (admin-editable via Setting.mlm).
+  directReferralEarningsRoyaltyEnabled: true,
+  directReferralEarningsRoyaltyLevels: [
+    { level: 1, ratePercent: 10 },
+    { level: 2, ratePercent: 5 },
+  ],
+
   // Plan B: Home Shopping (only fires on orders where isHomeShoppingOrder).
   homeShoppingProductId: null,
   homeShoppingPrice: 50000,
@@ -413,4 +430,6 @@ export const MLM_IDEMPOTENCY_PREFIX = {
   // `MLM-DRA-<sponsorUserId>-<activatedReferralUserId>`
   DIRECT_REFERRAL_ACTIVATION: "MLM-DRA",
   DIRECT_REFERRAL_PER_ACTIVATION: "MLM-DRPA",
+  // `MLM-DRER-<originalCommissionEventId>-<recipientUserId>-L<level>`
+  DIRECT_REFERRAL_EARNINGS_ROYALTY: "MLM-DRER",
 };

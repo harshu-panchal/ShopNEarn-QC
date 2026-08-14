@@ -162,3 +162,27 @@ export function isFirstPairIncomeDisplayEvent(event) {
     || isBinaryPairMatchIndexCommissionEvent(event, 1)
   );
 }
+
+/**
+ * Human-readable label for a commission event bonus type.
+ * Used by the customer earning history page and admin audit panel.
+ */
+export function mlmDisplayLabelForBonusType(bonusType) {
+  const labels = {
+    [MLM_BONUS_TYPE.BINARY_PAIR_MATCH]:                   "Team Pair Match Bonus",
+    [MLM_BONUS_TYPE.DIRECT_REFERRAL_MILESTONE]:           "Direct Referral Milestone",
+    [MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION]:          "Direct Referral Activation",
+    [MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION]:      "Per Referral Activation Bonus",
+    [MLM_BONUS_TYPE.DIRECT_REFERRAL_EARNINGS_ROYALTY]:    "Plan B Earnings Royalty",
+    [MLM_BONUS_TYPE.REPURCHASE_BONUS]:                    "Repurchase Bonus",
+    [MLM_BONUS_TYPE.MENTOR_ROYALTY]:                      "Mentor Royalty",
+    [MLM_BONUS_TYPE.HOME_SHOPPING_SALES]:                 "Home Shopping Sales Commission",
+    [MLM_BONUS_TYPE.HOME_SHOPPING_REFERRAL]:              "Home Shopping Referral Commission",
+    [MLM_BONUS_TYPE.HOME_SHOPPING_ROYALTY]:               "Home Shopping Royalty",
+    [MLM_BONUS_TYPE.GIFT_VOUCHER_MILESTONE]:              "Gift Voucher Milestone",
+    [MLM_BONUS_TYPE.SIGNUP_BONUS_SELF]:                   "Welcome Bonus",
+    [MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR]:                "Referral Welcome Bonus",
+    [MLM_BONUS_TYPE.MANUAL_ADJUSTMENT]:                   "Manual Adjustment",
+  };
+  return labels[bonusType] || bonusType;
+}

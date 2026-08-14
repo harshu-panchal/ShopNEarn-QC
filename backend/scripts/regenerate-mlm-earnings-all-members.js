@@ -41,6 +41,7 @@ import {
 } from "../app/constants/finance.js";
 import {
   computeBinaryTeamPairSnapshot,
+  computeBinaryTeamPairEarnedAtByIndex,
   countActivePlanADirects,
   resolvePairIncomeConfig,
   resolveFirstDirectPairIncomeAmount,
@@ -49,6 +50,7 @@ import { getActiveDirectReferralLegPairCounts } from "../app/services/mlm/mlmSig
 import {
   getDirectReferralActivationConfig,
   getMlmConfig,
+  getPlanAPairBonusForPairIndex,
   resolvePlanABonusWalletBucket,
 } from "../app/services/mlm/mlmConfigService.js";
 import { creditBonusToEarningsWallet } from "../app/services/mlm/mlmBonusEngineService.js";
@@ -387,19 +389,45 @@ async function regenerateBinaryPairCredits({
   const snapshot = await computeBinaryTeamPairSnapshot(membership, { session });
   const directCount = await countActivePlanADirects(userId, { session });
   const isTopup = Boolean(membership.binaryTopupMember);
-  const { pairIncome } = resolvePairIncomeConfig(cfg, directCount, isTopup);
   const pairsToPay = snapshot.binaryPairsEligible || 0;
 
-  if (pairIncome <= 0 || pairsToPay <= 0) {
-    return { credited: 0, pairsToPay: 0, snapshot, pairIncome, teamPairsPaid: 0 };
+  if (pairsToPay <= 0) {
+    return { credited: 0, pairsToPay: 0, snapshot, pairIncome: 0, teamPairsPaid: 0 };
   }
 
   const bonusBucket = await resolvePlanABonusWalletBucket();
+  const earnedAtByPair = await computeBinaryTeamPairEarnedAtByIndex(membership, { session });
+  const activeDirects = await MlmMembership.find(
+    {
+      sponsorId: userId,
+      status: MLM_MEMBERSHIP_STATUS.ACTIVE,
+      planType: { $in: [MLM_PLAN_TYPE.A, MLM_PLAN_TYPE.B] },
+    },
+    { planAJoinedAt: 1, createdAt: 1 },
+    { session },
+  ).lean();
+
   let credited = 0;
   let teamPairsPaid = 0;
   const startIndex = skipPairIndexOne ? 2 : 1;
 
   for (let p = startIndex; p <= pairsToPay; p += 1) {
+    const earnedAt = earnedAtByPair.get(p);
+    const directsAtDate = earnedAt
+      ? activeDirects.filter(
+          (d) => d.planAJoinedAt && new Date(d.planAJoinedAt) <= earnedAt,
+        ).length
+      : directCount;
+
+    const { pairIncome: directTierIncome } = resolvePairIncomeConfig(
+      cfg,
+      directsAtDate,
+      isTopup,
+    );
+    const pairIncome = directTierIncome;
+
+    if (pairIncome <= 0) continue;
+
     const idempotencyKey = pairKey(userId, p);
     const event = await creditBonusToEarningsWallet({
       recipientUserId: userId,
@@ -408,13 +436,14 @@ async function regenerateBinaryPairCredits({
       bonusAmount: pairIncome,
       sourceUserId: null,
       bucket: bonusBucket,
-      description: `Binary pair #${p} team match`,
+      description: `Reason: team pair #${p} matched; ${directsAtDate} active directs tier => ₹${pairIncome} per pair.`,
       meta: {
         pairIndex: p,
         matchingMode: "team",
         regenMigrationId: MIGRATION_ID,
-        directCount,
+        directCount: directsAtDate,
         pairIncome,
+        earnedAt: earnedAt || null,
         ...snapshot,
       },
       idempotencyKey,
@@ -423,13 +452,28 @@ async function regenerateBinaryPairCredits({
       skipDailyCap: true,
       ...regenOptions,
     });
+
+    if (event && earnedAt) {
+      await MlmCommissionEvent.updateOne(
+        { _id: event._id },
+        { $set: { createdAt: earnedAt } },
+        { session },
+      );
+      if (event.ledgerEntryId) {
+        await LedgerEntry.updateOne(
+          { _id: event.ledgerEntryId },
+          { $set: { createdAt: earnedAt } },
+          { session },
+        );
+      }
+    }
     const paid = roundCurrency(event?.cappedAmount || pairIncome);
     credited = roundCurrency(credited + paid);
     teamPairsPaid += 1;
     totals.pairEvents += 1;
   }
 
-  return { credited, pairsToPay, snapshot, pairIncome, teamPairsPaid };
+  return { credited, pairsToPay, snapshot, pairIncome: 0, teamPairsPaid };
 }
 
 async function applyPaidWithdrawalOffset({

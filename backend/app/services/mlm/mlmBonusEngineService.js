@@ -131,6 +131,8 @@ function ledgerTypeForBonusType(bonusType) {
       return LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_ACTIVATION;
     case MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION:
       return LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_PER_ACTIVATION;
+    case MLM_BONUS_TYPE.DIRECT_REFERRAL_EARNINGS_ROYALTY:
+      return LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_EARNINGS_ROYALTY;
     default:
       throw new Error(`Unknown MLM bonus type: ${bonusType}`);
   }
@@ -413,8 +415,28 @@ export async function creditBonusToEarningsWallet({
     }
   }
 
-  // Mentor royalty cascade removed — repurchase/home-shopping apply to all
-  // members; mentor royalty is no longer part of the compensation plan.
+  // Plan B Direct Referral Earnings Royalty cascade.
+  // Fires after every non-royalty earnings credit so that Plan B sponsors
+  // at L1/L2 of the earner's sponsor chain receive their platform-funded
+  // royalty share. Non-fatal: the primary credit has already committed.
+  try {
+    await computeAndCreditDirectReferralEarningsRoyalty({
+      originalCommissionEventId: eventDoc._id,
+      recipientUserId,
+      bonusAmount: creditable,
+      bonusType,
+      sourceOrderId,
+      session,
+      correlationId,
+    });
+  } catch (royaltyError) {
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn(
+        "[mlmBonusEngineService] directReferralEarningsRoyalty cascade failed",
+        { userId: String(recipientUserId), error: royaltyError.message },
+      );
+    }
+  }
 
   return eventDoc;
 }
@@ -1138,6 +1160,63 @@ export async function clawbackBonusesOnReturn({
     }
   }
 
+  // Secondary pass: also reverse any DIRECT_REFERRAL_EARNINGS_ROYALTY
+  // events that cascaded from the primary events reversed above.
+  // These are linked via sourceCommissionEventId rather than sourceOrderId,
+  // so the primary loop does not catch them.
+  const primaryEventIds = events.map((e) => e._id);
+  if (primaryEventIds.length > 0) {
+    const royaltyEvents = await MlmCommissionEvent.find({
+      bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_EARNINGS_ROYALTY,
+      sourceCommissionEventId: { $in: primaryEventIds },
+      status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+      clawbackAt: { $exists: false },
+    }).session(session);
+
+    const { debitWallet: dw } = await import("../finance/walletService.js");
+    for (const rEvent of royaltyEvents) {
+      const rCredited = roundCurrency(rEvent.cappedAmount || 0);
+      if (rCredited <= 0) { skipped += 1; continue; }
+      const rClawback = roundCurrency(rCredited * ratio);
+      if (rClawback <= 0) { skipped += 1; continue; }
+      const rBucket = rEvent.releasedAt ? "earnings" : rEvent.walletBucket || "pending";
+      const rKey = `${MLM_IDEMPOTENCY_PREFIX.BONUS_CLAWBACK}-DRER-${rEvent._id}`;
+      try {
+        await dw({
+          ownerType: OWNER_TYPE.CUSTOMER,
+          ownerId: rEvent.recipientId,
+          amount: rClawback,
+          bucket: rBucket,
+          session,
+          ledgerType: LEDGER_TRANSACTION_TYPE.MLM_BONUS_CLAWBACK_ON_RETURN,
+          ledgerReference: rKey,
+          ledgerDescription: `MLM DRER royalty clawback for return of order ${orderId}`,
+          idempotencyKey: rKey,
+          metadata: { mlmEventId: String(rEvent._id), orderId: String(orderId), ratio },
+          orderId,
+          syncUserWalletBalance: rBucket === "available",
+        });
+        rEvent.clawbackAt = new Date();
+        rEvent.clawbackAmount = rClawback;
+        rEvent.meta = { ...(rEvent.meta || {}), clawbackRatio: ratio, clawbackBucket: rBucket };
+        await rEvent.save({ session });
+        await MlmMembership.updateOne(
+          { userId: rEvent.recipientId },
+          { $inc: { lifetimePlanBEarnings: -rClawback } },
+          { session },
+        );
+        processed += 1;
+      } catch (rErr) {
+        if (typeof console !== "undefined" && console.warn) {
+          console.warn("[mlmBonusEngineService] DRER royalty clawback failed; continuing", {
+            mlmEventId: String(rEvent._id), error: rErr.message,
+          });
+        }
+        skipped += 1;
+      }
+    }
+  }
+
   return { processed, skipped, ratio, totalEvents: events.length };
 }
 
@@ -1505,6 +1584,116 @@ export async function computeAndCreditMentorRoyaltyForCommission({
       session,
     });
     events.push(event);
+  }
+  return events;
+}
+
+/**
+ * Plan B Direct Referral Earnings Royalty cascade.
+ *
+ * Fires inside `creditBonusToEarningsWallet` immediately after every
+ * successful earnings credit. For each Plan B upline at L1 and L2 of the
+ * earner's sponsor chain:
+ *   - L1 Plan B upline  → receives 10% of `bonusAmount` (configurable)
+ *   - L2 Plan B upline  → receives  5% of `bonusAmount` (configurable)
+ *
+ * Platform-funded: the royalty amounts are new credits, NOT deducted from
+ * the original earner's amount. The source member of the royalty credit is
+ * the original earner (`recipientUserId`), NOT the original order.
+ *
+ * Skip / guard rules:
+ *   - Skip if the feature is disabled in `Setting.mlm`.
+ *   - Skip if `bonusType` is itself a DIRECT_REFERRAL_EARNINGS_ROYALTY,
+ *     MENTOR_ROYALTY, SIGNUP_BONUS_SELF, or SIGNUP_BONUS_SPONSOR — prevents
+ *     infinite cascade loops.
+ *   - Skip if no levels have ratePercent > 0 in config.
+ *   - Skip upline members that are not Plan B or not ACTIVE.
+ *
+ * Idempotent via
+ *   `MLM-DRER-<originalCommissionEventId>-<recipientUserId>-L<level>`
+ *
+ * Returns the array of created MlmCommissionEvent rows (null entries for
+ * skipped levels are excluded).
+ */
+export async function computeAndCreditDirectReferralEarningsRoyalty({
+  originalCommissionEventId,
+  recipientUserId,
+  bonusAmount,
+  bonusType,
+  sourceOrderId = null,
+  session,
+  correlationId = null,
+}) {
+  // ── Infinite-loop guard ────────────────────────────────────────────────
+  const EXCLUDED_BONUS_TYPES = new Set([
+    MLM_BONUS_TYPE.DIRECT_REFERRAL_EARNINGS_ROYALTY,
+    MLM_BONUS_TYPE.MENTOR_ROYALTY,
+    MLM_BONUS_TYPE.SIGNUP_BONUS_SELF,
+    MLM_BONUS_TYPE.SIGNUP_BONUS_SPONSOR,
+  ]);
+  if (EXCLUDED_BONUS_TYPES.has(bonusType)) return [];
+  if (!originalCommissionEventId || !recipientUserId) return [];
+
+  const base = roundCurrency(bonusAmount || 0);
+  if (base <= 0) return [];
+
+  // ── Config ─────────────────────────────────────────────────────────────
+  const { getDirectReferralEarningsRoyaltyConfig } = await import("./mlmConfigService.js");
+  const drCfg = await getDirectReferralEarningsRoyaltyConfig();
+  if (!drCfg.enabled || drCfg.levels.length === 0) return [];
+
+  const maxLevel = Math.max(...drCfg.levels.map((r) => Number(r.level) || 0));
+  if (maxLevel <= 0) return [];
+
+  // ── Walk upline ────────────────────────────────────────────────────────
+  // getUplineChain returns ACTIVE memberships, sorted by uplineLevel (1, 2, …).
+  // It respects the sponsorChain which is denormalised at signup.
+  const upline = await getUplineChain(recipientUserId, maxLevel, { session });
+  if (upline.length === 0) return [];
+
+  const events = [];
+  for (const sponsor of upline) {
+    const level = sponsor.uplineLevel;
+    const levelCfg = drCfg.levels.find((r) => Number(r.level) === level);
+    if (!levelCfg || Number(levelCfg.ratePercent) <= 0) continue;
+
+    // Only Plan B ACTIVE members receive this royalty.
+    if (sponsor.planType !== MLM_PLAN_TYPE.B) continue;
+    if (sponsor.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) continue;
+
+    const royaltyAmount = roundCurrency((base * Number(levelCfg.ratePercent)) / 100);
+    if (royaltyAmount <= 0) continue;
+
+    const idempotencyKey =
+      `${MLM_IDEMPOTENCY_PREFIX.DIRECT_REFERRAL_EARNINGS_ROYALTY}` +
+      `-${originalCommissionEventId}-${sponsor.userId}-L${level}`;
+
+    const event = await creditBonusToEarningsWallet({
+      recipientUserId: sponsor.userId,
+      bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_EARNINGS_ROYALTY,
+      planType: MLM_PLAN_TYPE.B,
+      bonusAmount: royaltyAmount,
+      level,
+      baseAmount: base,
+      ratePercent: Number(levelCfg.ratePercent),
+      sourceUserId: recipientUserId,
+      sourceOrderId,
+      sourceCommissionEventId: originalCommissionEventId,
+      bucket: "pending",
+      description:
+        `Plan B Earnings Royalty L${level} ` +
+        `(${levelCfg.ratePercent}% of ₹${base} earned by L${level} referral)`,
+      meta: {
+        cascadedFromUserId: String(recipientUserId),
+        originalBonusType: bonusType,
+        level,
+      },
+      idempotencyKey,
+      correlationId,
+      session,
+    });
+
+    if (event) events.push(event);
   }
   return events;
 }

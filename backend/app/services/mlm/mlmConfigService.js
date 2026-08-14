@@ -275,3 +275,22 @@ export async function resolveJoiningPackageShoppingCredit(payment, opts = {}) {
   const cfg = await getMlmConfig(opts);
   return Number(cfg.joiningPackageShoppingWalletCredit) || 0;
 }
+
+/**
+ * Plan B Direct Referral Earnings Royalty configuration.
+ *
+ * Returns:
+ *   { enabled: boolean, levels: [{ level: 1|2, ratePercent: number }] }
+ *
+ * Levels with ratePercent <= 0 are filtered out so callers don't need
+ * to check for zero-rate rows.
+ */
+export async function getDirectReferralEarningsRoyaltyConfig(opts) {
+  const cfg = await getMlmConfig(opts);
+  const enabled = cfg.directReferralEarningsRoyaltyEnabled !== false;
+  const levels = (
+    cfg.directReferralEarningsRoyaltyLevels ||
+    [{ level: 1, ratePercent: 10 }, { level: 2, ratePercent: 5 }]
+  ).filter((r) => Number(r.ratePercent) > 0);
+  return { enabled, levels };
+}

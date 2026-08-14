@@ -387,6 +387,25 @@ const settingSchema = new mongoose.Schema(
                 ],
                 default: () => MLM_DEFAULTS.mentorRoyaltyLevels.map((l) => ({ ...l })),
             },
+            // Plan B: Direct Referral Earnings Royalty. When enabled, every
+            // time a Plan B member's L1 or L2 direct referral earns any
+            // income, the Plan B member receives a platform-funded %
+            // of that amount (default L1=10%, L2=5%).
+            directReferralEarningsRoyaltyEnabled: {
+                type: Boolean,
+                default: MLM_DEFAULTS.directReferralEarningsRoyaltyEnabled,
+            },
+            directReferralEarningsRoyaltyLevels: {
+                type: [
+                    {
+                        _id: false,
+                        level: { type: Number, required: true, min: 1, max: 2 },
+                        ratePercent: { type: Number, required: true, min: 0, max: 100 },
+                    },
+                ],
+                default: () =>
+                    MLM_DEFAULTS.directReferralEarningsRoyaltyLevels.map((l) => ({ ...l })),
+            },
             homeShoppingProductId: {
                 type: mongoose.Schema.Types.ObjectId,
                 ref: "Product",
