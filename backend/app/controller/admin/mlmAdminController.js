@@ -1412,7 +1412,12 @@ export const moveBinaryMember = async (req, res) => {
 export const changeMemberSponsor = async (req, res) => {
   try {
     const adminId = req.user?.id || null;
-    const { newSponsorQuery, reason } = req.body || {};
+    const {
+      newSponsorQuery,
+      reason,
+      reconcileDirectActivationIncome,
+      reconcileSince,
+    } = req.body || {};
     if (!newSponsorQuery) {
       return handleResponse(res, 422, "newSponsorQuery (referral code or user ID) is required");
     }
@@ -1421,6 +1426,8 @@ export const changeMemberSponsor = async (req, res) => {
       newSponsorQuery,
       adminId,
       reason: reason ? String(reason).trim().slice(0, 500) : null,
+      reconcileDirectActivationIncome: Boolean(reconcileDirectActivationIncome),
+      reconcileSince: reconcileSince ? new Date(reconcileSince) : null,
     });
     return handleResponse(res, 200, "Direct sponsor changed successfully", result);
   } catch (error) {

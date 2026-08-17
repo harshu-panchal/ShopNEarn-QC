@@ -450,6 +450,14 @@ export const updateOrderStatus = async (req, res) => {
       return handleResponse(res, 404, "Order not found");
     }
 
+    if (order.isFranchiseStockOrder === true) {
+      return handleResponse(
+        res,
+        422,
+        "Franchise stock orders must be progressed via Dispatch and Approve Receipt actions so hub/franchise inventory stays in sync — use the dedicated stock order endpoints instead of a direct status update.",
+      );
+    }
+
     const canonicalOrderId = order.orderId;
 
     if (order.workflowVersion >= 2 && role === "seller") {

@@ -31,6 +31,43 @@ describe("mlm direct referral activation — first pair only", () => {
     });
   });
 
+  test("countDirectReferralLegPairsFromLegMap — bare 1 Left + 1 Right is NOT a completed pair", () => {
+    // Opening pair requires 2:1 or 1:2 (client PHP spec), same rule
+    // `calculateBinaryPairs` enforces for the team-wide BINARY_PAIR_MATCH
+    // engine. A naive Math.min(1, 1) previously paid this out as 1 pair.
+    const directs = [
+      { _id: "a", userId: "ua" },
+      { _id: "b", userId: "ub" },
+    ];
+    const legMap = new Map([
+      ["a", "L"],
+      ["b", "R"],
+    ]);
+    expect(countDirectReferralLegPairsFromLegMap(directs, legMap)).toEqual({
+      left: 1,
+      right: 1,
+      pairs: 0,
+    });
+  });
+
+  test("countDirectReferralLegPairsFromLegMap — 1 Left + 2 Right completes the opening pair (mirror of 2:1)", () => {
+    const directs = [
+      { _id: "a", userId: "ua" },
+      { _id: "b", userId: "ub" },
+      { _id: "c", userId: "uc" },
+    ];
+    const legMap = new Map([
+      ["a", "L"],
+      ["b", "R"],
+      ["c", "R"],
+    ]);
+    expect(countDirectReferralLegPairsFromLegMap(directs, legMap)).toEqual({
+      left: 1,
+      right: 2,
+      pairs: 1,
+    });
+  });
+
   test("shouldCreditFirstDirectReferralPair — only on 0 → 1 transition", () => {
     expect(
       shouldCreditFirstDirectReferralPair({ pairsBefore: 0, pairsAfter: 0 }),

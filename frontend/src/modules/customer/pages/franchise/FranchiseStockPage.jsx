@@ -71,32 +71,32 @@ const FranchiseStockPage = () => {
     const statusLower = String(order.status || order.orderStatus || "").toLowerCase();
     const workflowUpper = String(order.workflowStatus || "").toUpperCase();
 
+    // franchiseStockStatus is the authoritative field for the dispatch/approve
+    // pipeline — trust it first. Legacy order.status can be stale or wrongly
+    // set to "delivered" by a generic status update that never actually ran
+    // the receipt-approval/inventory step.
     if (
-      stockUpper === "CANCELLED" ||
-      statusLower === "cancelled" ||
-      workflowUpper === "CANCELLED" ||
-      Boolean(order.cancelReason)
+      stockUpper === "REQUESTED" ||
+      stockUpper === "DISPATCHED_PENDING_RECEIPT" ||
+      stockUpper === "DELIVERED" ||
+      stockUpper === "CANCELLED"
     ) {
+      return stockUpper;
+    }
+
+    if (statusLower === "cancelled" || workflowUpper === "CANCELLED" || Boolean(order.cancelReason)) {
       return "CANCELLED";
     }
 
-    if (
-      stockUpper === "DELIVERED" ||
-      statusLower === "delivered" ||
-      workflowUpper === "DELIVERED"
-    ) {
+    if (statusLower === "delivered" || workflowUpper === "DELIVERED") {
       return "DELIVERED";
     }
 
-    if (
-      stockUpper === "DISPATCHED_PENDING_RECEIPT" ||
-      statusLower === "shipped" ||
-      workflowUpper === "DISPATCHED_PENDING_RECEIPT"
-    ) {
+    if (statusLower === "shipped" || workflowUpper === "DISPATCHED_PENDING_RECEIPT") {
       return "DISPATCHED_PENDING_RECEIPT";
     }
 
-    return stockUpper || "REQUESTED";
+    return "REQUESTED";
   };
 
   const pendingConfirmations = useMemo(() => {

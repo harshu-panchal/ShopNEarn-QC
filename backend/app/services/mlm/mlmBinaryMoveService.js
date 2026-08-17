@@ -8,6 +8,7 @@ import {
 } from "../../constants/mlm.js";
 import { getMlmConfig } from "./mlmConfigService.js";
 import { syncCustomerMlmProjection } from "./mlmMembershipService.js";
+import { reconcileDirectReferralActivationIncomeOnSponsorChange } from "./mlmSignupBonusService.js";
 
 function makeError(message, statusCode = 400, code) {
   const err = new Error(message);
@@ -521,6 +522,8 @@ export async function executeChangeDirectSponsor({
   newSponsorQuery,
   adminId = null,
   reason = null,
+  reconcileDirectActivationIncome = false,
+  reconcileSince = null,
 }) {
   let member = null;
   if (mongoose.Types.ObjectId.isValid(membershipId)) {
@@ -576,6 +579,7 @@ export async function executeChangeDirectSponsor({
 
   const oldSponsorUserId = member.sponsorId;
   const stats = await countUnilevelSubtree(member.userId);
+  let incomeReconciliation = null;
 
   const session = await mongoose.startSession();
   try {
@@ -628,6 +632,18 @@ export async function executeChangeDirectSponsor({
       if (oldSponsorUserId) {
         await syncCustomerMlmProjection(oldSponsorUserId, syncOpts);
       }
+
+      if (reconcileDirectActivationIncome && oldSponsorUserId) {
+        incomeReconciliation = await reconcileDirectReferralActivationIncomeOnSponsorChange({
+          memberUserId: m.userId,
+          oldSponsorUserId,
+          newSponsorUserId: ns.userId,
+          reconcileSince,
+          adminId,
+          reason,
+          session: sess,
+        });
+      }
     };
 
     try {
@@ -654,6 +670,7 @@ export async function executeChangeDirectSponsor({
     oldSponsor: oldSponsorUser ? { name: oldSponsorUser.name, userId: oldSponsorUser.userId } : null,
     newSponsor: { name: newSponsorUser.name, userId: newSponsorUser.userId },
     unilevelSubtreeSize: stats,
+    incomeReconciliation,
   };
 }
 

@@ -432,24 +432,37 @@ const OrdersList = () => {
                                         </div>
                                     </td>
                                     <td className="px-4 py-5" onClick={(e) => e.stopPropagation()}>
-                                        <div className="relative inline-block w-40">
-                                            <select
-                                                value={order.status}
-                                                onChange={(e) => handleStatusUpdate(order._id, e.target.value)}
+                                        {order.isFranchiseStockOrder ? (
+                                            <div
                                                 className={cn(
-                                                    "w-full text-[10px] pl-3 pr-8 py-2 rounded-xl font-black uppercase tracking-wider border appearance-none cursor-pointer focus:ring-2 focus:ring-offset-1 transition-all outline-none shadow-sm",
+                                                    "inline-flex items-center gap-1.5 text-[10px] pl-3 pr-3 py-2 rounded-xl font-black uppercase tracking-wider border cursor-pointer",
                                                     getStatusStyles(order.status)
                                                 )}
+                                                onClick={() => navigate(`/admin/orders/view/${order.id}`)}
+                                                title="Open order to dispatch / manage receipt"
                                             >
-                                                <option value="pending">Pending</option>
-                                                <option value="confirmed">Confirmed</option>
-                                                <option value="packed">Packed</option>
-                                                <option value="out_for_delivery">Out for Delivery</option>
-                                                <option value="delivered">Delivered</option>
-                                                <option value="cancelled">Cancelled</option>
-                                            </select>
-                                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none opacity-60" />
-                                        </div>
+                                                {order.statusLabel || order.status}
+                                            </div>
+                                        ) : (
+                                            <div className="relative inline-block w-40">
+                                                <select
+                                                    value={order.status}
+                                                    onChange={(e) => handleStatusUpdate(order._id, e.target.value)}
+                                                    className={cn(
+                                                        "w-full text-[10px] pl-3 pr-8 py-2 rounded-xl font-black uppercase tracking-wider border appearance-none cursor-pointer focus:ring-2 focus:ring-offset-1 transition-all outline-none shadow-sm",
+                                                        getStatusStyles(order.status)
+                                                    )}
+                                                >
+                                                    <option value="pending">Pending</option>
+                                                    <option value="confirmed">Confirmed</option>
+                                                    <option value="packed">Packed</option>
+                                                    <option value="out_for_delivery">Out for Delivery</option>
+                                                    <option value="delivered">Delivered</option>
+                                                    <option value="cancelled">Cancelled</option>
+                                                </select>
+                                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none opacity-60" />
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="px-4 py-5 text-right">
                                         <div className="flex flex-col items-end">
@@ -459,7 +472,7 @@ const OrdersList = () => {
                                     </td>
                                     <td className="px-4 py-5 text-right">
                                         <div className="flex items-center justify-end gap-2">
-                                            {status === 'processed' && order.status === 'confirmed' && (
+                                            {status === 'processed' && order.status === 'confirmed' && !order.isFranchiseStockOrder && (
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
@@ -471,7 +484,7 @@ const OrdersList = () => {
                                                     MARK PACKED
                                                 </button>
                                             )}
-                                            {status === 'processed' && order.status === 'packed' && (
+                                            {status === 'processed' && order.status === 'packed' && !order.isFranchiseStockOrder && (
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();

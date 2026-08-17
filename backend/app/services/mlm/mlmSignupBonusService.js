@@ -21,6 +21,7 @@ import {
 import {
   countActivePlanADirects,
   resolveFirstDirectPairIncomeAmount,
+  calculateBinaryPairs,
 } from "./mlmBinaryPairIncomeService.js";
 import { classifyDirectReferralsByLegUnderRoot } from "./mlmBinaryTreeBuilder.js";
 import { creditBonusToEarningsWallet } from "./mlmBonusEngineService.js";
@@ -229,7 +230,14 @@ export function groupEarningsEventsByDisplayType(events) {
   }));
 }
 
-/** Count active Plan A directs on each binary leg under the sponsor. */
+/**
+ * Count active Plan A directs on each binary leg under the sponsor.
+ *
+ * `pairs` reuses `calculateBinaryPairs` (the same 2:1/1:2-opener-then-1:1
+ * rule the team-wide BINARY_PAIR_MATCH engine enforces) instead of a naive
+ * `Math.min(left, right)` — a bare 1 Left + 1 Right must NOT count as a
+ * completed pair; the opening pair needs 2 on one leg and 1 on the other.
+ */
 export function countDirectReferralLegPairsFromLegMap(directReferrals, legByReferralId) {
   let left = 0;
   let right = 0;
@@ -238,7 +246,7 @@ export function countDirectReferralLegPairsFromLegMap(directReferrals, legByRefe
     if (leg === "L") left += 1;
     else if (leg === "R") right += 1;
   }
-  return { left, right, pairs: Math.min(left, right) };
+  return { left, right, pairs: calculateBinaryPairs(left, right).pairs };
 }
 
 /** True only on the activation that completes the sponsor's first L+R direct pair. */
@@ -711,6 +719,164 @@ export async function applyDirectReferralPerActivationBonusInSession({
 }
 
 /**
+ * Reverses already-CREDITED per-activation direct-referral income that
+ * was paid to a member's OLD sponsor and re-credits the same amount to
+ * the NEW sponsor. Opt-in helper for `executeChangeDirectSponsor` (admin
+ * sponsor reassignment) — reversing wallet history isn't always wanted,
+ * so callers must ask for it explicitly.
+ *
+ * Only touches `DIRECT_REFERRAL_PER_ACTIVATION` events (the one-time
+ * bonus paid when a direct referral activates Plan A). Binary-tree-based
+ * incomes are intentionally untouched — binary placement is a separate
+ * concern from sponsor chain and isn't changed by a sponsor reassignment.
+ *
+ * `reconcileSince` (optional) limits reconciliation to events credited on
+ * or after that date, so an admin can avoid reopening very old history.
+ *
+ * Best-effort per event: if reversing one event fails (e.g. the old
+ * sponsor already withdrew the balance), that event is skipped and the
+ * rest still proceed — a failed reversal must never abort the sponsor
+ * reassignment itself.
+ */
+export async function reconcileDirectReferralActivationIncomeOnSponsorChange({
+  memberUserId,
+  oldSponsorUserId,
+  newSponsorUserId,
+  reconcileSince = null,
+  adminId = null,
+  reason = null,
+  correlationId = null,
+  session = null,
+}) {
+  if (!memberUserId || !oldSponsorUserId || !newSponsorUserId) {
+    return { processed: 0, skipped: 0, totalAmount: 0, events: [] };
+  }
+  if (String(oldSponsorUserId) === String(newSponsorUserId)) {
+    return { processed: 0, skipped: 0, totalAmount: 0, events: [] };
+  }
+
+  const query = {
+    bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION,
+    sourceUserId: memberUserId,
+    recipientId: oldSponsorUserId,
+    status: MLM_COMMISSION_EVENT_STATUS.CREDITED,
+    clawbackAt: { $exists: false },
+  };
+  if (reconcileSince) {
+    query.createdAt = { $gte: new Date(reconcileSince) };
+  }
+
+  const events = await MlmCommissionEvent.find(query).session(session);
+
+  let processed = 0;
+  let skipped = 0;
+  let totalAmount = 0;
+  const results = [];
+
+  for (const event of events) {
+    const credited = roundCurrency(event.cappedAmount || event.bonusAmount || 0);
+    if (credited <= 0) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      const bucket = event.walletBucket || "earnings";
+      const clawbackKey = `${MLM_IDEMPOTENCY_PREFIX.BONUS_CLAWBACK}-SC-${event._id}`;
+
+      await debitWallet({
+        ownerType: OWNER_TYPE.CUSTOMER,
+        ownerId: event.recipientId,
+        amount: credited,
+        bucket,
+        session,
+        ledgerType: LEDGER_TRANSACTION_TYPE.MLM_BONUS_CLAWBACK_ON_SPONSOR_CHANGE,
+        ledgerReference: clawbackKey,
+        ledgerDescription: `Direct referral activation income reversed — sponsor reassigned`,
+        idempotencyKey: clawbackKey,
+        correlationId,
+        syncUserWalletBalance: bucket === "available",
+        metadata: {
+          mlmEventId: String(event._id),
+          memberUserId: String(memberUserId),
+          oldSponsorUserId: String(oldSponsorUserId),
+          newSponsorUserId: String(newSponsorUserId),
+          adminId: adminId ? String(adminId) : null,
+          reason: reason || null,
+        },
+      });
+
+      event.status = MLM_COMMISSION_EVENT_STATUS.CLAWED_BACK;
+      event.clawbackAt = new Date();
+      event.clawbackAmount = credited;
+      event.meta = {
+        ...(event.meta || {}),
+        clawbackReason: "sponsor_reassigned",
+        oldSponsorUserId: String(oldSponsorUserId),
+        newSponsorUserId: String(newSponsorUserId),
+        adminId: adminId ? String(adminId) : null,
+        adminReason: reason || null,
+      };
+      await event.save({ session });
+
+      const incField =
+        event.planType === MLM_PLAN_TYPE.B
+          ? "lifetimePlanBEarnings"
+          : "lifetimePlanAEarnings";
+      await MlmMembership.updateOne(
+        { userId: oldSponsorUserId },
+        { $inc: { [incField]: -credited } },
+        { session },
+      );
+
+      const newIdempotencyKey = directReferralPerActivationIdempotencyKey(
+        newSponsorUserId,
+        memberUserId,
+      );
+      const newEvent = await creditBonusToEarningsWallet({
+        recipientUserId: newSponsorUserId,
+        bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_PER_ACTIVATION,
+        planType: event.planType,
+        bonusAmount: credited,
+        sourceUserId: memberUserId,
+        sourceCommissionEventId: event._id,
+        bucket,
+        description: "Direct referral Plan A activation income (sponsor reassigned)",
+        meta: {
+          activatedUserId: String(memberUserId),
+          sponsorUserId: String(newSponsorUserId),
+          incomeType: "PER_ACTIVATION",
+          reassignedFromEventId: String(event._id),
+          reassignedFromSponsorId: String(oldSponsorUserId),
+        },
+        idempotencyKey: newIdempotencyKey,
+        correlationId,
+        session,
+        skipDailyCap: true,
+      });
+
+      processed += 1;
+      totalAmount = roundCurrency(totalAmount + credited);
+      results.push({
+        originalEventId: event._id,
+        newEventId: newEvent?._id || null,
+        amount: credited,
+      });
+    } catch (error) {
+      skipped += 1;
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn(
+          "[mlmSignupBonusService] sponsor-change income reconciliation failed for event; continuing",
+          { mlmEventId: String(event._id), error: error.message },
+        );
+      }
+    }
+  }
+
+  return { processed, skipped, totalAmount, events: results };
+}
+
+/**
  * One-time earnings when a sponsor's direct referrals complete their first
  * binary pair (one active direct on L and one on R). Skipped when binary
  * pair match #1 was already paid — only one first-pair income total.
@@ -776,7 +942,11 @@ export async function applyDirectReferralFirstPairBonusInSession({
     null,
     { session },
   );
-  if (existing) {
+  // A CLAWED_BACK row (e.g. an earlier invalid bare-1L+1R credit that was
+  // reversed) must NOT permanently block this sponsor from legitimately
+  // earning the bonus later once they genuinely complete a 2:1/1:2 pair —
+  // fall through to the reopen branch below instead of short-circuiting.
+  if (existing && existing.status !== MLM_COMMISSION_EVENT_STATUS.CLAWED_BACK) {
     return { skipped: "ALREADY_CREDITED", event: existing };
   }
 
@@ -797,25 +967,62 @@ export async function applyDirectReferralFirstPairBonusInSession({
   if (amount <= 0) {
     return { skipped: "DISABLED", event: null };
   }
-  const result = await creditDirectReferralEarning({
-    sponsorUserId,
-    sponsorMembership,
-    activatedUserId,
-    amount,
-    bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION,
-    idempotencyKey,
-    description: "Direct referral first-pair activation income",
-    meta: {
-      incomeType: "FIRST_DIRECT_PAIR",
-      pairIndex: 1,
-      leftDirectCount: pairsAfter.left,
-      rightDirectCount: pairsAfter.right,
-      directCount,
-      pairIncome: amount,
-    },
-    session,
-    correlationId,
-  });
+
+  const meta = {
+    incomeType: "FIRST_DIRECT_PAIR",
+    pairIndex: 1,
+    leftDirectCount: pairsAfter.left,
+    rightDirectCount: pairsAfter.right,
+    directCount,
+    pairIncome: amount,
+  };
+
+  let result;
+  if (existing) {
+    // Reopen: the sponsor's earlier credit was reversed as invalid, and
+    // they've now genuinely completed a 2:1/1:2 opening pair. Reuse the
+    // same MlmCommissionEvent row (idempotencyKey is unique) rather than
+    // inserting a new one — mirrors `restoreOneClawedSignupBonusEvent`.
+    const reopenLedgerKey = `${idempotencyKey}-REOPEN-${Date.now()}`;
+    const creditResult = await creditWallet({
+      ownerType: OWNER_TYPE.CUSTOMER,
+      ownerId: sponsorUserId,
+      amount,
+      bucket: "earnings",
+      session,
+      ledgerType: LEDGER_TRANSACTION_TYPE.MLM_DIRECT_REFERRAL_ACTIVATION,
+      ledgerReference: reopenLedgerKey,
+      ledgerDescription: "Direct referral first-pair activation income (re-earned after correction)",
+      metadata: { ...meta, reopenedAfterClawback: true, activatedUserId: String(activatedUserId), sponsorUserId: String(sponsorUserId) },
+      idempotencyKey: reopenLedgerKey,
+      correlationId,
+      syncUserWalletBalance: false,
+    });
+    existing.status = MLM_COMMISSION_EVENT_STATUS.CREDITED;
+    existing.bonusAmount = amount;
+    existing.cappedAmount = amount;
+    existing.rolloverAmount = 0;
+    existing.clawbackAt = undefined;
+    existing.clawbackAmount = undefined;
+    existing.ledgerEntryId = creditResult?.ledgerEntry?._id || null;
+    existing.description = "Direct referral first-pair activation income";
+    existing.meta = { ...meta, reopenedAfterClawback: true };
+    await existing.save({ session });
+    result = { event: existing, amount };
+  } else {
+    result = await creditDirectReferralEarning({
+      sponsorUserId,
+      sponsorMembership,
+      activatedUserId,
+      amount,
+      bonusType: MLM_BONUS_TYPE.DIRECT_REFERRAL_ACTIVATION,
+      idempotencyKey,
+      description: "Direct referral first-pair activation income",
+      meta,
+      session,
+      correlationId,
+    });
+  }
 
   const paidPairs = Number(sponsorMembership.pairsCompleted) || 0;
   if (paidPairs < 1) {

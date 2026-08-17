@@ -102,6 +102,15 @@ export const LEDGER_TRANSACTION_TYPE = {
   // Admin soft-delete: reverse upline bonuses that were triggered by the
   // deleted member (pair match, signup sponsor, repurchase chain, etc.).
   MLM_BONUS_CLAWBACK_ON_MEMBER_DELETE: "MLM_BONUS_CLAWBACK_ON_MEMBER_DELETE",
+  // Admin sponsor reassignment: reverse a direct-referral per-activation
+  // credit paid to the OLD sponsor so it can be re-credited to the NEW
+  // sponsor, keeping the wallet in sync with the corrected genealogy.
+  MLM_BONUS_CLAWBACK_ON_SPONSOR_CHANGE: "MLM_BONUS_CLAWBACK_ON_SPONSOR_CHANGE",
+  // One-off data correction: reverse a bonus that was credited under a
+  // rule the code got wrong (e.g. the "first direct pair" bonus once
+  // paid on a bare 1 Left + 1 Right instead of the intended 2:1/1:2
+  // opener rule).
+  MLM_BONUS_CLAWBACK_ON_RULE_CORRECTION: "MLM_BONUS_CLAWBACK_ON_RULE_CORRECTION",
   MLM_BONUS_CAPPED_ROLLOVER: "MLM_BONUS_CAPPED_ROLLOVER",
   MLM_WITHDRAWAL_GROSS_DEBIT: "MLM_WITHDRAWAL_GROSS_DEBIT",
   MLM_WITHDRAWAL_ADMIN_CHARGE: "MLM_WITHDRAWAL_ADMIN_CHARGE",

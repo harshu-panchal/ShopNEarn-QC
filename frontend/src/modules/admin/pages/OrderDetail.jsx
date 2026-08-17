@@ -44,6 +44,7 @@ const OrderDetail = () => {
     const [riders, setRiders] = useState([]);
     const [selectedRiderId, setSelectedRiderId] = useState('');
     const [assigningRider, setAssigningRider] = useState(false);
+    const [dispatchingStock, setDispatchingStock] = useState(false);
     const invoiceRef = useRef(null);
 
     const fetchDetail = async () => {
@@ -93,6 +94,33 @@ const OrderDetail = () => {
             })
             .catch(() => {});
     }, [isFranchiseAwaitingDispatch]);
+
+    const getEffectiveStockStatus = (o) => {
+        const stockUpper = String(o?.franchiseStockStatus || '').toUpperCase();
+        const statusLower = String(o?.status || '').toLowerCase();
+        // franchiseStockStatus is authoritative — legacy order.status can be
+        // stale/wrong if it was ever set via a generic status update.
+        if (['REQUESTED', 'DISPATCHED_PENDING_RECEIPT', 'DELIVERED', 'CANCELLED'].includes(stockUpper)) {
+            return stockUpper;
+        }
+        if (statusLower === 'cancelled' || Boolean(o?.cancelReason)) return 'CANCELLED';
+        if (statusLower === 'delivered') return 'DELIVERED';
+        if (statusLower === 'shipped') return 'DISPATCHED_PENDING_RECEIPT';
+        return 'REQUESTED';
+    };
+
+    const handleDispatchStockOrder = async () => {
+        setDispatchingStock(true);
+        try {
+            await adminFranchiseApi.dispatchStockOrder(orderId);
+            showToast('Stock order dispatched — franchise partner asked to confirm receipt', 'success');
+            fetchDetail();
+        } catch (error) {
+            showToast(error?.response?.data?.message || 'Failed to dispatch stock order', 'error');
+        } finally {
+            setDispatchingStock(false);
+        }
+    };
 
     const handleAssignFranchiseRider = async () => {
         if (!selectedRiderId) {
@@ -183,24 +211,38 @@ const OrderDetail = () => {
                     <div>
                         <div className="flex items-center gap-3">
                             <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Order #{order.orderId}</h1>
-                            <div className="relative inline-block w-44">
-                                <select
-                                    value={order.status}
-                                    onChange={(e) => handleStatusUpdate(e.target.value)}
-                                    className={cn(
-                                        "w-full text-[10px] pl-3 pr-8 py-1.5 rounded-xl font-black uppercase tracking-widest border appearance-none cursor-pointer focus:ring-2 focus:ring-offset-1 transition-all outline-none shadow-sm",
-                                        getStatusStyles(order.status)
-                                    )}
-                                >
-                                    <option value="pending">Pending</option>
-                                    <option value="confirmed">Confirmed</option>
-                                    <option value="packed">Packed</option>
-                                    <option value="out_for_delivery">Out for Delivery</option>
-                                    <option value="delivered">Delivered</option>
-                                    <option value="cancelled">Cancelled</option>
-                                </select>
-                                <Info className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none opacity-60" />
-                            </div>
+                            {order.isFranchiseStockOrder ? (
+                                <span className={cn(
+                                    "inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border",
+                                    getEffectiveStockStatus(order) === 'DELIVERED' ? 'bg-brand-100 text-brand-600 border-brand-200'
+                                        : getEffectiveStockStatus(order) === 'DISPATCHED_PENDING_RECEIPT' ? 'bg-amber-100 text-amber-600 border-amber-200'
+                                        : getEffectiveStockStatus(order) === 'CANCELLED' ? 'bg-rose-100 text-rose-600 border-rose-200'
+                                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                                )}>
+                                    {getEffectiveStockStatus(order) === 'DISPATCHED_PENDING_RECEIPT'
+                                        ? 'Awaiting Partner Receipt'
+                                        : getEffectiveStockStatus(order).replace(/_/g, ' ')}
+                                </span>
+                            ) : (
+                                <div className="relative inline-block w-44">
+                                    <select
+                                        value={order.status}
+                                        onChange={(e) => handleStatusUpdate(e.target.value)}
+                                        className={cn(
+                                            "w-full text-[10px] pl-3 pr-8 py-1.5 rounded-xl font-black uppercase tracking-widest border appearance-none cursor-pointer focus:ring-2 focus:ring-offset-1 transition-all outline-none shadow-sm",
+                                            getStatusStyles(order.status)
+                                        )}
+                                    >
+                                        <option value="pending">Pending</option>
+                                        <option value="confirmed">Confirmed</option>
+                                        <option value="packed">Packed</option>
+                                        <option value="out_for_delivery">Out for Delivery</option>
+                                        <option value="delivered">Delivered</option>
+                                        <option value="cancelled">Cancelled</option>
+                                    </select>
+                                    <Info className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none opacity-60" />
+                                </div>
+                            )}
                         </div>
                         <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-widest flex items-center gap-2">
                             <Calendar className="h-3.5 w-3.5" />
@@ -209,7 +251,23 @@ const OrderDetail = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button 
+                    {order.isFranchiseStockOrder && getEffectiveStockStatus(order) === 'REQUESTED' && (
+                        <button
+                            onClick={handleDispatchStockOrder}
+                            disabled={dispatchingStock}
+                            className="flex items-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm disabled:opacity-50"
+                        >
+                            <Truck className="h-4 w-4" />
+                            {dispatchingStock ? 'Dispatching…' : 'Dispatch to Franchise'}
+                        </button>
+                    )}
+                    {order.isFranchiseStockOrder && getEffectiveStockStatus(order) === 'DISPATCHED_PENDING_RECEIPT' && (
+                        <span className="flex items-center gap-2 px-5 py-3 bg-amber-50 text-amber-700 ring-1 ring-amber-200 rounded-2xl text-[10px] font-black uppercase tracking-widest">
+                            <Truck className="h-4 w-4" />
+                            Waiting for franchise to approve receipt
+                        </span>
+                    )}
+                    <button
                         onClick={handlePrintInvoice}
                         className="flex items-center gap-2 px-5 py-3 bg-white ring-1 ring-slate-200 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
                     >

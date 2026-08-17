@@ -228,10 +228,15 @@ const Orders = () => {
   const getEffectiveStockStatus = (order) => {
     const stockUpper = String(order.franchiseStockStatus || "").toUpperCase();
     const statusLower = String(order.status || "").toLowerCase();
-    if (stockUpper === "CANCELLED" || statusLower === "cancelled" || Boolean(order.cancelReason)) return "CANCELLED";
-    if (stockUpper === "DELIVERED" || statusLower === "delivered") return "DELIVERED";
-    if (stockUpper === "DISPATCHED_PENDING_RECEIPT" || statusLower === "shipped") return "DISPATCHED_PENDING_RECEIPT";
-    return stockUpper || "REQUESTED";
+    // franchiseStockStatus is authoritative — legacy order.status can be
+    // stale/wrong if it was ever set via a generic status update.
+    if (["REQUESTED", "DISPATCHED_PENDING_RECEIPT", "DELIVERED", "CANCELLED"].includes(stockUpper)) {
+      return stockUpper;
+    }
+    if (statusLower === "cancelled" || Boolean(order.cancelReason)) return "CANCELLED";
+    if (statusLower === "delivered") return "DELIVERED";
+    if (statusLower === "shipped") return "DISPATCHED_PENDING_RECEIPT";
+    return "REQUESTED";
   };
 
   const stats = useMemo(
@@ -671,29 +676,31 @@ const Orders = () => {
                                 className="text-[10px] font-black uppercase px-2 py-0">
                                 {order.statusLabel || order.status}
                               </Badge>
-                              <select
-                                value={order.status}
-                                onChange={(e) =>
-                                  handleStatusUpdate(order.id, e.target.value)
-                                }
-                                onClick={(e) => e.stopPropagation()}
-                                className={cn(
-                                  "w-full min-w-[100px] text-[10px] pl-2 pr-6 py-1.5 rounded-lg font-black uppercase cursor-pointer appearance-none border outline-none",
-                                  order.status === "pending"
-                                    ? "bg-amber-100 text-amber-700"
-                                    : order.status === "delivered"
-                                      ? "bg-brand-100 text-brand-700"
-                                      : order.status === "cancelled"
-                                        ? "bg-rose-100 text-rose-700"
-                                        : "bg-slate-100 text-slate-700",
-                                )}>
-                                <option value="pending">Pending</option>
-                                <option value="confirmed">Confirmed</option>
-                                <option value="packed">Packed</option>
-                                <option value="out_for_delivery">Out</option>
-                                <option value="delivered">Delivered</option>
-                                <option value="cancelled">Cancelled</option>
-                              </select>
+                              {!order.isFranchiseStockOrder && (
+                                <select
+                                  value={order.status}
+                                  onChange={(e) =>
+                                    handleStatusUpdate(order.id, e.target.value)
+                                  }
+                                  onClick={(e) => e.stopPropagation()}
+                                  className={cn(
+                                    "w-full min-w-[100px] text-[10px] pl-2 pr-6 py-1.5 rounded-lg font-black uppercase cursor-pointer appearance-none border outline-none",
+                                    order.status === "pending"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : order.status === "delivered"
+                                        ? "bg-brand-100 text-brand-700"
+                                        : order.status === "cancelled"
+                                          ? "bg-rose-100 text-rose-700"
+                                          : "bg-slate-100 text-slate-700",
+                                  )}>
+                                  <option value="pending">Pending</option>
+                                  <option value="confirmed">Confirmed</option>
+                                  <option value="packed">Packed</option>
+                                  <option value="out_for_delivery">Out</option>
+                                  <option value="delivered">Delivered</option>
+                                  <option value="cancelled">Cancelled</option>
+                                </select>
+                              )}
                               <button
                                 onClick={() => handleViewDetails(order)}
                                 className="p-2 hover:bg-slate-100 rounded-lg text-slate-600">
@@ -780,39 +787,56 @@ const Orders = () => {
                               </div>
                             </td>
                             <td className="px-4 lg:px-6 py-3 lg:py-4">
-                              <div className="relative inline-block w-36">
-                                <select
-                                  value={order.status}
-                                  onChange={(e) =>
-                                    handleStatusUpdate(order.id, e.target.value)
-                                  }
-                                  className={cn(
-                                    "w-full text-[10px] pl-2.5 pr-8 py-1.5 rounded-full font-black uppercase tracking-widest cursor-pointer appearance-none focus:ring-2 focus:ring-offset-1 transition-all border-none outline-none shadow-sm",
-                                    order.status === "pending"
-                                      ? "bg-amber-100 text-amber-700 focus:ring-amber-200"
-                                      : order.status === "confirmed"
-                                        ? "bg-brand-100 text-brand-700 focus:ring-brand-200"
-                                        : order.status === "packed"
+                              {order.isFranchiseStockOrder ? (
+                                <span className={cn(
+                                  "inline-block text-[10px] pl-2.5 pr-2.5 py-1.5 rounded-full font-black uppercase tracking-widest",
+                                  getEffectiveStockStatus(order) === "DELIVERED"
+                                    ? "bg-brand-100 text-brand-700"
+                                    : getEffectiveStockStatus(order) === "DISPATCHED_PENDING_RECEIPT"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : getEffectiveStockStatus(order) === "CANCELLED"
+                                        ? "bg-rose-100 text-rose-700"
+                                        : "bg-slate-100 text-slate-700",
+                                )}>
+                                  {getEffectiveStockStatus(order) === "DISPATCHED_PENDING_RECEIPT"
+                                    ? "Awaiting Receipt"
+                                    : getEffectiveStockStatus(order).replace(/_/g, " ")}
+                                </span>
+                              ) : (
+                                <div className="relative inline-block w-36">
+                                  <select
+                                    value={order.status}
+                                    onChange={(e) =>
+                                      handleStatusUpdate(order.id, e.target.value)
+                                    }
+                                    className={cn(
+                                      "w-full text-[10px] pl-2.5 pr-8 py-1.5 rounded-full font-black uppercase tracking-widest cursor-pointer appearance-none focus:ring-2 focus:ring-offset-1 transition-all border-none outline-none shadow-sm",
+                                      order.status === "pending"
+                                        ? "bg-amber-100 text-amber-700 focus:ring-amber-200"
+                                        : order.status === "confirmed"
                                           ? "bg-brand-100 text-brand-700 focus:ring-brand-200"
-                                          : order.status === "out_for_delivery"
-                                            ? "bg-purple-100 text-purple-700 focus:ring-purple-200"
-                                            : order.status === "delivered"
-                                              ? "bg-brand-100 text-brand-700 focus:ring-brand-200"
-                                              : order.status === "cancelled"
-                                                ? "bg-rose-100 text-rose-700 focus:ring-rose-200"
-                                                : "bg-slate-100 text-slate-700 focus:ring-slate-200",
-                                  )}>
-                                  <option value="pending">Pending</option>
-                                  <option value="confirmed">Confirmed</option>
-                                  <option value="packed">Packed</option>
-                                  <option value="out_for_delivery">
-                                    Out for Delivery
-                                  </option>
-                                  <option value="delivered">Delivered</option>
-                                  <option value="cancelled">Cancelled</option>
-                                </select>
-                                <HiOutlineChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none opacity-60" />
-                              </div>
+                                          : order.status === "packed"
+                                            ? "bg-brand-100 text-brand-700 focus:ring-brand-200"
+                                            : order.status === "out_for_delivery"
+                                              ? "bg-purple-100 text-purple-700 focus:ring-purple-200"
+                                              : order.status === "delivered"
+                                                ? "bg-brand-100 text-brand-700 focus:ring-brand-200"
+                                                : order.status === "cancelled"
+                                                  ? "bg-rose-100 text-rose-700 focus:ring-rose-200"
+                                                  : "bg-slate-100 text-slate-700 focus:ring-slate-200",
+                                    )}>
+                                    <option value="pending">Pending</option>
+                                    <option value="confirmed">Confirmed</option>
+                                    <option value="packed">Packed</option>
+                                    <option value="out_for_delivery">
+                                      Out for Delivery
+                                    </option>
+                                    <option value="delivered">Delivered</option>
+                                    <option value="cancelled">Cancelled</option>
+                                  </select>
+                                  <HiOutlineChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none opacity-60" />
+                                </div>
+                              )}
                             </td>
                             <td className="px-4 lg:px-6 py-3 lg:py-4 text-right">
                               <div className="flex items-center justify-end space-x-1.5">
@@ -1200,43 +1224,70 @@ const Orders = () => {
                         className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100 transition-all">
                         CLOSE
                       </button>
-                      <div className="relative inline-block w-40">
-                        <select
-                          value={selectedOrder.status.toLowerCase()}
-                          onChange={(e) =>
-                            handleStatusUpdate(selectedOrder.id, e.target.value)
-                          }
-                          className={cn(
-                            "w-full text-xs pl-3 pr-8 py-2 rounded-xl font-black uppercase tracking-wider border appearance-none cursor-pointer focus:ring-2 focus:ring-offset-1 transition-all outline-none shadow-sm",
-                            getStatusColor(selectedOrder.status) === "warning"
-                              ? "bg-amber-100 text-amber-700 focus:ring-amber-200"
-                              : getStatusColor(selectedOrder.status) === "info"
-                                ? "bg-brand-100 text-brand-700 focus:ring-brand-200"
-                                : getStatusColor(selectedOrder.status) ===
-                                    "primary"
+                      {selectedOrder.isFranchiseStockOrder ? (
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider",
+                            getEffectiveStockStatus(selectedOrder) === "DELIVERED"
+                              ? "bg-brand-100 text-brand-700"
+                              : getEffectiveStockStatus(selectedOrder) === "DISPATCHED_PENDING_RECEIPT"
+                                ? "bg-amber-100 text-amber-700"
+                                : getEffectiveStockStatus(selectedOrder) === "CANCELLED"
+                                  ? "bg-rose-100 text-rose-700"
+                                  : "bg-slate-100 text-slate-700",
+                          )}>
+                            {getEffectiveStockStatus(selectedOrder) === "DISPATCHED_PENDING_RECEIPT"
+                              ? "Awaiting Partner Receipt"
+                              : getEffectiveStockStatus(selectedOrder).replace(/_/g, " ")}
+                          </span>
+                          {getEffectiveStockStatus(selectedOrder) === "REQUESTED" && (
+                            <button
+                              type="button"
+                              onClick={() => handleDispatchStockOrder(selectedOrder.id)}
+                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-colors">
+                              Dispatch & Send Request
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="relative inline-block w-40">
+                          <select
+                            value={selectedOrder.status.toLowerCase()}
+                            onChange={(e) =>
+                              handleStatusUpdate(selectedOrder.id, e.target.value)
+                            }
+                            className={cn(
+                              "w-full text-xs pl-3 pr-8 py-2 rounded-xl font-black uppercase tracking-wider border appearance-none cursor-pointer focus:ring-2 focus:ring-offset-1 transition-all outline-none shadow-sm",
+                              getStatusColor(selectedOrder.status) === "warning"
+                                ? "bg-amber-100 text-amber-700 focus:ring-amber-200"
+                                : getStatusColor(selectedOrder.status) === "info"
                                   ? "bg-brand-100 text-brand-700 focus:ring-brand-200"
                                   : getStatusColor(selectedOrder.status) ===
-                                      "secondary"
-                                    ? "bg-purple-100 text-purple-700 focus:ring-purple-200"
+                                      "primary"
+                                    ? "bg-brand-100 text-brand-700 focus:ring-brand-200"
                                     : getStatusColor(selectedOrder.status) ===
-                                        "success"
-                                      ? "bg-brand-100 text-brand-700 focus:ring-brand-200"
+                                        "secondary"
+                                      ? "bg-purple-100 text-purple-700 focus:ring-purple-200"
                                       : getStatusColor(selectedOrder.status) ===
-                                          "error"
-                                        ? "bg-rose-100 text-rose-700 focus:ring-rose-200"
-                                        : "bg-slate-100 text-slate-700 focus:ring-slate-200",
-                          )}>
-                          <option value="pending">Pending</option>
-                          <option value="confirmed">Confirmed</option>
-                          <option value="packed">Packed</option>
-                          <option value="out_for_delivery">
-                            Out for Delivery
-                          </option>
-                          <option value="delivered">Delivered</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                        <HiOutlineChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none opacity-60" />
-                      </div>
+                                          "success"
+                                        ? "bg-brand-100 text-brand-700 focus:ring-brand-200"
+                                        : getStatusColor(selectedOrder.status) ===
+                                            "error"
+                                          ? "bg-rose-100 text-rose-700 focus:ring-rose-200"
+                                          : "bg-slate-100 text-slate-700 focus:ring-slate-200",
+                            )}>
+                            <option value="pending">Pending</option>
+                            <option value="confirmed">Confirmed</option>
+                            <option value="packed">Packed</option>
+                            <option value="out_for_delivery">
+                              Out for Delivery
+                            </option>
+                            <option value="delivered">Delivered</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                          <HiOutlineChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none opacity-60" />
+                        </div>
+                      )}
                     </div>
                   </div>
                 </motion.div>

@@ -7,12 +7,16 @@ const ChangeSponsorModal = ({ open, onClose, member, onSuccess }) => {
     const [newSponsorQuery, setNewSponsorQuery] = useState('');
     const [reason, setReason] = useState('');
     const [loading, setLoading] = useState(false);
+    const [reconcileIncome, setReconcileIncome] = useState(false);
+    const [reconcileSince, setReconcileSince] = useState('');
 
     useEffect(() => {
         if (!open) {
             setNewSponsorQuery('');
             setReason('');
             setLoading(false);
+            setReconcileIncome(false);
+            setReconcileSince('');
         }
     }, [open]);
 
@@ -51,9 +55,17 @@ const ChangeSponsorModal = ({ open, onClose, member, onSuccess }) => {
             const res = await adminMlmApi.changeSponsor(membershipId, {
                 newSponsorQuery: query,
                 reason: reason.trim() || undefined,
+                reconcileDirectActivationIncome: reconcileIncome,
+                reconcileSince: reconcileIncome && reconcileSince ? reconcileSince : undefined,
             });
             const data = res.data?.data || res.data?.result;
             toast.success(`Direct sponsor updated successfully to ${data?.newSponsor?.name || query}`);
+            const recon = data?.incomeReconciliation;
+            if (recon && (recon.processed > 0 || recon.skipped > 0)) {
+                toast.info(
+                    `Direct activation income reconciled: ${recon.processed} moved (₹${recon.totalAmount || 0})${recon.skipped ? `, ${recon.skipped} skipped` : ''}`
+                );
+            }
             onSuccess?.(data);
             onClose();
         } catch (err) {
@@ -133,6 +145,38 @@ const ChangeSponsorModal = ({ open, onClose, member, onSuccess }) => {
                             placeholder="Correction or support ticket request details"
                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                         />
+                    </div>
+
+                    {/* Income Reconciliation Option */}
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+                        <label className="flex items-start gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={reconcileIncome}
+                                onChange={(e) => setReconcileIncome(e.target.checked)}
+                                className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span className="text-xs font-semibold text-slate-800">
+                                Also move already-paid "Direct Referral Activation Income" from the old sponsor to the new sponsor
+                            </span>
+                        </label>
+                        <p className="text-[11px] text-slate-500 pl-6">
+                            Reverses the old sponsor's credited per-activation bonus for this member and re-credits the new sponsor. Skipped automatically if the old sponsor's wallet balance is insufficient.
+                        </p>
+                        {reconcileIncome && (
+                            <div className="pl-6">
+                                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                    Only reconcile credits since (optional)
+                                </label>
+                                <input
+                                    type="date"
+                                    value={reconcileSince}
+                                    onChange={(e) => setReconcileSince(e.target.value)}
+                                    className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                                />
+                                <p className="text-[10px] text-slate-400 mt-1">Leave blank to reconcile regardless of date.</p>
+                            </div>
+                        )}
                     </div>
 
                     {/* Safety Notice Callout */}
