@@ -205,8 +205,17 @@ const NotMemberView = ({ overview, pendingJoining, navigate }) => {
   const cfg = overview.config || {};
   const pending = pendingJoining || null;
   const [joining, setJoining] = useState(false);
+  const plans = cfg.joiningPlans || [];
+  const hasMultiplePlans = plans.length > 1;
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
+  const selectedPlan =
+    plans.find((p) => p._id === selectedPlanId) || plans[0] || null;
+  const displayPrice = selectedPlan ? selectedPlan.price : cfg.joiningPackagePrice;
+  const displayCredit = selectedPlan
+    ? selectedPlan.shoppingWalletCredit
+    : cfg.joiningPackageShoppingWalletCredit;
 
-  const joiningPriceConfigured = Number(cfg.joiningPackagePrice) > 0;
+  const joiningPriceConfigured = Number(displayPrice) > 0;
   const hasOpenIntent =
     pending && (pending.status === "CREATED" || pending.status === "PENDING_REVIEW");
   const canJoin = joiningPriceConfigured && !hasOpenIntent;
@@ -223,7 +232,7 @@ const NotMemberView = ({ overview, pendingJoining, navigate }) => {
     }
     setJoining(true);
     try {
-      const res = await mlmApi.initiateJoin(newJoinIdempotencyKey());
+      const res = await mlmApi.initiateJoin(newJoinIdempotencyKey(), selectedPlan?._id);
       const payload = res.data?.result ?? res.data?.data ?? res.data;
       const redirectUrl = payload?.redirectUrl;
       const paymentMode = payload?.paymentMode;
@@ -302,12 +311,45 @@ const NotMemberView = ({ overview, pendingJoining, navigate }) => {
           <h2 className="text-2xl font-black mt-2">
             Unlock the Rewards Program
           </h2>
-          <p className="text-sm opacity-90 mt-2 leading-relaxed">
-            Pay {formatINR(cfg.joiningPackagePrice)} once and get{" "}
-            <strong>{formatINR(cfg.joiningPackageShoppingWalletCredit)}</strong>{" "}
-            shopping credit instantly, plus access to referral bonuses on every
-            friend you bring in.
-          </p>
+
+          {hasMultiplePlans ? (
+            <>
+              <p className="text-sm opacity-90 mt-2 leading-relaxed">
+                Choose a joining package to get started — every package unlocks
+                the same referral bonuses on every friend you bring in.
+              </p>
+              <div className="mt-4 space-y-2">
+                {plans.map((plan) => (
+                  <button
+                    key={plan._id}
+                    type="button"
+                    onClick={() => setSelectedPlanId(plan._id)}
+                    className={`w-full text-left rounded-xl p-3 border-2 transition-colors ${
+                      selectedPlan?._id === plan._id
+                        ? "bg-white/15 border-white"
+                        : "bg-white/5 border-white/20 hover:border-white/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-sm">{plan.name}</span>
+                      <span className="font-black text-sm">{formatINR(plan.price)}</span>
+                    </div>
+                    <p className="text-xs opacity-80 mt-0.5">
+                      {formatINR(plan.shoppingWalletCredit)} shopping credit instantly
+                      {plan.description ? ` · ${plan.description}` : ""}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm opacity-90 mt-2 leading-relaxed">
+              Pay {formatINR(displayPrice)} once and get{" "}
+              <strong>{formatINR(displayCredit)}</strong>{" "}
+              shopping credit instantly, plus access to referral bonuses on every
+              friend you bring in.
+            </p>
+          )}
           <button
             onClick={handleJoin}
             disabled={joining || !canJoin}
@@ -433,7 +475,7 @@ const MemberDashboard = ({ overview, navigate, user, login, onRefresh }) => {
         {isUnpaid && (
           <ActivationCta
             membership={membership}
-            joiningPrice={config.joiningPackagePrice}
+            config={config}
             navigate={navigate}
           />
         )}
@@ -654,8 +696,14 @@ const MemberDashboard = ({ overview, navigate, user, login, onRefresh }) => {
   );
 };
 
-const ActivationCta = ({ membership, joiningPrice, navigate }) => {
+const ActivationCta = ({ membership, config, navigate }) => {
   const [activating, setActivating] = useState(false);
+  const plans = config?.joiningPlans || [];
+  const hasMultiplePlans = plans.length > 1;
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
+  const selectedPlan =
+    plans.find((p) => p._id === selectedPlanId) || plans[0] || null;
+  const joiningPrice = selectedPlan ? selectedPlan.price : config?.joiningPackagePrice;
   return (
   <div className="rounded-2xl bg-amber-50 border-2 border-amber-300 p-4">
     <div className="flex gap-3 items-start">
@@ -669,13 +717,26 @@ const ActivationCta = ({ membership, joiningPrice, navigate }) => {
           <strong>{formatINR(joiningPrice)}</strong> once to activate your
           earning plan and start receiving bonuses from your team.
         </p>
+        {hasMultiplePlans && (
+          <select
+            value={selectedPlan?._id || ""}
+            onChange={(e) => setSelectedPlanId(e.target.value)}
+            className="mt-2 w-full text-xs border border-amber-300 rounded-lg px-2 py-1.5 bg-white text-amber-900"
+          >
+            {plans.map((plan) => (
+              <option key={plan._id} value={plan._id}>
+                {plan.name} — {formatINR(plan.price)} ({formatINR(plan.shoppingWalletCredit)} credit)
+              </option>
+            ))}
+          </select>
+        )}
         <button
           disabled={activating}
           onClick={async () => {
             if (activating) return;
             setActivating(true);
             try {
-              const res = await mlmApi.initiateJoin(newJoinIdempotencyKey());
+              const res = await mlmApi.initiateJoin(newJoinIdempotencyKey(), selectedPlan?._id);
               const payload = res.data?.result ?? res.data?.data ?? res.data;
               const redirectUrl = payload?.redirectUrl;
               const paymentMode = payload?.paymentMode;

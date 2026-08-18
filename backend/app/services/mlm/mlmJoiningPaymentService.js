@@ -17,6 +17,7 @@ import {
 } from "../../constants/payment.js";
 import { getActivePaymentProvider } from "../payment/providerRegistry.js";
 import { getManualQrConfig, getMlmConfig } from "./mlmConfigService.js";
+import { getJoiningPlanById, getDefaultJoiningPlan } from "./mlmJoiningPlanService.js";
 import { activateMembershipFromJoiningPayment } from "./mlmActivationService.js";
 import { emitNotificationEvent } from "../../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.constants.js";
@@ -43,7 +44,9 @@ import logger from "../logger.js";
  * Errors (all surface a `statusCode`):
  *   - 401 AUTH_REQUIRED               — no userId on the request.
  *   - 422 MLM_DISABLED                — admin has not enabled MLM.
- *   - 422 JOINING_PRICE_UNCONFIGURED  — `joiningPackagePrice` <= 0.
+ *   - 422 JOINING_PRICE_UNCONFIGURED  — `joiningPackagePrice` <= 0 (legacy fallback path only).
+ *   - 404 JOINING_PLAN_NOT_FOUND      — supplied `joiningPlanId` doesn't resolve.
+ *   - 422 JOINING_PLAN_INACTIVE       — supplied `joiningPlanId` is no longer active.
  *   - 409 ALREADY_MEMBER              — caller has an ACTIVE membership.
  *   - 404 CUSTOMER_NOT_FOUND          — auth token references a missing user.
  */
@@ -204,7 +207,11 @@ async function duplicateJoiningPaymentFromRaceOrThrow(error, { userId, idempoten
  * Initiate a joining payment for the customer. Returns the gateway
  * redirect URL. Idempotent on `idempotencyKey`.
  */
-export async function initiateJoiningPayment({ userId, idempotencyKey = null }) {
+export async function initiateJoiningPayment({
+  userId,
+  idempotencyKey = null,
+  joiningPlanId = null,
+}) {
   if (!userId) {
     const err = new Error("Authentication required");
     err.statusCode = 401;
@@ -222,7 +229,31 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     throw err;
   }
 
-  const joiningPrice = Number(cfg.joiningPackagePrice) || 0;
+  // Resolve which joining plan this payment is for. A caller-supplied
+  // id is validated active; an omitted id (older/unmigrated client)
+  // falls back to the lowest-sortOrder active plan. Plan-active status
+  // is only checked HERE at intent-creation time — never re-checked at
+  // activation — so an abandoned-then-resumed checkout for a plan the
+  // admin has since deactivated still completes normally.
+  let plan = null;
+  if (joiningPlanId) {
+    plan = await getJoiningPlanById(joiningPlanId);
+    if (!plan.active) {
+      const err = new Error("This joining plan is no longer available.");
+      err.statusCode = 422;
+      err.code = "JOINING_PLAN_INACTIVE";
+      throw err;
+    }
+  } else {
+    plan = await getDefaultJoiningPlan();
+  }
+
+  // Legacy fallback: no `MlmJoiningPlan` rows exist yet at all (e.g. the
+  // seed script hasn't run in this environment) — behave exactly as
+  // before multi-plan support, reading the single global config.
+  const joiningPrice = plan
+    ? Number(plan.price) || 0
+    : Number(cfg.joiningPackagePrice) || 0;
   if (joiningPrice <= 0) {
     const err = new Error(
       "Joining package price is not configured. Please contact support.",
@@ -231,7 +262,9 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     err.code = "JOINING_PRICE_UNCONFIGURED";
     throw err;
   }
-  const shoppingCredit = Number(cfg.joiningPackageShoppingWalletCredit) || 0;
+  const shoppingCredit = plan
+    ? Number(plan.shoppingWalletCredit) || 0
+    : Number(cfg.joiningPackageShoppingWalletCredit) || 0;
 
   const existingMembership = await MlmMembership.findOne({ userId }).lean();
   if (
@@ -289,11 +322,14 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
     };
   }
 
-  // Reuse an open intent of the SAME payment mode if the customer
-  // hammered Join Now from a different client without an idempotency
-  // key. Mode-scoped so a toggle flip never resurrects a stale row in
-  // the other flow. Gateway path treats legacy rows (where the field
-  // is missing or still `phonepe`) as razorpay so we don't double-charge.
+  // Reuse an open intent of the SAME payment mode AND the SAME joining
+  // plan if the customer hammered Join Now from a different client
+  // without an idempotency key. Mode-scoped so a toggle flip never
+  // resurrects a stale row in the other flow. Gateway path treats legacy
+  // rows (where the field is missing or still `phonepe`) as razorpay so
+  // we don't double-charge. Plan-scoped so abandoning a checkout for one
+  // plan and picking a different one never silently resurrects the
+  // wrong-priced stale row.
   const openStatuses = isManualQr
     ? [PAYMENT_STATUS.CREATED, PAYMENT_STATUS.PENDING_REVIEW]
     : [PAYMENT_STATUS.CREATED, PAYMENT_STATUS.PENDING];
@@ -307,9 +343,13 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
           { paymentMode: null },
         ],
       };
+  const joiningPlanFilter = plan
+    ? { joiningPlanId: plan._id }
+    : { joiningPlanId: { $in: [null, undefined] } };
   const existingOpen = await MlmJoiningPayment.findOne({
     customer: userId,
     ...paymentModeFilter,
+    ...joiningPlanFilter,
     status: { $in: openStatuses },
   }).sort({ createdAt: -1 });
   if (
@@ -360,6 +400,8 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
         status: PAYMENT_STATUS.CREATED,
         joiningPriceSnapshot: joiningPrice,
         shoppingCreditSnapshot: shoppingCredit,
+        joiningPlanId: plan?._id || null,
+        joiningPlanNameSnapshot: plan?.name || null,
         sponsorReferralCodeSnapshot: customer.pendingSponsorReferralCode || null,
         idempotencyKey: effectiveIdempotencyKey,
         rawGatewayResponse: {
@@ -438,6 +480,8 @@ export async function initiateJoiningPayment({ userId, idempotencyKey = null }) 
       status: PAYMENT_STATUS.PENDING,
       joiningPriceSnapshot: joiningPrice,
       shoppingCreditSnapshot: shoppingCredit,
+      joiningPlanId: plan?._id || null,
+      joiningPlanNameSnapshot: plan?.name || null,
       sponsorReferralCodeSnapshot: customer.pendingSponsorReferralCode || null,
       idempotencyKey: effectiveIdempotencyKey,
       rawGatewayResponse: {

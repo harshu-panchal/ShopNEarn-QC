@@ -72,12 +72,12 @@ export const mlmApi = {
   // same click — the backend only dedupes a repeated "Join Now" tap
   // against an in-flight/just-created intent when it sees the same key
   // twice; a fresh key every call defeats that entirely.
-  initiateJoin: (idempotencyKey) => {
+  initiateJoin: (idempotencyKey, joiningPlanId) => {
     invalidateCache("/customer/mlm/membership");
-    return axiosInstance.post(
-      "/customer/mlm/join/initiate",
-      idempotencyKey ? { idempotencyKey } : {},
-    );
+    const body = {};
+    if (idempotencyKey) body.idempotencyKey = idempotencyKey;
+    if (joiningPlanId) body.joiningPlanId = joiningPlanId;
+    return axiosInstance.post("/customer/mlm/join/initiate", body);
   },
 
   /**

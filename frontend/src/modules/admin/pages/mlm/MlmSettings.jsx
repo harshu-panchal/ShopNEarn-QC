@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Plus,
@@ -217,7 +218,16 @@ const MlmSettings = () => {
         </div>
       </Section>
 
-      <Section title="Plan A Activation">
+      <Section title="Plan A Activation — Legacy Fallback Price">
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 leading-relaxed">
+          Joining packages are now managed on the{" "}
+          <Link to="/admin/mlm/joining-plans" className="font-bold underline">
+            Joining Plans
+          </Link>{" "}
+          page, where admin can offer customers multiple packages at signup.
+          The two fields below are only used as a fallback if no active
+          joining plan exists yet.
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <NumField
             label="Activation Amount (₹)"

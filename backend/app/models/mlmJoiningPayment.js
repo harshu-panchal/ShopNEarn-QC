@@ -102,6 +102,21 @@ const mlmJoiningPaymentSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    // Which admin-managed joining plan this payment was created against.
+    // Null for legacy rows created before multi-plan support (they fall
+    // back to `Setting.mlm.joiningPackage*` — see `resolveJoiningPackageShoppingCredit`).
+    joiningPlanId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MlmJoiningPlan",
+      default: null,
+      index: true,
+    },
+    // Snapshot of the plan's name at intent time, so a historical row
+    // still reads sensibly even if the plan is later renamed/deleted.
+    joiningPlanNameSnapshot: {
+      type: String,
+      default: null,
+    },
     sponsorReferralCodeSnapshot: {
       type: String,
       default: null,

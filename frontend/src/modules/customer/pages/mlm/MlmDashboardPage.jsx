@@ -110,8 +110,17 @@ const NotMemberView = ({ data, navigate }) => {
   const cfg = data.config || {};
   const pending = data.pendingJoiningPayment || null;
   const [joining, setJoining] = useState(false);
+  const plans = cfg.joiningPlans || [];
+  const hasMultiplePlans = plans.length > 1;
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
+  const selectedPlan =
+    plans.find((p) => p._id === selectedPlanId) || plans[0] || null;
+  const displayPrice = selectedPlan ? selectedPlan.price : cfg.joiningPackagePrice;
+  const displayCredit = selectedPlan
+    ? selectedPlan.shoppingWalletCredit
+    : cfg.joiningPackageShoppingWalletCredit;
 
-  const joiningPriceConfigured = Number(cfg.joiningPackagePrice) > 0;
+  const joiningPriceConfigured = Number(displayPrice) > 0;
   const hasOpenIntent =
     pending && (pending.status === "CREATED" || pending.status === "PENDING_REVIEW");
   // Block re-initiation while a payment is open (avoids minting a
@@ -134,7 +143,7 @@ const NotMemberView = ({ data, navigate }) => {
     }
     setJoining(true);
     try {
-      const res = await mlmApi.initiateJoin(newJoinIdempotencyKey());
+      const res = await mlmApi.initiateJoin(newJoinIdempotencyKey(), selectedPlan?._id);
       const payload = res.data?.result ?? res.data?.data ?? res.data;
       const redirectUrl = payload?.redirectUrl;
       const paymentMode = payload?.paymentMode;
@@ -218,12 +227,45 @@ const NotMemberView = ({ data, navigate }) => {
             Become a member
           </div>
           <h2 className="text-2xl font-black mt-2">Join the Rewards Program</h2>
-          <p className="text-sm opacity-90 mt-2 leading-relaxed">
-            Pay {formatINR(cfg.joiningPackagePrice)} once and get{" "}
-            <strong>{formatINR(cfg.joiningPackageShoppingWalletCredit)}</strong>{" "}
-            shopping credit instantly, plus access to referral bonuses on every
-            friend you bring in.
-          </p>
+
+          {hasMultiplePlans ? (
+            <>
+              <p className="text-sm opacity-90 mt-2 leading-relaxed">
+                Choose a joining package to get started — every package unlocks
+                the same referral bonuses on every friend you bring in.
+              </p>
+              <div className="mt-4 space-y-2">
+                {plans.map((plan) => (
+                  <button
+                    key={plan._id}
+                    type="button"
+                    onClick={() => setSelectedPlanId(plan._id)}
+                    className={`w-full text-left rounded-xl p-3 border-2 transition-colors ${
+                      selectedPlan?._id === plan._id
+                        ? "bg-white/15 border-white"
+                        : "bg-white/5 border-white/20 hover:border-white/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-sm">{plan.name}</span>
+                      <span className="font-black text-sm">{formatINR(plan.price)}</span>
+                    </div>
+                    <p className="text-xs opacity-80 mt-0.5">
+                      {formatINR(plan.shoppingWalletCredit)} shopping credit instantly
+                      {plan.description ? ` · ${plan.description}` : ""}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm opacity-90 mt-2 leading-relaxed">
+              Pay {formatINR(displayPrice)} once and get{" "}
+              <strong>{formatINR(displayCredit)}</strong>{" "}
+              shopping credit instantly, plus access to referral bonuses on every
+              friend you bring in.
+            </p>
+          )}
           <button
             onClick={handleJoin}
             disabled={joining || !canJoin}
@@ -253,7 +295,7 @@ const NotMemberView = ({ data, navigate }) => {
           )}
         </div>
 
-        <BenefitsCard cfg={cfg} />
+        <BenefitsCard cfg={cfg} shoppingWalletCredit={displayCredit} />
       </div>
     </div>
   );
@@ -355,14 +397,16 @@ const PendingPaymentBanner = ({ pending, onResume, onRetry, retrying }) => {
   return null;
 };
 
-const BenefitsCard = ({ cfg }) => (
+const BenefitsCard = ({ cfg, shoppingWalletCredit }) => (
   <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
     <h3 className="text-base font-bold text-slate-900">What you get</h3>
     <ul className="space-y-2 text-sm text-slate-700">
       <li className="flex items-start gap-2">
         <Gift size={18} className="text-emerald-600 mt-0.5 flex-shrink-0" />
         <span>
-          <strong>{formatINR(cfg.joiningPackageShoppingWalletCredit)}</strong>{" "}
+          <strong>
+            {formatINR(shoppingWalletCredit ?? cfg.joiningPackageShoppingWalletCredit)}
+          </strong>{" "}
           shopping credit on join (redeemable on any product)
         </span>
       </li>

@@ -7,6 +7,8 @@ import MlmMembership from "../../models/mlmMembership.js";
 import MlmCommissionEvent from "../../models/mlmCommissionEvent.js";
 import MlmWithdrawalRequest from "../../models/mlmWithdrawalRequest.js";
 import MlmRewardMilestone from "../../models/mlmRewardMilestone.js";
+import MlmJoiningPlan from "../../models/mlmJoiningPlan.js";
+import { wouldLeaveNoActivePlans } from "../../services/mlm/mlmJoiningPlanService.js";
 import {
   validateMlmSchema,
   updateMlmSettingsSchema,
@@ -461,6 +463,7 @@ export const getMlmMemberDetail = async (req, res) => {
 export const approveMlmMember = async (req, res) => {
   try {
     const reason = String(req.body?.reason || "").trim();
+    const joiningPlanId = req.body?.joiningPlanId || null;
     const membership = await MlmMembership.findById(req.params.id);
     if (!membership) {
       return handleResponse(res, 404, "Member not found");
@@ -501,6 +504,7 @@ export const approveMlmMember = async (req, res) => {
       membershipId: req.params.id,
       adminId: req.user?.id,
       reason,
+      joiningPlanId,
     });
 
     // Invalidate any cached admin listings / member detail reads
@@ -1739,6 +1743,108 @@ function sanitizeMilestonePayload(raw) {
   }
   return out;
 }
+
+/* ───────── MLM Joining Plans — admin CRUD ───────── */
+
+function sanitizeJoiningPlanPayload(raw) {
+  const out = {};
+  const passthrough = ["name", "description", "price", "shoppingWalletCredit", "sortOrder", "active"];
+  for (const k of passthrough) {
+    if (raw[k] !== undefined) out[k] = raw[k];
+  }
+  if (out.name !== undefined) out.name = String(out.name).trim();
+  if (out.description !== undefined) out.description = String(out.description).trim();
+  if (out.price !== undefined) out.price = Number(out.price) || 0;
+  if (out.shoppingWalletCredit !== undefined) {
+    out.shoppingWalletCredit = Number(out.shoppingWalletCredit) || 0;
+  }
+  if (out.sortOrder !== undefined) out.sortOrder = Number(out.sortOrder) || 0;
+  if (out.active !== undefined) out.active = !!out.active;
+  return out;
+}
+
+/** GET /api/admin/mlm/joining-plans */
+export const listJoiningPlans = async (req, res) => {
+  try {
+    const items = await MlmJoiningPlan.find({})
+      .sort({ active: -1, sortOrder: 1, price: 1 })
+      .lean();
+    return handleResponse(res, 200, "Joining plans", { items });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/** POST /api/admin/mlm/joining-plans */
+export const createJoiningPlan = async (req, res) => {
+  try {
+    const payload = sanitizeJoiningPlanPayload(req.body || {});
+    if (!payload.name) {
+      return handleResponse(res, 400, "name is required");
+    }
+    if (!(payload.price >= 0) || !(payload.shoppingWalletCredit >= 0)) {
+      return handleResponse(res, 400, "price and shoppingWalletCredit must be >= 0");
+    }
+    payload.createdBy = req.user?.id || null;
+    payload.updatedBy = req.user?.id || null;
+    const doc = await MlmJoiningPlan.create(payload);
+    return handleResponse(res, 201, "Joining plan created", doc);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+/** PUT /api/admin/mlm/joining-plans/:id */
+export const updateJoiningPlan = async (req, res) => {
+  try {
+    const payload = sanitizeJoiningPlanPayload(req.body || {});
+    if (payload.active === false) {
+      const wouldEmpty = await wouldLeaveNoActivePlans(req.params.id);
+      if (wouldEmpty) {
+        return handleResponse(
+          res,
+          422,
+          "At least one active joining plan is required — activate another plan before deactivating this one.",
+        );
+      }
+    }
+    payload.updatedBy = req.user?.id || null;
+    const doc = await MlmJoiningPlan.findByIdAndUpdate(
+      req.params.id,
+      { $set: payload },
+      { new: true },
+    );
+    if (!doc) return handleResponse(res, 404, "Joining plan not found");
+    return handleResponse(res, 200, "Joining plan updated", doc);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+/** DELETE /api/admin/mlm/joining-plans/:id — soft delete */
+export const deleteJoiningPlan = async (req, res) => {
+  try {
+    const doc = await MlmJoiningPlan.findById(req.params.id);
+    if (!doc) return handleResponse(res, 404, "Joining plan not found");
+    if (doc.active) {
+      const wouldEmpty = await wouldLeaveNoActivePlans(req.params.id);
+      if (wouldEmpty) {
+        return handleResponse(
+          res,
+          422,
+          "At least one active joining plan is required — activate another plan before deleting this one.",
+        );
+      }
+    }
+    doc.deletedAt = new Date();
+    doc.deletedBy = req.user?.id || null;
+    doc.active = false;
+    await doc.save();
+    return handleResponse(res, 200, "Joining plan deleted", { id: doc._id });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
 
 /**
  * POST /api/admin/mlm/members/:id/adjust-wallet

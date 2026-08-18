@@ -8,7 +8,12 @@ import {
 } from "../../constants/mlm.js";
 import { getMlmConfig } from "./mlmConfigService.js";
 import { syncCustomerMlmProjection } from "./mlmMembershipService.js";
-import { reconcileDirectReferralActivationIncomeOnSponsorChange } from "./mlmSignupBonusService.js";
+// Dynamically imported (not statically) inside `executeChangeDirectSponsor`
+// below: `mlmSignupBonusService.js` pulls in the whole bonus-engine
+// dependency graph (mlmBonusEngineService, mlmBinaryPairIncomeService,
+// ...), which this module otherwise has no reason to load eagerly —
+// keeps `mlmBinaryMoveService.js` lightweight for callers (e.g. plain
+// binary-tree moves) that never touch income reconciliation.
 
 function makeError(message, statusCode = 400, code) {
   const err = new Error(message);
@@ -634,6 +639,8 @@ export async function executeChangeDirectSponsor({
       }
 
       if (reconcileDirectActivationIncome && oldSponsorUserId) {
+        const { reconcileDirectReferralActivationIncomeOnSponsorChange } =
+          await import("./mlmSignupBonusService.js");
         incomeReconciliation = await reconcileDirectReferralActivationIncomeOnSponsorChange({
           memberUserId: m.userId,
           oldSponsorUserId,

@@ -117,6 +117,18 @@ const mlmMembershipSchema = new mongoose.Schema(
     planAJoinedAt: { type: Date, default: Date.now },
     planBJoinedAt: { type: Date, default: null },
 
+    // Which admin-managed joining package (`MlmJoiningPlan`) this member
+    // joined under. Informational/reporting only — copied from the
+    // `MlmJoiningPayment` row at activation time. Does NOT drive any
+    // bonus computation; `planType` (A/B) remains the sole driver of
+    // the compensation engine.
+    joiningPlanId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MlmJoiningPlan",
+      default: null,
+      index: true,
+    },
+
     // Sponsor (unilevel) edge.
     sponsorId: {
       type: mongoose.Schema.Types.ObjectId,

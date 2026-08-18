@@ -28,6 +28,7 @@ import {
   getManualQrConfig,
   getMlmConfig,
 } from "../services/mlm/mlmConfigService.js";
+import { listActiveJoiningPlans } from "../services/mlm/mlmJoiningPlanService.js";
 import { getBinaryPairIncomePreview } from "../services/mlm/mlmBinaryPairIncomeService.js";
 import { buildWalletHistoryQuery, WALLET_HISTORY_CATEGORIES } from "../services/finance/walletHistoryQuery.js";
 import {
@@ -359,7 +360,7 @@ function todayIstDateString(now = new Date()) {
 export const getMyMembership = async (req, res) => {
   try {
     const userId = req.user.id;
-    const [membership, wallet, cfg, registeredAtMap] = await Promise.all([
+    const [membership, wallet, cfg, registeredAtMap, joiningPlans] = await Promise.all([
       getMembershipByUserId(userId),
       Wallet.findOne(
         { ownerType: OWNER_TYPE.CUSTOMER, ownerId: userId },
@@ -372,6 +373,7 @@ export const getMyMembership = async (req, res) => {
       ).lean(),
       getMlmConfig(),
       lookupMembershipJoinedAtByUserIds([userId]),
+      listActiveJoiningPlans(),
     ]);
     const registeredAt = registeredAtMap.get(String(userId)) || null;
 
@@ -488,6 +490,7 @@ export const getMyMembership = async (req, res) => {
         joiningPackagePrice: cfg.joiningPackagePrice,
         joiningPackageShoppingWalletCredit:
           cfg.joiningPackageShoppingWalletCredit,
+        joiningPlans,
         joiningPaymentMode:
           cfg.joiningPaymentMode === "razorpay" ||
           cfg.joiningPaymentMode === "phonepe"
@@ -831,7 +834,8 @@ export const initiateJoin = async (req, res) => {
     const userId = req.user.id;
     const idempotencyKey =
       req.headers["idempotency-key"] || req.body?.idempotencyKey || null;
-    const result = await initiateJoiningPayment({ userId, idempotencyKey });
+    const joiningPlanId = req.body?.joiningPlanId || null;
+    const result = await initiateJoiningPayment({ userId, idempotencyKey, joiningPlanId });
     return handleResponse(res, 200, "Joining payment initiated", result);
   } catch (error) {
     return handleResponse(
@@ -1073,7 +1077,7 @@ export const getDashboardOverview = async (req, res) => {
     monthStart.setUTCHours(0, 0, 0, 0);
     monthStart.setUTCDate(1);
 
-    const [membership, wallet, cfg, registeredAtMap] = await Promise.all([
+    const [membership, wallet, cfg, registeredAtMap, joiningPlans] = await Promise.all([
       getMembershipByUserId(userId),
       Wallet.findOne(
         { ownerType: OWNER_TYPE.CUSTOMER, ownerId: userId },
@@ -1086,6 +1090,7 @@ export const getDashboardOverview = async (req, res) => {
       ).lean(),
       getMlmConfig(),
       lookupMembershipJoinedAtByUserIds([userId]),
+      listActiveJoiningPlans(),
     ]);
     const registeredAt = registeredAtMap.get(String(userId)) || null;
 
@@ -1339,6 +1344,7 @@ export const getDashboardOverview = async (req, res) => {
         joiningPackagePrice: cfg.joiningPackagePrice,
         joiningPackageShoppingWalletCredit:
           cfg.joiningPackageShoppingWalletCredit,
+        joiningPlans,
         withdrawalMinAmount: cfg.withdrawalMinAmount,
         binaryPairIncomeTiers: cfg.binaryPairIncomeTiers || [],
         planAPairBonusReleaseCooldownDays:

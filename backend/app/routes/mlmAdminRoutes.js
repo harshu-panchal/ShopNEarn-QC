@@ -7,9 +7,11 @@ import {
   approveUpgradeReview,
   approveWithdrawal,
   createMilestoneRule,
+  createJoiningPlan,
   deactivateMember,
   toggleBlockMember,
   deleteMilestoneRule,
+  deleteJoiningPlan,
   getMlmDashboard,
   getMlmMemberDetail,
   getMlmMemberDownlineTree,
@@ -19,6 +21,8 @@ import {
   listJoiningReviews,
   listUpgradeReviews,
   listMilestoneRules,
+  listJoiningPlans,
+  updateJoiningPlan,
   listMlmMembers,
   exportMlmMembers,
   rejectJoiningReview,
@@ -90,6 +94,11 @@ router.get("/milestone-rules", ...adminPermissionGuard("mlm:settings"), listMile
 router.post("/milestone-rules", ...adminPermissionGuard("mlm:settings"), createMilestoneRule);
 router.put("/milestone-rules/:id", ...adminPermissionGuard("mlm:settings"), updateMilestoneRule);
 router.delete("/milestone-rules/:id", ...adminPermissionGuard("mlm:settings"), deleteMilestoneRule);
+
+router.get("/joining-plans", ...adminPermissionGuard("mlm:settings"), listJoiningPlans);
+router.post("/joining-plans", ...adminPermissionGuard("mlm:settings"), createJoiningPlan);
+router.put("/joining-plans/:id", ...adminPermissionGuard("mlm:settings"), updateJoiningPlan);
+router.delete("/joining-plans/:id", ...adminPermissionGuard("mlm:settings"), deleteJoiningPlan);
 
 router.get("/payout-reports", ...adminPermissionGuard("mlm:payout"), listMlmPayoutReports);
 router.get("/payout-reports/:date/export", ...adminPermissionGuard("mlm:payout"), exportMlmPayoutReport);

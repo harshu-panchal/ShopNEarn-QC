@@ -173,6 +173,11 @@ export const adminMlmApi = {
     updateMilestoneRule: (id, data) => axiosInstance.put(`/admin/mlm/milestone-rules/${id}`, data),
     deleteMilestoneRule: (id) => axiosInstance.delete(`/admin/mlm/milestone-rules/${id}`),
 
+    listJoiningPlans: () => axiosInstance.get('/admin/mlm/joining-plans'),
+    createJoiningPlan: (data) => axiosInstance.post('/admin/mlm/joining-plans', data),
+    updateJoiningPlan: (id, data) => axiosInstance.put(`/admin/mlm/joining-plans/${id}`, data),
+    deleteJoiningPlan: (id) => axiosInstance.delete(`/admin/mlm/joining-plans/${id}`),
+
     verifyMemberWallet: (id) => axiosInstance.get(`/admin/mlm/members/${id}/wallet-verification`),
 
     listPayoutReports: (params) =>

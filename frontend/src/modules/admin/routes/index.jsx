@@ -114,6 +114,7 @@ const MlmUpgradeReviews = React.lazy(() =>
 );
 const MlmSettings = React.lazy(() => import("../pages/mlm/MlmSettings"));
 const MlmMilestoneRules = React.lazy(() => import("../pages/mlm/MlmMilestoneRules"));
+const MlmJoiningPlans = React.lazy(() => import("../pages/mlm/MlmJoiningPlans"));
 const MlmPayoutReports = React.lazy(() => import("../pages/mlm/MlmPayoutReports"));
 const MlmPayoutReportDetail = React.lazy(() => import("../pages/mlm/MlmPayoutReportDetail"));
 const FranchiseAdminDashboard = React.lazy(() => import("../pages/franchise/FranchiseAdminDashboard"));
@@ -243,6 +244,7 @@ const navItems = [
       { label: "Withdrawals", path: "/admin/mlm/withdrawals", permission: "mlm:view" },
       { label: "Payout Reports", path: "/admin/mlm/payout-reports", permission: "mlm:payout" },
       { label: "Milestones", path: "/admin/mlm/milestones", permission: "mlm:settings" },
+      { label: "Joining Plans", path: "/admin/mlm/joining-plans", permission: "mlm:settings" },
       { label: "Settings", path: "/admin/mlm/settings", permission: "mlm:settings" },
     ],
   },
@@ -417,6 +419,7 @@ const AdminRoutes = () => {
         <Route path="/mlm/joining-reviews" element={withPermission("mlm:view", <MlmJoiningReviews />)} />
         <Route path="/mlm/upgrade-reviews" element={withPermission("mlm:view", <MlmUpgradeReviews />)} />
         <Route path="/mlm/milestones" element={withPermission("mlm:settings", <MlmMilestoneRules />)} />
+        <Route path="/mlm/joining-plans" element={withPermission("mlm:settings", <MlmJoiningPlans />)} />
         <Route path="/mlm/settings" element={withPermission("mlm:settings", <MlmSettings />)} />
         <Route path="/franchise" element={withPermission("franchise:view", <FranchiseAdminDashboard />)} />
         <Route path="/franchise/registrations" element={withPermission("franchise:view", <FranchiseRegistrations />)} />

@@ -31,6 +31,7 @@ import {
   applyDirectReferralActivationBonusInSession,
 } from "./mlmSignupBonusService.js";
 import { getMlmConfig, resolveJoiningPackageShoppingCredit } from "./mlmConfigService.js";
+import { getJoiningPlanById, getDefaultJoiningPlan } from "./mlmJoiningPlanService.js";
 import { emitNotificationEvent } from "../../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.constants.js";
 import logger from "../logger.js";
@@ -150,12 +151,23 @@ export async function activateMembershipFromJoiningPayment(
     const { membership } = await createOrGetMembership(customerId, { session });
     const wasPreviouslyUnpaid =
       membership.status === MLM_MEMBERSHIP_STATUS.REGISTERED_UNPAID;
+
+    // Record which joining plan this member came in under — informational
+    // only, never drives bonus computation (see `MlmMembership.joiningPlanId`).
+    let membershipNeedsPlanSave = false;
+    if (!membership.joiningPlanId && payment.joiningPlanId) {
+      membership.joiningPlanId = payment.joiningPlanId;
+      membershipNeedsPlanSave = true;
+    }
+
     if (wasPreviouslyUnpaid) {
       membership.status = MLM_MEMBERSHIP_STATUS.ACTIVE;
       membership.planAJoinedAt = membership.planAJoinedAt || new Date();
       await membership.save({ session });
 
       await transitionUplineDownlineStatus(membership.sponsorChain, { session });
+    } else if (membershipNeedsPlanSave) {
+      await membership.save({ session });
     }
 
     // Prefer the snapshot taken at intent time; fall back to the live
@@ -368,6 +380,7 @@ export async function adminActivateMembership({
   membershipId,
   adminId,
   reason = "",
+  joiningPlanId = null,
   correlationId = null,
   session: externalSession,
 } = {}) {
@@ -412,6 +425,20 @@ export async function adminActivateMembership({
 
     const customerId = membership.userId;
 
+    // No payment row exists on this path (approval without payment), so
+    // there's no snapshot to draw from — resolve the joining plan
+    // directly: caller-supplied id, else the lowest-sortOrder active
+    // plan, else fall back to the legacy global config below.
+    let plan = null;
+    if (joiningPlanId) {
+      plan = await getJoiningPlanById(joiningPlanId, { session });
+    } else {
+      plan = await getDefaultJoiningPlan({ session });
+    }
+    if (plan && !membership.joiningPlanId) {
+      membership.joiningPlanId = plan._id;
+    }
+
     // Flip to ACTIVE / Plan A and stamp the audit fields.
     membership.status = MLM_MEMBERSHIP_STATUS.ACTIVE;
     membership.planType = MLM_PLAN_TYPE.A;
@@ -435,8 +462,9 @@ export async function adminActivateMembership({
     await transitionUplineDownlineStatus(membership.sponsorChain, { session });
 
     const cfg = await getMlmConfig();
-    const shoppingCreditAmount =
-      Number(cfg.joiningPackageShoppingWalletCredit) || 0;
+    const shoppingCreditAmount = plan
+      ? Number(plan.shoppingWalletCredit) || 0
+      : Number(cfg.joiningPackageShoppingWalletCredit) || 0;
     let shoppingCreditResult = null;
     // Same cross-path double-credit guard as the paid-activation path in
     // `activateMembershipFromJoiningPayment` — this admin path keys its
