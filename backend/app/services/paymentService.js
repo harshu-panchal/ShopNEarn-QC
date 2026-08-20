@@ -292,6 +292,10 @@ async function moveOrderToSellerPendingAfterPayment(orderId) {
   const isFranchiseOrder = !!existing.franchisePartnerId;
   const now = new Date();
   const sellerPendingUntil = new Date(now.getTime() + DEFAULT_SELLER_TIMEOUT_MS());
+  // Franchise-acceptance timeout only starts once the franchise is
+  // actually notified (payment captured) — mirrors the hub's own
+  // sellerPendingExpiresAt window. Reconciled by orderAutoCancelJob.
+  const franchisePendingUntil = new Date(now.getTime() + DEFAULT_SELLER_TIMEOUT_MS());
   const updatedOrder = await Order.findOneAndUpdate(
     {
       _id: orderId,
@@ -306,6 +310,7 @@ async function moveOrderToSellerPendingAfterPayment(orderId) {
             franchiseStatus: FRANCHISE_ORDER_STATUS.PENDING,
             sellerPendingExpiresAt: null,
             expiresAt: null,
+            franchisePendingExpiresAt: franchisePendingUntil,
           }
         : {
             workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,

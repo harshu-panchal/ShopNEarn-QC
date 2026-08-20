@@ -95,8 +95,12 @@ const FranchisePosPage = () => {
   }, [search]);
 
   useEffect(() => {
-    if (!loadingMe && posEnabled) loadProducts("");
-  }, [loadingMe, posEnabled, loadProducts]);
+    if (loadingMe || !posEnabled) return;
+    const timer = setTimeout(() => {
+      loadProducts(search);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [search, loadingMe, posEnabled, loadProducts]);
 
   const cartLines = useMemo(() => {
     return Object.entries(cart)
@@ -294,7 +298,7 @@ const FranchisePosPage = () => {
               <EmptyState message="Hub catalog is empty or unavailable." />
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {products.map((product) => {
+                {(search.trim() ? products.filter(p => (p.name || '').toLowerCase().includes(search.toLowerCase().trim())) : products).map((product) => {
                   const id = String(product._id);
                   const inCart = cart[id] || 0;
                   const canSell = product.canSell && product.onHandQty > 0;

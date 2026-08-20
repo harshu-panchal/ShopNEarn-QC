@@ -366,6 +366,10 @@ const orderSchema = new mongoose.Schema(
       default: 1,
     },
     sellerPendingExpiresAt: Date,
+    // Single-nearest-franchise model: how long the assigned franchise
+    // partner has to accept before the order auto-passes to the hub
+    // (reconciled by orderAutoCancelJob, same window as sellerPendingExpiresAt).
+    franchisePendingExpiresAt: Date,
     deliverySearchExpiresAt: Date,
     sellerAcceptedAt: Date,
     assignedAt: Date,
@@ -713,6 +717,7 @@ orderSchema.index({ customer: 1, status: 1, createdAt: -1 });
 orderSchema.index({ status: 1, expiresAt: 1 });
 orderSchema.index({ seller: 1, returnStatus: 1, returnRequestedAt: -1 });
 orderSchema.index({ workflowStatus: 1, sellerPendingExpiresAt: 1 });
+orderSchema.index({ workflowStatus: 1, franchisePendingExpiresAt: 1 });
 orderSchema.index({ workflowStatus: 1, deliverySearchExpiresAt: 1 });
 orderSchema.index({ returnStatus: 1, returnSearchExpiresAt: 1 });
 orderSchema.index({ deliveryBoy: 1, workflowStatus: 1 });

@@ -265,6 +265,10 @@ export async function initiateJoiningPayment({
   const shoppingCredit = plan
     ? Number(plan.shoppingWalletCredit) || 0
     : Number(cfg.joiningPackageShoppingWalletCredit) || 0;
+  // Legacy fallback (no plan rows exist yet): null, not 0 — means "use
+  // the global Setting.mlm.* bonus config", resolved downstream at
+  // bonus-crediting time.
+  const benefitBaseAmount = plan ? Number(plan.benefitBaseAmount) || 0 : null;
 
   const existingMembership = await MlmMembership.findOne({ userId }).lean();
   if (
@@ -400,6 +404,7 @@ export async function initiateJoiningPayment({
         status: PAYMENT_STATUS.CREATED,
         joiningPriceSnapshot: joiningPrice,
         shoppingCreditSnapshot: shoppingCredit,
+        benefitBaseAmountSnapshot: benefitBaseAmount,
         joiningPlanId: plan?._id || null,
         joiningPlanNameSnapshot: plan?.name || null,
         sponsorReferralCodeSnapshot: customer.pendingSponsorReferralCode || null,
@@ -480,6 +485,7 @@ export async function initiateJoiningPayment({
       status: PAYMENT_STATUS.PENDING,
       joiningPriceSnapshot: joiningPrice,
       shoppingCreditSnapshot: shoppingCredit,
+      benefitBaseAmountSnapshot: benefitBaseAmount,
       joiningPlanId: plan?._id || null,
       joiningPlanNameSnapshot: plan?.name || null,
       sponsorReferralCodeSnapshot: customer.pendingSponsorReferralCode || null,

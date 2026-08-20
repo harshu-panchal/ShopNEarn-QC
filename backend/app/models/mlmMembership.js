@@ -129,6 +129,18 @@ const mlmMembershipSchema = new mongoose.Schema(
       index: true,
     },
 
+    // Snapshot of the joining plan's `benefitBaseAmount` at activation
+    // time — scales this member's sponsor's Per-Activation, First-Pair,
+    // and Pair-Match bonuses (see `mlmSignupBonusService.js` and
+    // `mlmBinaryPairIncomeService.js`). `null` = legacy member / no
+    // plan snapshot, falls back to the global `Setting.mlm.*` bonus
+    // config; an explicit 0 is honored literally. Never mutates after
+    // activation, even if the plan is edited later.
+    benefitBaseAmount: {
+      type: Number,
+      default: null,
+    },
+
     // Sponsor (unilevel) edge.
     sponsorId: {
       type: mongoose.Schema.Types.ObjectId,

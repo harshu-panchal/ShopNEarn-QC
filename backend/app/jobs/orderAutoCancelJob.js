@@ -6,6 +6,7 @@ import {
   processDeliveryTimeoutJob,
   processReturnPickupTimeoutJob,
 } from "../services/orderWorkflowService.js";
+import { processFranchiseAcceptanceTimeout } from "../services/franchise/franchiseOrderService.js";
 import {
   cancelAndCompensateOrder,
   compensateOrderCancellation,
@@ -74,6 +75,31 @@ const autoCancelExpiredOrders = async () => {
       }
     }
 
+    // Single-nearest-franchise model: no cascading candidates — the ONE
+    // assigned franchise partner has a fixed acceptance window
+    // (franchisePendingExpiresAt). If they don't respond in time, the
+    // order automatically falls through to the hub (or cancels if the
+    // hub also can't cover it), same as an explicit rejection.
+    const franchiseExpired = await Order.find({
+      workflowVersion: { $gte: 2 },
+      workflowStatus: WORKFLOW_STATUS.FRANCHISE_PENDING,
+      franchisePendingExpiresAt: { $lte: now },
+    })
+      .select("orderId")
+      .lean();
+
+    for (const row of franchiseExpired) {
+      try {
+        await processFranchiseAcceptanceTimeout({ orderId: row.orderId });
+      } catch (err) {
+        logger.error('franchise acceptance timeout failed', {
+          jobName: 'orderAutoCancelJob',
+          orderId: row.orderId,
+          error: err.message,
+        });
+      }
+    }
+
     // Return-pickup broadcast loop — safety net for when Bull/Redis is down
     // or a worker missed a job. Same semantics as the delivery-search
     // fallback above.
@@ -98,13 +124,28 @@ const autoCancelExpiredOrders = async () => {
       }
     }
 
+    // Two distinct stock holds can be abandoned by an unpaid ONLINE
+    // order: the hub's Product.stock reservation (stockReservation),
+    // or — for a single-nearest-franchise-routed order — that
+    // franchise's ledger hold (reserveFranchiseStockForItems, tracked
+    // via franchiseStockConsumed + order.expiresAt since the hub-side
+    // stockReservation is deliberately marked RELEASED for those
+    // orders, see orderPlacementService.js).
     const paymentExpiredOrders = await Order.find({
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.CREATED,
       paymentMode: "ONLINE",
       paymentStatus: { $ne: "PAID" },
-      "stockReservation.status": { $ne: "RELEASED" },
-      "stockReservation.expiresAt": { $lte: now },
+      $or: [
+        {
+          "stockReservation.status": { $ne: "RELEASED" },
+          "stockReservation.expiresAt": { $lte: now },
+        },
+        {
+          franchiseStockConsumed: true,
+          expiresAt: { $lte: now },
+        },
+      ],
     })
       .select("_id orderId")
       .lean();
@@ -202,6 +243,7 @@ const autoCancelExpiredOrders = async () => {
     const n =
       v2Expired.length +
       v2DeliveryExpired.length +
+      franchiseExpired.length +
       returnPickupExpired.length +
       paymentExpiredOrders.length +
       legacyExpired.length;
@@ -214,6 +256,7 @@ const autoCancelExpiredOrders = async () => {
         duration,
         v2SellerExpired: v2Expired.length,
         v2DeliveryExpired: v2DeliveryExpired.length,
+        franchiseExpired: franchiseExpired.length,
         returnPickupExpired: returnPickupExpired.length,
         paymentExpired: paymentExpiredOrders.length,
         legacyExpired: legacyExpired.length,

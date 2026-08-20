@@ -1,19 +1,26 @@
-import FranchisePartner from "../../models/franchisePartner.js";
 import FranchiseStockLedger from "../../models/franchiseStockLedger.js";
 import Seller from "../../models/seller.js";
 import { cartIsHubOnly } from "./franchiseCatalogService.js";
 import { getHubSellerId } from "./franchiseConfigService.js";
+import {
+  findNearestFranchisePartner,
+  resolveNearestFulfillmentSource,
+} from "./franchiseStockResolver.js";
 import {
   extractPincodeFromAddress,
   normalizeAddressForFranchiseRouting,
 } from "./franchiseAddressUtils.js";
 import * as logger from "../logger.js";
 
-import { FRANCHISE_ORDER_STATUS, FRANCHISE_PARTNER_STATUS } from "../../constants/franchise.js";
+import { FRANCHISE_ORDER_STATUS } from "../../constants/franchise.js";
 
-// How many nearby partners we consider when looking for one that holds
-// full stock for the cart before falling back to the hub seller.
-const MAX_PARTNER_CANDIDATES = 10;
+/**
+ * Single-nearest-franchise fulfillment model: a hub-catalog order is
+ * offered to ONLY the customer's single nearest active franchise
+ * partner. If that partner doesn't hold full stock for the cart (or
+ * later rejects/times out), fulfillment falls straight through to the
+ * hub seller — there is no cascading through additional candidates.
+ */
 
 function extractDeliveryCoordinates(address = {}) {
   const lat = Number(address?.location?.lat ?? address?.lat);
@@ -31,59 +38,6 @@ export function franchiseSelfRoutingError() {
   return err;
 }
 
-function activePartnerFilter(excludeCustomerId = null) {
-  const filter = { status: FRANCHISE_PARTNER_STATUS.ACTIVE };
-  if (excludeCustomerId) {
-    filter.userId = { $ne: excludeCustomerId };
-  }
-  return filter;
-}
-
-/**
- * Active partners ordered by preference: geo-nearest first, then pincode
- * territory matches (earliest registered first). Optionally skips the
- * ordering customer so franchise partners are not routed to themselves.
- */
-async function findActivePartnerCandidates(normalizedAddress, { excludeCustomerId } = {}) {
-  const candidates = [];
-  const seen = new Set();
-  const pushUnique = (partner) => {
-    const id = String(partner._id);
-    if (seen.has(id)) return;
-    seen.add(id);
-    candidates.push(partner);
-  };
-
-  const coords = extractDeliveryCoordinates(normalizedAddress);
-  if (coords) {
-    const geoPartners = await FranchisePartner.find({
-      ...activePartnerFilter(excludeCustomerId),
-      location: {
-        $near: {
-          $geometry: { type: "Point", coordinates: [coords.lng, coords.lat] },
-        },
-      },
-    })
-      .limit(MAX_PARTNER_CANDIDATES)
-      .lean();
-    geoPartners.forEach(pushUnique);
-  }
-
-  const pincode = extractPincodeFromAddress(normalizedAddress);
-  if (pincode) {
-    const territoryPartners = await FranchisePartner.find({
-      ...activePartnerFilter(excludeCustomerId),
-      territoryPincodes: pincode,
-    })
-      .sort({ registeredAt: 1 })
-      .limit(MAX_PARTNER_CANDIDATES)
-      .lean();
-    territoryPartners.forEach(pushUnique);
-  }
-
-  return candidates;
-}
-
 /** Total quantity needed per productId across the cart lines. */
 function aggregateRequiredQuantities(items = []) {
   const required = new Map();
@@ -97,72 +51,76 @@ function aggregateRequiredQuantities(items = []) {
 }
 
 /**
- * First candidate (in preference order) whose franchise stock ledger
- * covers every cart line in full. Returns null when nobody can fulfill.
+ * True when `partner`'s franchise stock ledger covers every cart line
+ * in full.
  */
-async function findFirstPartnerWithFullStock(candidates, required) {
-  if (candidates.length === 0 || required.size === 0) return null;
+async function partnerCoversFullStock(partner, required) {
+  if (!partner || required.size === 0) return false;
 
-  const ledgers = await FranchiseStockLedger.find({
-    franchisePartnerId: { $in: candidates.map((partner) => partner._id) },
+  const rows = await FranchiseStockLedger.find({
+    franchisePartnerId: partner._id,
     productId: { $in: [...required.keys()] },
   })
-    .select("franchisePartnerId productId quantity")
+    .select("productId quantity")
     .lean();
 
-  const stockByPartner = new Map();
-  for (const row of ledgers) {
-    const partnerId = String(row.franchisePartnerId);
-    if (!stockByPartner.has(partnerId)) stockByPartner.set(partnerId, new Map());
-    stockByPartner
-      .get(partnerId)
-      .set(String(row.productId), Number(row.quantity) || 0);
+  const stockByProduct = new Map();
+  for (const row of rows) {
+    stockByProduct.set(String(row.productId), Number(row.quantity) || 0);
   }
 
-  for (const partner of candidates) {
-    const stock = stockByPartner.get(String(partner._id));
-    if (!stock) continue;
-    let coversAll = true;
-    for (const [productId, qty] of required) {
-      if ((stock.get(productId) || 0) < qty) {
-        coversAll = false;
-        break;
-      }
-    }
-    if (coversAll) return partner;
+  for (const [productId, qty] of required) {
+    if ((stockByProduct.get(productId) || 0) < qty) return false;
   }
-  return null;
+  return true;
 }
 
 /**
- * Route hub orders to the nearest active franchise partner by delivery
- * coordinates. Falls back to pincode match when coordinates are unavailable.
- * Never routes to the customer placing the order when they are a partner.
+ * Resolve the customer's single nearest active franchise partner for a
+ * hub-catalog order — UNLESS the hub itself is geographically closer,
+ * in which case the hub fulfils directly regardless of franchise stock
+ * (see `resolveNearestFulfillmentSource`). Returns the franchise
+ * partner ONLY when it's the closer option AND its own ledger covers
+ * the entire cart; returns `null` otherwise (hub fulfills). Never
+ * routes a franchise partner to themselves.
  *
- * When `hydratedItems` are provided, only partners holding FULL stock for
- * every line are eligible; returns null (hub-seller fallback) when no
- * candidate can fulfill the whole cart.
+ * When `hydratedItems` is omitted (legacy callers, e.g. delivery-fee
+ * distance lookups with no cart context), nearest-partner semantics
+ * apply with no stock check.
  */
 export async function resolveFranchisePartner({ address, customerId, hydratedItems } = {}) {
   const normalizedAddress = normalizeAddressForFranchiseRouting(address);
   const excludeCustomerId = customerId || null;
+  const coords = extractDeliveryCoordinates(normalizedAddress);
+  const pincode = extractPincodeFromAddress(normalizedAddress);
 
-  const candidates = await findActivePartnerCandidates(normalizedAddress, {
-    excludeCustomerId,
+  const { type, franchisePartner: nearest, nearestFranchise } = await resolveNearestFulfillmentSource({
+    lat: coords?.lat,
+    lng: coords?.lng,
+    pincode,
+    excludeUserId: excludeCustomerId,
   });
 
-  if (candidates.length > 0) {
+  if (type === "franchise" && nearest) {
     const required = aggregateRequiredQuantities(hydratedItems);
     // Legacy callers without cart lines keep nearest-partner semantics.
-    if (required.size === 0) return candidates[0];
-    return findFirstPartnerWithFullStock(candidates, required);
+    if (required.size === 0) return nearest;
+    const covers = await partnerCoversFullStock(nearest, required);
+    return covers ? nearest : null;
   }
 
-  if (excludeCustomerId) {
-    const nearestIncludingSelf = await findActivePartnerCandidates(normalizedAddress, {});
+  // Hub won on distance (a franchise candidate existed but the hub is
+  // closer) — that's not a self-routing situation, just hub fulfilling.
+  // Only check self-routing when there was NO franchise candidate at all.
+  if (excludeCustomerId && !nearestFranchise) {
+    const nearestIncludingSelf = await findNearestFranchisePartner({
+      lat: coords?.lat,
+      lng: coords?.lng,
+      pincode,
+    });
     if (
-      nearestIncludingSelf.length > 0 &&
-      String(nearestIncludingSelf[0].userId) === String(excludeCustomerId)
+      nearestIncludingSelf &&
+      String(nearestIncludingSelf.userId) === String(excludeCustomerId)
     ) {
       throw franchiseSelfRoutingError();
     }
@@ -173,58 +131,30 @@ export async function resolveFranchisePartner({ address, customerId, hydratedIte
 
 export function buildFranchiseOrderFields(franchisePartner) {
   if (!franchisePartner?._id) {
+    // franchiseCandidates/currentFranchiseIndex/routedFranchiseHistory are
+    // left out here — the Order schema's own defaults ([], 0, []) apply.
     return {
       franchisePartnerId: null,
       franchiseRoutedAt: null,
       franchiseStatus: null,
-      franchiseCandidates: [],
-      currentFranchiseIndex: 0,
-      routedFranchiseHistory: [],
-    };
-  }
-  return buildMultiFranchiseOrderFields([franchisePartner]);
-}
-
-export function buildMultiFranchiseOrderFields(candidates = []) {
-  if (!Array.isArray(candidates) || candidates.length === 0) {
-    return {
-      franchisePartnerId: null,
-      franchiseRoutedAt: null,
-      franchiseStatus: null,
-      franchiseCandidates: [],
-      currentFranchiseIndex: 0,
-      routedFranchiseHistory: [],
     };
   }
 
-  const firstPartner = candidates[0];
   const now = new Date();
   return {
-    franchisePartnerId: firstPartner._id,
+    franchisePartnerId: franchisePartner._id,
     franchiseRoutedAt: now,
     franchiseStatus: FRANCHISE_ORDER_STATUS.PENDING,
-    franchiseCandidates: candidates.map((c) => c._id),
+    franchiseCandidates: [franchisePartner._id],
     currentFranchiseIndex: 0,
     routedFranchiseHistory: [
       {
-        franchisePartnerId: firstPartner._id,
+        franchisePartnerId: franchisePartner._id,
         status: "PENDING",
         routedAt: now,
       },
     ],
   };
-}
-
-export async function resolveFranchiseRoutingCandidates({ address, customerId, hydratedItems } = {}) {
-  const normalizedAddress = normalizeAddressForFranchiseRouting(address);
-  const excludeCustomerId = customerId || null;
-
-  const candidates = await findActivePartnerCandidates(normalizedAddress, {
-    excludeCustomerId,
-  });
-
-  if (!candidates || candidates.length === 0) return [];
-  return candidates.slice(0, 5);
 }
 
 export async function shouldRouteOrderToFranchise(hydratedItems = []) {
@@ -249,26 +179,32 @@ export async function shouldRouteOrderToFranchise(hydratedItems = []) {
   return !!(await Seller.exists({ _id: soleSellerId, isPlatformHub: true }));
 }
 
+/**
+ * Resolve franchise routing for an order: whether it should route to
+ * the customer's nearest franchise (if that partner has full stock) or
+ * fall back to the hub. Convenience wrapper around `resolveFranchisePartner`
+ * + `buildFranchiseOrderFields` for callers that don't already have a
+ * resolved partner from `checkoutPricingService`'s pricing snapshot.
+ */
 export async function resolveFranchiseOrderRouting({ hydratedItems, address, customerId } = {}) {
   const shouldRoute = await shouldRouteOrderToFranchise(hydratedItems);
   if (!shouldRoute) {
     return {
       franchisePartner: null,
-      candidates: [],
-      fields: buildMultiFranchiseOrderFields([]),
+      fields: buildFranchiseOrderFields(null),
       hubFallback: false,
     };
   }
 
   const normalizedAddress = normalizeAddressForFranchiseRouting(address);
-  const candidates = await resolveFranchiseRoutingCandidates({
+  const franchisePartner = await resolveFranchisePartner({
     address: normalizedAddress,
     customerId,
     hydratedItems,
   });
 
-  if (!candidates || candidates.length === 0) {
-    logger.info("[franchiseRouting] hub-seller fallback: no active partners found", {
+  if (!franchisePartner) {
+    logger.info("[franchiseRouting] hub-seller fallback: nearest partner has no coverage", {
       customerId: customerId ? String(customerId) : null,
       productIds: (hydratedItems || []).map((item) =>
         String(item?.productId || item?.product || ""),
@@ -276,19 +212,14 @@ export async function resolveFranchiseOrderRouting({ hydratedItems, address, cus
     });
     return {
       franchisePartner: null,
-      candidates: [],
-      fields: buildMultiFranchiseOrderFields([]),
+      fields: buildFranchiseOrderFields(null),
       hubFallback: true,
     };
   }
 
-  const franchisePartner = candidates[0];
-  const fields = buildMultiFranchiseOrderFields(candidates);
-
   return {
     franchisePartner,
-    candidates,
-    fields,
+    fields: buildFranchiseOrderFields(franchisePartner),
     hubFallback: false,
   };
 }

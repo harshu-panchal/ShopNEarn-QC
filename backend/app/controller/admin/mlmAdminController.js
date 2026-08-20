@@ -1748,7 +1748,16 @@ function sanitizeMilestonePayload(raw) {
 
 function sanitizeJoiningPlanPayload(raw) {
   const out = {};
-  const passthrough = ["name", "description", "price", "shoppingWalletCredit", "sortOrder", "active"];
+  const passthrough = [
+    "name",
+    "description",
+    "price",
+    "shoppingWalletCredit",
+    "planCharge",
+    "benefitPercent",
+    "sortOrder",
+    "active",
+  ];
   for (const k of passthrough) {
     if (raw[k] !== undefined) out[k] = raw[k];
   }
@@ -1758,6 +1767,8 @@ function sanitizeJoiningPlanPayload(raw) {
   if (out.shoppingWalletCredit !== undefined) {
     out.shoppingWalletCredit = Number(out.shoppingWalletCredit) || 0;
   }
+  if (out.planCharge !== undefined) out.planCharge = Number(out.planCharge) || 0;
+  if (out.benefitPercent !== undefined) out.benefitPercent = Number(out.benefitPercent) || 0;
   if (out.sortOrder !== undefined) out.sortOrder = Number(out.sortOrder) || 0;
   if (out.active !== undefined) out.active = !!out.active;
   return out;
@@ -1784,6 +1795,9 @@ export const createJoiningPlan = async (req, res) => {
     }
     if (!(payload.price >= 0) || !(payload.shoppingWalletCredit >= 0)) {
       return handleResponse(res, 400, "price and shoppingWalletCredit must be >= 0");
+    }
+    if (!(payload.planCharge >= 0) || !(payload.benefitPercent >= 0)) {
+      return handleResponse(res, 400, "planCharge and benefitPercent must be >= 0");
     }
     payload.createdBy = req.user?.id || null;
     payload.updatedBy = req.user?.id || null;

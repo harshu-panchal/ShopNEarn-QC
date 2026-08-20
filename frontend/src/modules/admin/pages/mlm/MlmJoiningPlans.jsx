@@ -8,20 +8,30 @@ import { adminMlmApi } from '../../services/api/mlmApi';
  *
  * Generalizes the old single global `joiningPackagePrice` /
  * `joiningPackageShoppingWalletCredit` pair into a catalog of named
- * packages a new customer picks from at signup. Deliberately narrow:
- * a plan differs from another ONLY in price + shopping-wallet credit
- * (+ marketing copy) — it does not carry its own bonus-engine config.
+ * packages a new customer picks from at signup. A plan differs from
+ * another in price + shopping-wallet credit (+ marketing copy) AND in
+ * its Benefit Base Amount (Plan Charge × Benefit % / 100), which scales
+ * sponsor/referral/pair-matching bonuses for members who join under it.
  */
 const blankRow = () => ({
   name: '',
   description: '',
   price: 2999,
   shoppingWalletCredit: 5000,
+  planCharge: 2500,
+  benefitPercent: 8,
   sortOrder: 0,
   active: true,
 });
 
 const formatINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+
+const computeBenefitBaseAmount = (row) =>
+  roundHalfUp((Number(row?.planCharge) || 0) * (Number(row?.benefitPercent) || 0) / 100);
+
+function roundHalfUp(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
 
 const MlmJoiningPlans = () => {
   const [rows, setRows] = useState([]);
@@ -114,6 +124,8 @@ const MlmJoiningPlans = () => {
       description: row.description || '',
       price: row.price,
       shoppingWalletCredit: row.shoppingWalletCredit,
+      planCharge: row.planCharge,
+      benefitPercent: row.benefitPercent,
       sortOrder: row.sortOrder || 0,
     });
   };
@@ -137,7 +149,8 @@ const MlmJoiningPlans = () => {
 
       <p className="text-sm text-slate-600">
         Packages a new customer can choose from at MLM signup. Every plan produces an
-        identical Plan A membership — only price and shopping-wallet credit differ.
+        identical Plan A membership — price, shopping-wallet credit, and the Benefit
+        Base Amount (which scales that member's sponsor bonuses) differ per plan.
         At least one plan must stay active for signup to work.
       </p>
 
@@ -168,6 +181,7 @@ const MlmJoiningPlans = () => {
                 <th className="text-left px-3 py-2.5">Name</th>
                 <th className="text-left px-3 py-2.5">Price</th>
                 <th className="text-left px-3 py-2.5">Shopping Credit</th>
+                <th className="text-left px-3 py-2.5">Benefit Base</th>
                 <th className="text-left px-3 py-2.5">Sort</th>
                 <th className="text-left px-3 py-2.5">Status</th>
                 <th />
@@ -175,13 +189,13 @@ const MlmJoiningPlans = () => {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">Loading...</td></tr>
+                <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">Loading...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">No joining plans defined yet.</td></tr>
+                <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">No joining plans defined yet.</td></tr>
               ) : rows.map((row) => (
                 editingId === row._id ? (
                   <tr key={row._id} className="border-b border-slate-100 bg-indigo-50/30">
-                    <td colSpan={6} className="px-3 py-3">
+                    <td colSpan={7} className="px-3 py-3">
                       <PlanForm row={editDraft} onChange={setEditDraft} />
                       <div className="mt-3 flex items-center gap-2">
                         <button
@@ -210,6 +224,12 @@ const MlmJoiningPlans = () => {
                     </td>
                     <td className="px-3 py-2.5">{formatINR(row.price)}</td>
                     <td className="px-3 py-2.5">{formatINR(row.shoppingWalletCredit)}</td>
+                    <td className="px-3 py-2.5">
+                      {formatINR(row.benefitBaseAmount)}
+                      <p className="text-[10px] text-slate-400 font-normal">
+                        {formatINR(row.planCharge)} × {row.benefitPercent || 0}%
+                      </p>
+                    </td>
                     <td className="px-3 py-2.5 text-xs text-slate-500">{row.sortOrder || 0}</td>
                     <td className="px-3 py-2.5">
                       <button
@@ -281,6 +301,29 @@ const PlanForm = ({ row, onChange }) => {
           onChange={(e) => upd({ shoppingWalletCredit: Number(e.target.value) })}
           className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
         />
+      </Field>
+      <Field label="Plan Charge (₹)">
+        <input
+          type="number"
+          min={0}
+          value={row.planCharge}
+          onChange={(e) => upd({ planCharge: Number(e.target.value) })}
+          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
+        />
+      </Field>
+      <Field label="Benefit %">
+        <input
+          type="number"
+          min={0}
+          value={row.benefitPercent}
+          onChange={(e) => upd({ benefitPercent: Number(e.target.value) })}
+          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
+        />
+      </Field>
+      <Field label="Benefit Base Amount">
+        <div className="w-full bg-indigo-50 border border-indigo-100 rounded-lg px-2 py-1.5 text-sm font-semibold text-indigo-700">
+          {formatINR(computeBenefitBaseAmount(row))}
+        </div>
       </Field>
       <Field label="Sort Order">
         <input

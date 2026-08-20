@@ -508,15 +508,11 @@ export async function buildCheckoutPricingSnapshot({
     throw err;
   }
 
-  const productIds = hydratedItems.map((item) => item.productId);
-  const stockProductQuery = Product.find({ _id: { $in: productIds } })
-    .select("_id name stock variants")
-    .lean();
-  if (session) stockProductQuery.session(session);
-  const stockProducts = await stockProductQuery;
-  const stockProductMap = new Map(stockProducts.map((product) => [String(product._id), product]));
-  assertHydratedItemsStock(hydratedItems, stockProductMap);
-
+  // Franchise-aware stock resolution runs BEFORE the hard hub-stock
+  // reject below. The nearest franchise's own stock must be consulted
+  // first — checking only the hub's raw Product.stock here would wrongly
+  // declare an item "out of stock" while a nearby franchise still has it
+  // (the bug this ordering fixes).
   const hubOnlyCart = await cartIsHubOnly(hydratedItems);
   const itemsBySeller = groupHydratedItemsBySeller(hydratedItems);
   const sellerIds = Array.from(itemsBySeller.keys()).sort((a, b) => a.localeCompare(b));
@@ -540,8 +536,10 @@ export async function buildCheckoutPricingSnapshot({
   };
   if (isFranchiseHubCart) {
     const hubSellerId = await getHubSellerId();
-    // Stock-aware: only partners holding FULL stock for the cart are
-    // eligible. A null partner means the hub seller fulfills directly.
+    // Single-nearest-franchise model: only the customer's ONE nearest
+    // active franchise partner is checked. A non-null result here means
+    // that partner's ledger covers the entire cart; null means it
+    // doesn't (or no partner is nearby) and the hub must be checked.
     const franchisePartner = await resolveFranchisePartner({
       address: routingAddress,
       customerId,
@@ -554,6 +552,27 @@ export async function buildCheckoutPricingSnapshot({
       customerId,
       hydratedItems,
     };
+  }
+
+  // Hub stock is only checked when no nearby franchise already covers
+  // the cart — this is the ONLY case where "out of stock" should fire.
+  // `isFranchiseHubCart` alone does NOT guarantee a single-seller cart
+  // (it can be true for a mixed cart that merely CONTAINS a hub item),
+  // so require `sellerIds.length === 1` too before trusting the
+  // franchise resolution for this order-blocking decision — in
+  // practice a franchise's ledger only ever holds hub product IDs, so
+  // this is a defence-in-depth guard rather than a case seen today.
+  const isSingleSellerFranchiseOrder =
+    !!franchiseContext.franchisePartner && sellerIds.length === 1;
+  if (!isSingleSellerFranchiseOrder) {
+    const productIds = hydratedItems.map((item) => item.productId);
+    const stockProductQuery = Product.find({ _id: { $in: productIds } })
+      .select("_id name stock variants")
+      .lean();
+    if (session) stockProductQuery.session(session);
+    const stockProducts = await stockProductQuery;
+    const stockProductMap = new Map(stockProducts.map((product) => [String(product._id), product]));
+    assertHydratedItemsStock(hydratedItems, stockProductMap);
   }
 
   // Audit Phase 5 (C-2): when the flag is ON, route discount through
@@ -701,6 +720,13 @@ export async function buildCheckoutPricingSnapshot({
     itemCount: hydratedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
     // Hub / platform-franchise catalog carts may pay via the shopping wallet bucket.
     isFranchiseHubCart,
+    // The single nearest franchise partner already confirmed (during
+    // this same pricing pass) to hold full stock for the cart, or null
+    // when the hub is fulfilling. `orderPlacementService` reuses this
+    // directly instead of re-resolving routing independently, so the
+    // franchise notified/assigned always matches the one the stock
+    // check actually relied on.
+    franchisePartner: franchiseContext.franchisePartner,
     // Audit Phase 5 (C-2 + H-6): `null` when the flag is off OR no
     // coupon was supplied. When present, callers persist this on every
     // Order document so per-user usage counts and audits replay

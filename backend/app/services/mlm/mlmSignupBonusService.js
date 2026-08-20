@@ -701,7 +701,13 @@ export async function applyDirectReferralPerActivationBonusInSession({
     return { skipped: "ALREADY_CREDITED", event: legacy };
   }
 
-  const amount = roundCurrency(cfg.perActivation.amount);
+  // Plan-scaled amount: the activated member's joining plan snapshots
+  // its own benefit base amount at activation time — prefer that over
+  // the global config so bigger plans pay bigger sponsor bonuses.
+  const planAmount = activatedMembership?.benefitBaseAmount;
+  const amount = roundCurrency(
+    planAmount != null && planAmount >= 0 ? planAmount : cfg.perActivation.amount,
+  );
   const result = await creditDirectReferralEarning({
     sponsorUserId,
     sponsorMembership,
@@ -956,12 +962,19 @@ export async function applyDirectReferralFirstPairBonusInSession({
 
   const mlmCfg = await getMlmConfig();
   const directCount = await countActivePlanADirects(sponsorUserId, { session });
+  // Plan-scaled base: the activated member (whose pair completion
+  // triggered this bonus) snapshots its joining plan's benefit base
+  // amount — substitutes for the canonical ₹200 baseline that
+  // resolveFirstDirectPairIncomeAmount's tiers are expressed relative to.
+  const planBaseAmount = activatedMembership?.benefitBaseAmount;
+  const baseAmount = planBaseAmount != null && planBaseAmount >= 0 ? planBaseAmount : 200;
   const amount = roundCurrency(
     resolveFirstDirectPairIncomeAmount(
       mlmCfg,
       directCount,
       Boolean(sponsorMembership.binaryTopupMember),
       cfg.firstPair.amount,
+      baseAmount,
     ),
   );
   if (amount <= 0) {

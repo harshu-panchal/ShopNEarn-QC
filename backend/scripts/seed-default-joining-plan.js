@@ -52,6 +52,10 @@ async function main() {
     description: "",
     price: Number(cfg.joiningPackagePrice) || 0,
     shoppingWalletCredit: Number(cfg.joiningPackageShoppingWalletCredit) || 0,
+    // Reproduces the existing global ₹200 sponsor/referral/pair-matching
+    // bonus base (2500 * 8% = 200) — zero behavior change on first seed.
+    planCharge: 2500,
+    benefitPercent: 8,
     sortOrder: 0,
     active: true,
   };

@@ -50,8 +50,13 @@ import {
 import { buildCheckoutPricingSnapshot } from "./checkoutPricingService.js";
 import { getMlmConfig } from "./mlm/mlmConfigService.js";
 import {
-  resolveFranchiseOrderRouting,
+  buildFranchiseOrderFields,
 } from "./franchise/franchiseOrderRoutingService.js";
+// `reserveFranchiseStockForItems` is dynamically imported where used
+// below (not statically) — it pulls in the FranchiseStockLedger/
+// FranchiseStockMovement model files, an edge some older unit tests'
+// hand-rolled mongoose mocks don't cover; keeping it lazy avoids
+// loading that graph for orders that never touch franchise stock.
 import { notifyFranchisePartnerNewOrder } from "./franchise/franchiseOrderService.js";
 import { normalizeAddressForFranchiseRouting } from "./franchise/franchiseAddressUtils.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
@@ -480,11 +485,18 @@ export async function placeOrderAtomic({
       }
     }
 
-    const { franchisePartner, fields: franchiseFields } = await resolveFranchiseOrderRouting({
-      hydratedItems: pricingSnapshot.hydratedItems,
-      address: normalizedAddress,
-      customerId,
-    });
+    // Reuse the SAME franchise resolution `buildCheckoutPricingSnapshot`
+    // already made (single nearest partner, already confirmed to cover
+    // the full cart) rather than independently re-resolving — guarantees
+    // the partner notified/assigned here always matches the one the
+    // stock check actually relied on. `sellerCount === 1` re-derives the
+    // single-seller guarantee `isFranchiseHubCart` alone doesn't provide.
+    const isSingleSellerFranchiseOrder =
+      !!pricingSnapshot.franchisePartner && pricingSnapshot.sellerCount === 1;
+    const franchisePartner = isSingleSellerFranchiseOrder
+      ? pricingSnapshot.franchisePartner
+      : null;
+    const franchiseFields = buildFranchiseOrderFields(franchisePartner);
     const isFranchiseRoutedOrder = !!franchiseFields.franchisePartnerId;
     const awaitingGatewayPayment = paymentMode === "ONLINE" && !isWalletPrepaid;
 
@@ -558,22 +570,55 @@ export async function placeOrderAtomic({
     for (let index = 0; index < pricingSnapshot.sellerBreakdownEntries.length; index += 1) {
       const entry = pricingSnapshot.sellerBreakdownEntries[index];
       const orderId = await generateUniquePublicOrderId({ session });
-      const orderReservation = computeStockReservationWindow(workflowPaymentMode);
       const sellerPendingUntil = shouldStartSellerWorkflow
         ? new Date(Date.now() + sellerTimeoutMs)
         : null;
-      const orderExpiresAt = orderReservation.expiresAt || sellerPendingUntil || null;
 
-      const sellerLowStockAlerts = await reserveStockForItems({
-        items: entry.items,
-        sellerId: entry.sellerId,
-        orderId,
-        session,
-        paymentMode: workflowPaymentMode,
-      });
-      if (Array.isArray(sellerLowStockAlerts) && sellerLowStockAlerts.length > 0) {
-        pendingLowStockAlerts.push(...sellerLowStockAlerts);
+      let orderReservation;
+      if (isFranchiseRoutedOrder) {
+        // Franchise fulfills this order — its ledger stock is held HERE
+        // (immediately, at placement), not the hub's Product.stock. Mark
+        // the hub-side reservation as already RELEASED (rather than
+        // RESERVED/COMMITTED) so cancelling this order later correctly
+        // treats a hub-stock release as a no-op instead of wrongly
+        // crediting back hub stock that was never actually decremented.
+        const { reserveFranchiseStockForItems } = await import(
+          "./inventory/inventoryMovementService.js"
+        );
+        await reserveFranchiseStockForItems({
+          items: entry.items,
+          franchisePartnerId: franchisePartner._id,
+          orderId,
+          session,
+        });
+        const releasedNow = new Date();
+        // Still carry the same abandon-payment expiry window a hub
+        // reservation would get (null for COD/wallet-prepaid, a real
+        // timestamp for ONLINE) — `order.expiresAt` below picks this up
+        // so `orderAutoCancelJob` can still auto-release an abandoned
+        // unpaid ONLINE franchise order's ledger hold, even though the
+        // hub-side `stockReservation.status` itself is a no-op RELEASED.
+        const franchiseWindow = computeStockReservationWindow(workflowPaymentMode);
+        orderReservation = {
+          status: "RELEASED",
+          reservedAt: releasedNow,
+          expiresAt: franchiseWindow.expiresAt,
+          releasedAt: releasedNow,
+        };
+      } else {
+        orderReservation = computeStockReservationWindow(workflowPaymentMode);
+        const sellerLowStockAlerts = await reserveStockForItems({
+          items: entry.items,
+          sellerId: entry.sellerId,
+          orderId,
+          session,
+          paymentMode: workflowPaymentMode,
+        });
+        if (Array.isArray(sellerLowStockAlerts) && sellerLowStockAlerts.length > 0) {
+          pendingLowStockAlerts.push(...sellerLowStockAlerts);
+        }
       }
+      const orderExpiresAt = orderReservation.expiresAt || sellerPendingUntil || null;
 
       // Audit Phase 4 (C-1): per-seller wallet allocation is now produced
       // by `buildCheckoutPricingSnapshot` (post-tip, post-handling) so we
@@ -644,8 +689,23 @@ export async function placeOrderAtomic({
             ? WORKFLOW_STATUS.SELLER_PENDING
             : WORKFLOW_STATUS.CREATED,
         sellerPendingExpiresAt: sellerPendingUntil,
+        // COD/wallet-prepaid franchise orders enter FRANCHISE_PENDING
+        // immediately, so the acceptance timeout starts now. ONLINE
+        // orders awaiting gateway payment get this set later, on capture
+        // (`moveOrderToSellerPendingAfterPayment` in paymentService.js),
+        // once the franchise is actually notified.
+        franchisePendingExpiresAt:
+          isFranchiseRoutedOrder && !awaitingGatewayPayment
+            ? new Date(Date.now() + sellerTimeoutMs)
+            : null,
         expiresAt: orderExpiresAt,
         stockReservation: orderReservation,
+        // Franchise ledger stock was already decremented at placement
+        // (see reserveFranchiseStockForItems above) — `fulfillFranchiseOrder`
+        // checks this flag and skips its own decrement, and cancellation
+        // compensation (`restoreFranchiseStockForOrder`) uses it to know
+        // there's something to restore.
+        franchiseStockConsumed: isFranchiseRoutedOrder,
         checkoutGroupId,
         checkoutGroupSize: pricingSnapshot.sellerCount,
         checkoutGroupIndex: index,

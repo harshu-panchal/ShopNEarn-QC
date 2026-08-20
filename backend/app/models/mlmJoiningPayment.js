@@ -102,6 +102,16 @@ const mlmJoiningPaymentSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    // The joining plan's `benefitBaseAmount` at intent time — scales
+    // sponsor/referral/pair-matching bonuses for the member activated
+    // from this payment. `null` (not 0) for legacy rows / when no
+    // `MlmJoiningPlan` rows exist yet, meaning "fall back to the
+    // global `Setting.mlm.*` bonus config" — an explicit 0 is a
+    // deliberate plan choice and is honored literally downstream.
+    benefitBaseAmountSnapshot: {
+      type: Number,
+      default: null,
+    },
     // Which admin-managed joining plan this payment was created against.
     // Null for legacy rows created before multi-plan support (they fall
     // back to `Setting.mlm.joiningPackage*` — see `resolveJoiningPackageShoppingCredit`).

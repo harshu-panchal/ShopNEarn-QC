@@ -159,6 +159,10 @@ export async function activateMembershipFromJoiningPayment(
       membership.joiningPlanId = payment.joiningPlanId;
       membershipNeedsPlanSave = true;
     }
+    if (membership.benefitBaseAmount == null && payment.benefitBaseAmountSnapshot != null) {
+      membership.benefitBaseAmount = payment.benefitBaseAmountSnapshot;
+      membershipNeedsPlanSave = true;
+    }
 
     if (wasPreviouslyUnpaid) {
       membership.status = MLM_MEMBERSHIP_STATUS.ACTIVE;
@@ -437,6 +441,9 @@ export async function adminActivateMembership({
     }
     if (plan && !membership.joiningPlanId) {
       membership.joiningPlanId = plan._id;
+    }
+    if (plan && membership.benefitBaseAmount == null) {
+      membership.benefitBaseAmount = Number(plan.benefitBaseAmount) || 0;
     }
 
     // Flip to ACTIVE / Plan A and stamp the audit fields.

@@ -238,6 +238,42 @@ export async function decrementFranchiseStock({
 }
 
 /**
+ * Reserve (decrement) franchise ledger stock for every item in a newly
+ * placed order fulfilled by that franchise. Single-nearest-franchise
+ * model: the decrement happens HERE, at placement, rather than later at
+ * physical hand-over — this is the "hold" that stops a concurrent sale
+ * (online or in-person POS) from taking the same units before delivery.
+ * Reuses the same atomic per-item guard `decrementFranchiseStock`
+ * already provides (`quantity: {$gte: qty}`), so this is race-safe.
+ *
+ * `fulfillFranchiseOrder` already skips its own decrement when
+ * `order.franchiseStockConsumed` is true (set by the caller here), so
+ * calling this at placement does not double-decrement at fulfillment.
+ */
+export async function reserveFranchiseStockForItems({
+  items,
+  franchisePartnerId,
+  orderId,
+  session,
+}) {
+  for (const item of items || []) {
+    const productId = item.productId || item.product?._id || item.product;
+    const qty = Math.max(1, Number(item.quantity) || 1);
+    if (!productId) continue;
+    await decrementFranchiseStock({
+      franchisePartnerId,
+      productId,
+      quantity: qty,
+      session,
+      type: FRANCHISE_STOCK_TYPES.FULFILLMENT,
+      note: `Order #${orderId} placed — franchise stock reserved`,
+      orderId,
+      variantSku: item.variantSku || item.sku || "",
+    });
+  }
+}
+
+/**
  * Restore franchise stock (e.g. cancelled order after fulfillment).
  */
 export async function restoreFranchiseStock({

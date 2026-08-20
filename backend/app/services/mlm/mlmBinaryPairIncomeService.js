@@ -12,6 +12,13 @@ import { getMembershipByUserId } from "./mlmMembershipService.js";
 import { creditBonusToEarningsWallet } from "./mlmBonusEngineService.js";
 import { MLM_IDEMPOTENCY_PREFIX } from "../../constants/mlm.js";
 import { hasCreditedDirectReferralFirstPairIncome } from "./mlmFirstPairIncomeGuard.js";
+import { roundCurrency } from "../../utils/money.js";
+
+// Canonical baseline every hardcoded tier amount below is expressed as
+// a multiple of (200 => 1x, 250 => 1.25x, etc). A joining plan's
+// `benefitBaseAmount` substitutes for this baseline to proportionally
+// scale sponsor/referral/pair-matching bonuses for that plan's members.
+const CANONICAL_BONUS_BASE = 200;
 
 const IST_TZ_OFFSET_MIN = 330;
 const ACTIVE_BINARY_PLAN_TYPES = [MLM_PLAN_TYPE.A, MLM_PLAN_TYPE.B];
@@ -56,9 +63,13 @@ export function resolvePairIncomeConfig(cfg, directCount, isTopup = false) {
 
 /**
  * First direct L+R pair income rule:
- *   - 3+ active directs => ₹250 (fixed one-time first direct pair)
- *   - 2 active directs  => ₹200
+ *   - 3+ active directs => 1.25x baseAmount (₹250 at the canonical ₹200 base)
+ *   - 2 active directs  => 1x baseAmount (₹200 at the canonical base)
  *   - fallback          => configured flat fallback
+ *
+ * `baseAmount` defaults to the canonical ₹200 baseline but is meant to
+ * be the *activated* member's joining-plan `benefitBaseAmount` when
+ * available, so bigger plans pay proportionally bigger first-pair bonuses.
  *
  * Team-pair income (`resolvePairIncomeConfig`) remains independent and
  * can continue to be ₹300/₹400 based on higher direct-count tiers.
@@ -68,10 +79,13 @@ export function resolveFirstDirectPairIncomeAmount(
   directCount,
   isTopup = false,
   flatFallback = 0,
+  baseAmount = CANONICAL_BONUS_BASE,
 ) {
   const directs = Number(directCount) || 0;
-  if (directs >= 3) return 250;
-  if (directs >= 2) return 200;
+  const base = Number(baseAmount);
+  const safeBase = Number.isFinite(base) && base >= 0 ? base : CANONICAL_BONUS_BASE;
+  if (directs >= 3) return roundCurrency(safeBase * 1.25);
+  if (directs >= 2) return safeBase;
   const fallback = Number(flatFallback);
   return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
 }
@@ -480,6 +494,23 @@ export async function computeAndCreditBinaryTeamPairIncome({
 
   if (dailyPairCap <= 0) return [];
 
+  // Plan-scaled: the triggering member's joining plan snapshots its own
+  // benefit base amount at activation — substitutes for the canonical
+  // ₹200 baseline that binaryPairIncomeTiers/planAPairBonusTiers are
+  // expressed relative to. Topup pair income is a separate, unrelated
+  // mechanic and is never scaled. Falls back to 1x (no scaling) for
+  // legacy members with no plan snapshot.
+  let pairScale = 1;
+  if (!isTopup) {
+    const triggerMembership = triggerUserId
+      ? await getMembershipByUserId(triggerUserId, { session })
+      : null;
+    const triggerBase = triggerMembership?.benefitBaseAmount;
+    if (triggerBase != null && triggerBase >= 0) {
+      pairScale = triggerBase / CANONICAL_BONUS_BASE;
+    }
+  }
+
   const today = todayIstDateString();
   const tracker = sponsor.binaryDailyPairTracker || {};
   const pairsPaidToday =
@@ -500,10 +531,13 @@ export async function computeAndCreditBinaryTeamPairIncome({
       continue;
     }
 
-    let currentPairIncome = defaultPairIncome;
+    let currentPairIncome = roundCurrency(defaultPairIncome * pairScale);
     if (!isTopup) {
       const tierIncome = await getPlanAPairBonusForPairIndex(pairIndex);
-      currentPairIncome = Math.max(defaultPairIncome, tierIncome);
+      currentPairIncome = Math.max(
+        roundCurrency(defaultPairIncome * pairScale),
+        roundCurrency(tierIncome * pairScale),
+      );
     }
 
     if (currentPairIncome <= 0) continue;

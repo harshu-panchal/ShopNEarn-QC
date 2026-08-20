@@ -10,6 +10,7 @@ import {
 } from "../../constants/franchise.js";
 import {
   WORKFLOW_STATUS,
+  DEFAULT_SELLER_TIMEOUT_MS,
   legacyStatusFromWorkflow,
 } from "../../constants/orderWorkflow.js";
 import { ORDER_PAYMENT_STATUS } from "../../constants/finance.js";
@@ -24,6 +25,13 @@ import {
 } from "../inventory/inventoryMovementService.js";
 import { FRANCHISE_STOCK_TYPES } from "../../constants/inventory.js";
 import { getHubSellerId } from "./franchiseConfigService.js";
+// Dynamically imported (not statically) where used below: `stockService.js`
+// (hub Product.stock reserve on pass-to-hub) and `orderWorkflowService.js`
+// (seller-timeout scheduling, which pulls in the Bull queue graph). Both
+// are only needed on the "pass rejected/timed-out franchise order to hub"
+// path — keeping them lazy avoids loading that graph for every caller of
+// this module (e.g. paymentService.js's franchise-order webhook handling),
+// which some older unit tests' hand-rolled module mocks don't cover.
 
 /**
  * Restore franchise ledger stock if this order had consumed inventory on fulfill.
@@ -164,7 +172,16 @@ export async function acceptFranchiseOrder({ franchisePartnerId, orderId }) {
   return order;
 }
 
-export async function rerouteOrTransferFranchiseOrder(order, { currentPartnerId, reason = "" } = {}) {
+/**
+ * Single-nearest-franchise model: there is no second candidate to try.
+ * A rejection (or acceptance timeout) always falls straight through to
+ * the hub — attempts to reserve hub stock for the order and hands it
+ * off to the standard seller workflow. If the hub ALSO can't cover the
+ * order at this point (rare — stock moved between placement and
+ * rejection), the order is cancelled cleanly; there is no further
+ * fallback.
+ */
+export async function rerouteOrTransferFranchiseOrder(order, { currentPartnerId, reason = "", isTimeout = false } = {}) {
   const now = new Date();
 
   if (Array.isArray(order.routedFranchiseHistory)) {
@@ -172,85 +189,106 @@ export async function rerouteOrTransferFranchiseOrder(order, { currentPartnerId,
       (h) => String(h.franchisePartnerId) === String(currentPartnerId) && h.status === "PENDING"
     );
     if (currentHist) {
-      currentHist.status = "REJECTED";
+      currentHist.status = isTimeout ? "EXPIRED" : "REJECTED";
       currentHist.respondedAt = now;
       currentHist.reason = String(reason || "").slice(0, 240);
     }
   }
 
-  if (order.franchiseStockConsumed) {
-    await restoreFranchiseStockForOrder(order);
-  }
+  const configuredHubId = await getHubSellerId();
+  const { reserveStockForItems, computeStockReservationWindow } = await import(
+    "../stockService.js"
+  );
+  const session = await mongoose.startSession();
+  let hubStockInsufficient = false;
+  try {
+    await session.withTransaction(async () => {
+      if (order.franchiseStockConsumed) {
+        await restoreFranchiseStockForOrder(order, { session });
+      }
 
-  const candidates = Array.isArray(order.franchiseCandidates) ? order.franchiseCandidates : [];
-  const currentIndex = typeof order.currentFranchiseIndex === "number" ? order.currentFranchiseIndex : 0;
-  const nextIndex = currentIndex + 1;
+      const hubItems = (order.items || []).map((item) => ({
+        productId: item.product?._id || item.product,
+        quantity: item.quantity,
+        variantSku: item.variantSlot || "",
+        productName: item.name,
+      }));
 
-  if (nextIndex < candidates.length && nextIndex < 5) {
-    const nextPartnerId = candidates[nextIndex];
-    order.currentFranchiseIndex = nextIndex;
-    order.franchisePartnerId = nextPartnerId;
-    order.franchiseRoutedAt = now;
-    order.franchiseStatus = FRANCHISE_ORDER_STATUS.PENDING;
-    order.hubAcceptanceStatus = null;
-    order.workflowStatus = WORKFLOW_STATUS.FRANCHISE_PENDING;
-    order.status = legacyStatusFromWorkflow(WORKFLOW_STATUS.FRANCHISE_PENDING);
+      try {
+        await reserveStockForItems({
+          items: hubItems,
+          sellerId: configuredHubId,
+          orderId: order.orderId,
+          session,
+          paymentMode: order.paymentMode,
+        });
+      } catch (err) {
+        hubStockInsufficient = err?.statusCode === 409;
+        throw err;
+      }
+
+      order.franchisePartnerId = null;
+      if (configuredHubId) {
+        order.seller = configuredHubId;
+      }
+      order.franchiseStatus = "passed_to_hub";
+      order.hubAcceptanceStatus = null;
+      order.workflowStatus = WORKFLOW_STATUS.SELLER_PENDING;
+      order.status = legacyStatusFromWorkflow(WORKFLOW_STATUS.SELLER_PENDING);
+      order.orderStatus = order.status;
+      order.sellerPendingExpiresAt = new Date(Date.now() + DEFAULT_SELLER_TIMEOUT_MS());
+      order.stockReservation = computeStockReservationWindow(order.paymentMode);
+
+      if (!Array.isArray(order.routedFranchiseHistory)) order.routedFranchiseHistory = [];
+      order.routedFranchiseHistory.push({
+        franchisePartnerId: null,
+        status: "PASSED_TO_HUB",
+        routedAt: now,
+        reason: "Franchise partner rejected or did not respond in time",
+      });
+
+      await order.save({ session });
+    });
+  } catch (err) {
+    if (!hubStockInsufficient) throw err;
+
+    // Hub also can't cover it — no further fallback available.
+    order.franchisePartnerId = null;
+    order.franchiseStatus = "passed_to_hub";
+    order.workflowStatus = WORKFLOW_STATUS.CANCELLED;
+    order.status = legacyStatusFromWorkflow(WORKFLOW_STATUS.CANCELLED);
     order.orderStatus = order.status;
-
+    order.cancelledBy = "system";
+    order.cancelReason = "Franchise partner unavailable and hub stock also insufficient";
     if (!Array.isArray(order.routedFranchiseHistory)) order.routedFranchiseHistory = [];
     order.routedFranchiseHistory.push({
-      franchisePartnerId: nextPartnerId,
-      status: "PENDING",
+      franchisePartnerId: null,
+      status: "PASSED_TO_HUB",
       routedAt: now,
+      reason: "Hub stock also insufficient — order cancelled",
     });
-
     await order.save();
 
     emitOrderStatusUpdate(
       order.orderId,
-      { workflowStatus: order.workflowStatus, franchisePartnerId: String(nextPartnerId) },
+      { workflowStatus: order.workflowStatus },
       order.customer,
     );
-
-    const nextPartner = await FranchisePartner.findById(nextPartnerId).select("userId displayName").lean();
-    if (nextPartner?.userId) {
-      emitNotificationEvent(NOTIFICATION_EVENTS.FRANCHISE_NEW_ORDER, {
-        userId: String(nextPartner.userId),
-        orderId: order.orderId,
-        data: { orderId: String(order._id), publicOrderId: order.orderId },
-      });
-    }
-
-    emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_STATUS_CHANGED, {
+    emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
       orderId: order.orderId,
       customerId: order.customer,
       userId: order.customer,
-      customerMessage: "Your order is being rerouted to another nearby Home Shoppy partner.",
+      customerMessage:
+        "We're sorry — this item is no longer available and your order has been cancelled.",
     });
 
     return order;
+  } finally {
+    await session.endSession();
   }
 
-  const configuredHubId = await getHubSellerId();
-  order.franchisePartnerId = null;
-  if (configuredHubId) {
-    order.seller = configuredHubId;
-  }
-  order.franchiseStatus = "passed_to_hub";
-  order.hubAcceptanceStatus = null;
-  order.workflowStatus = WORKFLOW_STATUS.PENDING_SELLER;
-  order.status = legacyStatusFromWorkflow(WORKFLOW_STATUS.PENDING_SELLER);
-  order.orderStatus = order.status;
-
-  if (!Array.isArray(order.routedFranchiseHistory)) order.routedFranchiseHistory = [];
-  order.routedFranchiseHistory.push({
-    franchisePartnerId: null,
-    status: "PASSED_TO_HUB",
-    routedAt: now,
-    reason: "All franchise partner candidates rejected or unavailable",
-  });
-
-  await order.save();
+  const { scheduleSellerTimeoutJob } = await import("../orderWorkflowService.js");
+  await scheduleSellerTimeoutJob(order.orderId);
 
   emitOrderStatusUpdate(
     order.orderId,
@@ -266,6 +304,30 @@ export async function rerouteOrTransferFranchiseOrder(order, { currentPartnerId,
   });
 
   return order;
+}
+
+/**
+ * System-triggered: the assigned franchise partner didn't accept within
+ * the acceptance window. Reconciled by `orderAutoCancelJob`. Idempotent —
+ * re-running on an order that's no longer FRANCHISE_PENDING (already
+ * accepted, or already passed to hub by a concurrent run) is a no-op.
+ */
+export async function processFranchiseAcceptanceTimeout({ orderId }) {
+  const canonicalOrderId = await requireCanonicalOrderId(orderId);
+  const order = await Order.findOne({ orderId: canonicalOrderId });
+  if (!order || !order.franchisePartnerId) {
+    return { skipped: true, reason: "order_not_found" };
+  }
+  if (order.workflowStatus !== WORKFLOW_STATUS.FRANCHISE_PENDING) {
+    return { skipped: true, reason: "not_pending", order };
+  }
+
+  await rerouteOrTransferFranchiseOrder(order, {
+    currentPartnerId: order.franchisePartnerId,
+    reason: "Franchise partner did not respond within the acceptance window",
+    isTimeout: true,
+  });
+  return { skipped: false, order };
 }
 
 export async function rejectFranchiseOrder({

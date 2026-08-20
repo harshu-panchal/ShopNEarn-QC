@@ -1,16 +1,18 @@
 /**
- * Unit tests for stock-aware franchise order routing.
+ * Unit tests for stock-aware SINGLE-NEAREST-franchise order routing.
  *
- * A hub-catalog order must go to the nearest active franchise partner
- * holding FULL stock for every cart line. When no partner qualifies the
- * routing falls back to the hub seller (null partner + hubFallback flag)
- * so the hub receives the standard seller new-order alert.
+ * A hub-catalog order is offered to ONLY the customer's single nearest
+ * active franchise partner. If that partner doesn't hold FULL stock for
+ * every cart line, routing falls straight through to the hub seller
+ * (null partner + hubFallback flag) — there is no cascading through
+ * farther candidates.
  */
 import { jest } from "@jest/globals";
 
 const mockPartnerFind = jest.fn();
 const mockLedgerFind = jest.fn();
 const mockSellerExists = jest.fn().mockResolvedValue(false);
+const mockSellerFindById = jest.fn();
 const mockCartIsHubOnly = jest.fn().mockResolvedValue(false);
 const mockGetHubSellerId = jest.fn().mockResolvedValue(null);
 
@@ -23,7 +25,7 @@ jest.unstable_mockModule("../app/models/franchiseStockLedger.js", () => ({
 }));
 
 jest.unstable_mockModule("../app/models/seller.js", () => ({
-  default: { exists: mockSellerExists },
+  default: { exists: mockSellerExists, findById: mockSellerFindById },
 }));
 
 jest.unstable_mockModule(
@@ -74,11 +76,19 @@ function ledgerQueryChain(result) {
   return chain;
 }
 
-/** Geo query carries `location`; pincode query carries `territoryPincodes`. */
-function mockPartners({ geo = [], territory = [] } = {}) {
+function sellerQueryChain(result) {
+  const chain = {
+    select: jest.fn(() => chain),
+    lean: jest.fn().mockResolvedValue(result),
+  };
+  return chain;
+}
+
+/** Geo query carries `location`; pincode query carries `territoryPincodes`/`pincode`. */
+function mockNearestPartner(partner) {
   mockPartnerFind.mockImplementation((query = {}) => {
-    if (query.location) return partnerQueryChain(geo);
-    return partnerQueryChain(territory);
+    if (query.location) return partnerQueryChain(partner ? [partner] : []);
+    return partnerQueryChain([]);
   });
 }
 
@@ -88,21 +98,21 @@ const DELIVERY_ADDRESS = {
 };
 
 const NEAR_PARTNER = { _id: "partner-near", userId: "user-near" };
-const FAR_PARTNER = { _id: "partner-far", userId: "user-far" };
 
-describe("stock-aware franchise partner routing", () => {
+describe("single-nearest-franchise partner routing", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSellerExists.mockResolvedValue(false);
+    mockSellerFindById.mockReturnValue(sellerQueryChain(null));
     mockCartIsHubOnly.mockResolvedValue(false);
     mockGetHubSellerId.mockResolvedValue(null);
   });
 
-  it("skips the nearest unstocked partner and picks the next one with full stock", async () => {
-    mockPartners({ geo: [NEAR_PARTNER, FAR_PARTNER] });
+  it("returns the nearest partner when it covers the full cart", async () => {
+    mockNearestPartner(NEAR_PARTNER);
     mockLedgerFind.mockReturnValue(
       ledgerQueryChain([
-        { franchisePartnerId: "partner-far", productId: "prod-1", quantity: 5 },
+        { franchisePartnerId: "partner-near", productId: "prod-1", quantity: 5 },
       ]),
     );
 
@@ -111,28 +121,39 @@ describe("stock-aware franchise partner routing", () => {
       hydratedItems: [{ productId: "prod-1", quantity: 2 }],
     });
 
-    expect(partner).toEqual(FAR_PARTNER);
+    expect(partner).toEqual(NEAR_PARTNER);
   });
 
-  it("returns null when partners exist but none covers the full quantity", async () => {
-    mockPartners({ geo: [NEAR_PARTNER, FAR_PARTNER] });
+  it("does NOT try a farther partner — falls to hub (null) when the nearest lacks stock", async () => {
+    mockNearestPartner(NEAR_PARTNER);
     mockLedgerFind.mockReturnValue(
       ledgerQueryChain([
         { franchisePartnerId: "partner-near", productId: "prod-1", quantity: 1 },
-        { franchisePartnerId: "partner-far", productId: "prod-1", quantity: 2 },
       ]),
     );
 
     const partner = await resolveFranchisePartner({
       address: DELIVERY_ADDRESS,
-      hydratedItems: [{ productId: "prod-1", quantity: 3 }],
+      hydratedItems: [{ productId: "prod-1", quantity: 5 }],
     });
 
     expect(partner).toBeNull();
   });
 
-  it("requires a partner to cover EVERY cart line, not just some", async () => {
-    mockPartners({ geo: [NEAR_PARTNER] });
+  it("returns null when partner exists but has zero coverage for the product", async () => {
+    mockNearestPartner(NEAR_PARTNER);
+    mockLedgerFind.mockReturnValue(ledgerQueryChain([]));
+
+    const partner = await resolveFranchisePartner({
+      address: DELIVERY_ADDRESS,
+      hydratedItems: [{ productId: "prod-1", quantity: 1 }],
+    });
+
+    expect(partner).toBeNull();
+  });
+
+  it("requires the nearest partner to cover EVERY cart line, not just some", async () => {
+    mockNearestPartner(NEAR_PARTNER);
     mockLedgerFind.mockReturnValue(
       ledgerQueryChain([
         { franchisePartnerId: "partner-near", productId: "prod-1", quantity: 10 },
@@ -151,7 +172,7 @@ describe("stock-aware franchise partner routing", () => {
   });
 
   it("keeps nearest-partner semantics for legacy calls without cart lines", async () => {
-    mockPartners({ geo: [NEAR_PARTNER, FAR_PARTNER] });
+    mockNearestPartner(NEAR_PARTNER);
 
     const partner = await resolveFranchisePartner({
       address: DELIVERY_ADDRESS,
@@ -161,9 +182,66 @@ describe("stock-aware franchise partner routing", () => {
     expect(mockLedgerFind).not.toHaveBeenCalled();
   });
 
-  it("falls back to the hub seller (hubFallback) when no partner holds stock for a hub cart", async () => {
+  describe("hub-vs-franchise distance comparison", () => {
+    // Customer is essentially at the same spot as HUB_COORDS; the
+    // franchise is ~380km away (Ahmedabad) — hub must win.
+    const HUB_COORDS = [75.858, 22.72]; // [lng, lat]
+    const FAR_FRANCHISE = {
+      _id: "partner-far",
+      userId: "user-far",
+      location: { type: "Point", coordinates: [72.5714, 23.0225] },
+    };
+    // Franchise essentially at the customer's spot; hub is ~380km away.
+    const NEAR_FRANCHISE = {
+      _id: "partner-near-geo",
+      userId: "user-near-geo",
+      location: { type: "Point", coordinates: [75.858, 22.72] },
+    };
+    const FAR_HUB_COORDS = [72.5714, 23.0225];
+
+    it("routes to the hub (no franchise) when the hub is geographically closer than the only nearby franchise", async () => {
+      mockCartIsHubOnly.mockResolvedValue(true);
+      mockNearestPartner(FAR_FRANCHISE);
+      mockGetHubSellerId.mockResolvedValue("hub-seller-id");
+      mockSellerFindById.mockReturnValue(
+        sellerQueryChain({ location: { type: "Point", coordinates: HUB_COORDS } }),
+      );
+
+      const partner = await resolveFranchisePartner({
+        address: DELIVERY_ADDRESS,
+        hydratedItems: [{ productId: "prod-1", quantity: 1 }],
+      });
+
+      expect(partner).toBeNull();
+      // Hub won on distance before any stock lookup was needed.
+      expect(mockLedgerFind).not.toHaveBeenCalled();
+    });
+
+    it("still routes to the franchise when it's geographically closer than the hub (and has stock)", async () => {
+      mockCartIsHubOnly.mockResolvedValue(true);
+      mockNearestPartner(NEAR_FRANCHISE);
+      mockGetHubSellerId.mockResolvedValue("hub-seller-id");
+      mockSellerFindById.mockReturnValue(
+        sellerQueryChain({ location: { type: "Point", coordinates: FAR_HUB_COORDS } }),
+      );
+      mockLedgerFind.mockReturnValue(
+        ledgerQueryChain([
+          { franchisePartnerId: "partner-near-geo", productId: "prod-1", quantity: 5 },
+        ]),
+      );
+
+      const partner = await resolveFranchisePartner({
+        address: DELIVERY_ADDRESS,
+        hydratedItems: [{ productId: "prod-1", quantity: 1 }],
+      });
+
+      expect(partner).toEqual(NEAR_FRANCHISE);
+    });
+  });
+
+  it("falls back to the hub seller (hubFallback) when the nearest partner has no stock for a hub cart", async () => {
     mockCartIsHubOnly.mockResolvedValue(true);
-    mockPartners({ geo: [NEAR_PARTNER] });
+    mockNearestPartner(NEAR_PARTNER);
     mockLedgerFind.mockReturnValue(ledgerQueryChain([]));
 
     const routing = await resolveFranchiseOrderRouting({
@@ -181,9 +259,9 @@ describe("stock-aware franchise partner routing", () => {
     });
   });
 
-  it("routes hub carts to a stocked partner with franchise fields populated", async () => {
+  it("routes hub carts to the nearest partner with franchise fields populated", async () => {
     mockCartIsHubOnly.mockResolvedValue(true);
-    mockPartners({ geo: [NEAR_PARTNER] });
+    mockNearestPartner(NEAR_PARTNER);
     mockLedgerFind.mockReturnValue(
       ledgerQueryChain([
         { franchisePartnerId: "partner-near", productId: "prod-1", quantity: 4 },
