@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Eye, Search, X } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Eye, Search, X, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 import { adminFranchiseApi } from "../../../customer/services/franchiseApi";
 import {
@@ -192,6 +193,14 @@ const FranchiseRegistrations = () => {
                       </button>
                     </>
                   )}
+                  {row.status === "CAPTURED" && (
+                    <Link
+                      to="/admin/franchise/topups"
+                      className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-purple-600 hover:bg-purple-700 text-white rounded inline-flex items-center gap-1"
+                    >
+                      <PackageCheck size={10} /> Dispatch Stock
+                    </Link>
+                  )}
                 </div>
               </td>
             </tr>
@@ -260,6 +269,21 @@ const FranchiseRegistrations = () => {
                   label: "Payment ID",
                   content: <p className="font-mono text-xs text-slate-600 break-all">{selected._id}</p>,
                 },
+                ...(selected.status === "CAPTURED"
+                  ? [
+                      {
+                        label: "Stock",
+                        content: (
+                          <Link
+                            to="/admin/franchise/topups"
+                            className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider bg-purple-600 hover:bg-purple-700 text-white rounded inline-flex items-center gap-1"
+                          >
+                            <PackageCheck size={12} /> Dispatch Stock →
+                          </Link>
+                        ),
+                      },
+                    ]
+                  : []),
               ]
             : []
         }

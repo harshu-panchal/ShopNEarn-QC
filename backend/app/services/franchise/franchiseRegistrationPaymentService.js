@@ -2,11 +2,13 @@ import crypto from "crypto";
 import mongoose from "mongoose";
 import FranchiseRegistrationPayment from "../../models/franchiseRegistrationPayment.js";
 import FranchisePartner from "../../models/franchisePartner.js";
+import FranchiseWalletTopUp from "../../models/franchiseWalletTopUp.js";
 import Customer from "../../models/customer.js";
 import {
   FRANCHISE_MERCHANT_PREFIX,
   FRANCHISE_PARTNER_STATUS,
   FRANCHISE_PAYMENT_MODE,
+  FRANCHISE_TOPUP_STATUS,
 } from "../../constants/franchise.js";
 import {
   PAYMENT_EVENT_SOURCE,
@@ -550,7 +552,65 @@ export async function approveFranchiseRegistrationPayment({ paymentId, adminId, 
   payment.adminRemarks = adminRemarks || "";
   await payment.save();
   await handleCaptured(payment);
+  await createFirstTopUpFromRegistration(payment._id);
   return payment;
+}
+
+/**
+ * The registration deposit doubles as the franchise partner's first
+ * wallet top-up: once activation has actually gone through, auto-create
+ * the linked `FranchiseWalletTopUp` row (pending admin's product
+ * selection) so the existing first-topup dispatch flow
+ * (`approveFranchiseWalletTopUp`) picks it up on the Top-Ups admin
+ * queue — same wallet-credit multiplier, same dispatch modal. Without
+ * this, the registration fee is credited to no one and admin has no
+ * way to allocate stock against it.
+ *
+ * Idempotent on `idempotencyKey` (safe if approval is retried); no-ops
+ * if activation didn't actually complete, or the partner already has a
+ * first top-up on record (e.g. a legacy registration approved before
+ * this existed, later topped up manually).
+ */
+async function createFirstTopUpFromRegistration(paymentId) {
+  const payment = await FranchiseRegistrationPayment.findById(paymentId).lean();
+  if (!payment?.activationApplied || !payment.franchisePartnerId) return null;
+
+  const idempotencyKey = `fr-topup-from-reg-${payment._id}`;
+  const existing = await FranchiseWalletTopUp.findOne({ idempotencyKey }).lean();
+  if (existing) return existing;
+
+  const partner = await FranchisePartner.findById(payment.franchisePartnerId).lean();
+  if (!partner || partner.hasCompletedFirstTopup) return null;
+
+  try {
+    const cfg = await getFranchiseConfig();
+    return await FranchiseWalletTopUp.create({
+      franchisePartnerId: payment.franchisePartnerId,
+      userId: payment.customer,
+      amount: payment.registrationPriceSnapshot,
+      creditMultiplierSnapshot: Number(cfg.walletCreditMultiplier) || 2,
+      status: FRANCHISE_TOPUP_STATUS.PENDING_REVIEW,
+      paymentMode: payment.paymentMode,
+      manualPaymentDetails: {
+        transactionId: payment.manualPaymentDetails?.transactionId || "",
+        screenshotUrl: payment.manualPaymentDetails?.screenshotUrl || "",
+        paidAmount: payment.manualPaymentDetails?.paidAmount ?? null,
+        submittedAt: payment.manualPaymentDetails?.submittedAt || null,
+      },
+      isFirstTopup: true,
+      idempotencyKey,
+    });
+  } catch (error) {
+    // Race on the unique idempotencyKey index (concurrent retry) —
+    // treat as already-created rather than failing the approval.
+    const raced = await FranchiseWalletTopUp.findOne({ idempotencyKey }).lean();
+    if (raced) return raced;
+    logger.error("[franchiseRegistration] auto first-topup creation failed", {
+      paymentId: String(paymentId),
+      error: error.message,
+    });
+    return null;
+  }
 }
 
 export async function rejectFranchiseRegistrationPayment({ paymentId, adminId, reason }) {
