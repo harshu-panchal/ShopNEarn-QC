@@ -124,6 +124,7 @@ const FranchisePartners = React.lazy(() => import("../pages/franchise/FranchiseP
 const FranchisePartnerDetail = React.lazy(() => import("../pages/franchise/FranchisePartnerDetail"));
 const FranchiseSettings = React.lazy(() => import("../pages/franchise/FranchiseSettings"));
 const FranchiseDispatch = React.lazy(() => import("../pages/franchise/FranchiseDispatch"));
+const FranchiseStockOrders = React.lazy(() => import("../pages/franchise/FranchiseStockOrders"));
 const InventoryReportsHub = React.lazy(() => import("../pages/inventory/InventoryReportsHub"));
 const RoleManagement = React.lazy(() => import("../pages/access/RoleManagement"));
 const AdminUserManagement = React.lazy(() => import("../pages/access/AdminUserManagement"));
@@ -258,6 +259,7 @@ const navItems = [
       { label: "Registrations", path: "/admin/franchise/registrations", permission: "franchise:view" },
       { label: "Top-ups", path: "/admin/franchise/topups", permission: "franchise:view" },
       { label: "Partners", path: "/admin/franchise/partners", permission: "franchise:view" },
+      { label: "Stock Orders", path: "/admin/franchise/stock-orders", permission: "franchise:view" },
       { label: "Dispatch", path: "/admin/franchise/dispatch", permission: "franchise:dispatch" },
       { label: "Settings", path: "/admin/franchise/settings", permission: "franchise:settings" },
     ],
@@ -426,6 +428,7 @@ const AdminRoutes = () => {
         <Route path="/franchise/topups" element={withPermission("franchise:view", <FranchiseTopUps />)} />
         <Route path="/franchise/partners" element={withPermission("franchise:view", <FranchisePartners />)} />
         <Route path="/franchise/partners/:id" element={withPermission("franchise:view", <FranchisePartnerDetail />)} />
+        <Route path="/franchise/stock-orders" element={withPermission("franchise:view", <FranchiseStockOrders />)} />
         <Route path="/franchise/dispatch" element={withPermission("franchise:dispatch", <FranchiseDispatch />)} />
         <Route path="/franchise/settings" element={withPermission("franchise:settings", <FranchiseSettings />)} />
         <Route path="*" element={<Navigate to={fallbackPath} replace />} />

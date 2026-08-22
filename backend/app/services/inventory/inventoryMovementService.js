@@ -201,9 +201,13 @@ export async function decrementFranchiseStock({
       for (const row of rows) {
         if (remaining <= 0) break;
         const take = Math.min(row.quantity, remaining);
+        await FranchiseStockLedger.updateOne(
+          { _id: row._id },
+          { $inc: { quantity: -take } },
+          { session }
+        );
         row.quantity -= take;
         remaining -= take;
-        await row.save({ session });
         ledger = row;
       }
     }

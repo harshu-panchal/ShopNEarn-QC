@@ -112,6 +112,9 @@ export const StatusPill = ({ status }) => {
     CANCELLED: { label: "Cancelled", icon: AlertCircle, color: "bg-slate-100 text-slate-600" },
     active: { label: "Active", icon: CheckCircle2, color: "bg-emerald-100 text-emerald-800" },
     suspended: { label: "Suspended", icon: AlertCircle, color: "bg-amber-100 text-amber-800" },
+    REQUESTED: { label: "Awaiting Dispatch", icon: Clock, color: "bg-amber-100 text-amber-800" },
+    DISPATCHED_PENDING_RECEIPT: { label: "Awaiting Receipt", icon: Clock, color: "bg-indigo-100 text-indigo-800" },
+    DELIVERED: { label: "Delivered", icon: CheckCircle2, color: "bg-emerald-100 text-emerald-800" },
   };
   const cfg = map[status] || map.PENDING_REVIEW;
   const Icon = cfg.icon;
