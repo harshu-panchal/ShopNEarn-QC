@@ -126,14 +126,63 @@ export async function resolveNearestFulfillmentSource({ lat, lng, pincode, exclu
 }
 
 /**
+ * Resolve which products the catalog LIST/SEARCH should even show for
+ * this delivery location — used to keep browse/search from listing
+ * items the resolved franchise doesn't actually carry (they'd just show
+ * up as permanently "OUT" per `resolveCatalogStockForProducts`'s
+ * no-ledger-entry handling, and can't be fulfilled through checkout's
+ * single-franchise-covers-the-cart rule anyway).
+ *
+ * Only restricts when there's a genuine location signal (real
+ * coordinates or a pincode) — `resolveNearestFulfillmentSource`'s own
+ * weakest fallback tier (no coords/pincode at all -> oldest-registered
+ * active franchise) is fine for a harmless per-item stock swap, but
+ * MUST NOT silently narrow a customer's whole catalog down to some
+ * arbitrary franchise's handful of products just because they haven't
+ * shared their location yet — that case is always treated as Hub
+ * (unrestricted), matching today's existing behavior.
+ *
+ * Returns `{ type: "hub" }` (no restriction) or
+ * `{ type: "franchise", franchisePartnerId, allowedProductIds }`.
+ */
+export async function resolveFranchiseCatalogScope({ lat, lng, pincode } = {}) {
+  const numLat = Number(lat);
+  const numLng = Number(lng);
+  const hasCoords = Number.isFinite(numLat) && Number.isFinite(numLng);
+  const hasPincode = !!String(pincode || "").trim();
+  if (!hasCoords && !hasPincode) {
+    return { type: "hub" };
+  }
+
+  const { type, franchisePartner } = await resolveNearestFulfillmentSource({ lat, lng, pincode });
+  if (type !== "franchise" || !franchisePartner) {
+    return { type: "hub" };
+  }
+
+  const allowedProductIds = await FranchiseStockLedger.distinct("productId", {
+    franchisePartnerId: franchisePartner._id,
+  });
+
+  return {
+    type: "franchise",
+    franchisePartnerId: franchisePartner._id,
+    allowedProductIds,
+  };
+}
+
+/**
  * Resolve product and variant stock for a list of catalog products.
  * Reads stock from the customer's SINGLE nearest Franchise Partner's
  * FranchiseStockLedger — UNLESS the hub itself is geographically closer
  * than that franchise, in which case the hub's own Product.stock is
- * shown directly (see `resolveNearestFulfillmentSource`). Falls back to
- * the original Product.stock and Product.variants[].stock when the
- * franchise has NO ledger entry at all for the product (not when it has
- * an entry at 0 — that means genuinely out of stock at that franchise).
+ * shown directly (see `resolveNearestFulfillmentSource`). When a
+ * franchise IS the resolved source, a product with NO ledger entry at
+ * all is treated as genuinely unavailable there (stock 0, variants
+ * zeroed) — the franchise never had it, so showing the Hub's number
+ * would imply availability that can't actually be fulfilled through
+ * this resolved path (checkout already requires the same single
+ * franchise to cover the full cart or falls back to Hub — see
+ * `partnerCoversFullStock` in `franchiseOrderRoutingService.js`).
  *
  * @param {Array<Object>} products - List of product documents (plain objects or Mongoose docs)
  * @param {Object} location - { lat, lng, pincode }
@@ -167,14 +216,9 @@ export async function resolveCatalogStockForProducts(products = [], { lat, lng, 
     productId: { $in: productIds },
   }).lean();
 
-  if (!ledgers || ledgers.length === 0) {
-    // Nearest franchise has no ledger entries for these products -> Hub fallback
-    return products;
-  }
-
   // Group ledgers by productId
   const ledgersByProduct = new Map();
-  for (const ledger of ledgers) {
+  for (const ledger of ledgers || []) {
     const pId = String(ledger.productId);
     if (!ledgersByProduct.has(pId)) {
       ledgersByProduct.set(pId, []);
@@ -187,7 +231,12 @@ export async function resolveCatalogStockForProducts(products = [], { lat, lng, 
     const productLedgers = ledgersByProduct.get(pId);
 
     if (!productLedgers || productLedgers.length === 0) {
-      // No ledger entry at this franchise for this product -> Hub fallback
+      // This franchise never stocked the item at all -> unavailable here,
+      // not the Hub's number (see doc comment above).
+      product.stock = 0;
+      if (Array.isArray(product.variants)) {
+        for (const variant of product.variants) variant.stock = 0;
+      }
       continue;
     }
 

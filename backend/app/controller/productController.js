@@ -28,7 +28,10 @@ import {
 } from "../services/productModerationService.js";
 import { buildSearchRegex } from "../utils/regex.js";
 import { syncMasterStockFromVariants } from "../utils/productStockUtils.js";
-import { resolveCatalogStockForProducts } from "../services/franchise/franchiseStockResolver.js";
+import {
+  resolveCatalogStockForProducts,
+  resolveFranchiseCatalogScope,
+} from "../services/franchise/franchiseStockResolver.js";
 
 // Phase 3 P3-5: when search term is reasonably specific and the env flag
 // is enabled, prefer Mongo's `name + tags` text index over case-insensitive
@@ -377,6 +380,18 @@ export const getProducts = async (req, res) => {
     if (enforceRadius) {
       finalQuery.status = "active";
       finalQuery = { $and: [finalQuery, getApprovedOrLegacyFilter()] };
+
+      // Scope the list to the resolved franchise's own inventory when a
+      // franchise (not the Hub) is the customer's nearest fulfillment
+      // source — see `resolveFranchiseCatalogScope`.
+      const catalogScope = await resolveFranchiseCatalogScope({
+        lat,
+        lng,
+        pincode: req.query.pincode,
+      });
+      if (catalogScope.type === "franchise") {
+        finalQuery = { $and: [finalQuery, { _id: { $in: catalogScope.allowedProductIds } }] };
+      }
     } else {
       if (status && status !== "all") {
         finalQuery.status = status;
