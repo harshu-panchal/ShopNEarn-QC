@@ -570,6 +570,11 @@ export async function placeOrderAtomic({
     for (let index = 0; index < pricingSnapshot.sellerBreakdownEntries.length; index += 1) {
       const entry = pricingSnapshot.sellerBreakdownEntries[index];
       const orderId = await generateUniquePublicOrderId({ session });
+      // Pre-generated so franchise stock reservation (below, which runs
+      // before the Order document itself is constructed) can reference
+      // the real Order _id — FranchiseStockMovement.order is an
+      // ObjectId ref, not the human-readable public orderId string.
+      const orderObjectId = new mongoose.Types.ObjectId();
       const sellerPendingUntil = shouldStartSellerWorkflow
         ? new Date(Date.now() + sellerTimeoutMs)
         : null;
@@ -588,7 +593,8 @@ export async function placeOrderAtomic({
         await reserveFranchiseStockForItems({
           items: entry.items,
           franchisePartnerId: franchisePartner._id,
-          orderId,
+          orderId: orderObjectId,
+          publicOrderId: orderId,
           session,
         });
         const releasedNow = new Date();
@@ -646,6 +652,7 @@ export async function placeOrderAtomic({
       const orderKind = detectOrderKind(orderItemsForKindCheck);
 
       const order = new Order({
+        _id: orderObjectId,
         orderId,
         customer: customerId,
         seller: entry.sellerId,

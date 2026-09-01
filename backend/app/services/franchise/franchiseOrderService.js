@@ -522,6 +522,25 @@ export async function fulfillFranchiseOrder({ franchisePartnerId, orderId }) {
     await session.endSession();
   }
 
+  // Financial settlement (seller payout, admin earning, MLM repurchase
+  // bonus chain, home-shopping commissions) — every other delivery path
+  // (deliveryController.js, orderController.js, orderWorkflowService.js)
+  // runs this via `applyDeliveredSettlement` right after marking an
+  // order delivered; this franchise path was flipping the order to
+  // DELIVERED without it, so franchise-fulfilled orders never settled.
+  // Order is already marked delivered at this point — mirror the same
+  // pattern as `orderWorkflowService.js`: surface a warning rather than
+  // failing the fulfillment call if settlement itself errors.
+  try {
+    const { applyDeliveredSettlement } = await import("../orderSettlement.js");
+    await applyDeliveredSettlement(order, order.orderId);
+  } catch (settlementError) {
+    logger.error("[fulfillFranchiseOrder] settlement failed after delivery", {
+      orderId: order.orderId,
+      error: settlementError.message,
+    });
+  }
+
   emitOrderStatusUpdate(
     order.orderId,
     { workflowStatus: order.workflowStatus },

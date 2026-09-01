@@ -270,6 +270,20 @@ export async function resolveCatalogStockForProducts(products = [], { lat, lng, 
         variant.stock = variantStock;
         totalFranchiseVariantQty += variantStock;
       }
+
+      // Some ledger rows — notably every first-topup dispatch allocation
+      // (`approveFranchiseWalletTopUp`, whose product-selection step
+      // doesn't capture a variant) — are recorded with no variantSku at
+      // all. When the product has exactly one variant, that untagged
+      // quantity unambiguously belongs to it; attributing it here is
+      // what makes the customer-facing "OUT" vs "available" state (read
+      // from variant.stock) match the real, already-correct product-
+      // level total. With 2+ variants which one it belongs to is
+      // genuinely ambiguous, so it's intentionally left unattributed.
+      if (franchiseMasterQty > 0 && product.variants.length === 1) {
+        product.variants[0].stock += franchiseMasterQty;
+        totalFranchiseVariantQty += franchiseMasterQty;
+      }
     }
 
     const calculatedFranchiseTotal = hasVariants

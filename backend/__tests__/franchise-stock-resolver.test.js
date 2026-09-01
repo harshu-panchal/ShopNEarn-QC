@@ -101,6 +101,37 @@ describe("franchiseStockResolver", () => {
     expect(products[0].stock).toBe(8);
   });
 
+  it("attributes an untagged (no variantSku) ledger row to a product's sole variant", async () => {
+    // Mirrors real first-topup dispatch data: the ledger row never
+    // records which variant was received, so it lands as a master-level
+    // (no variantSku) entry — but the product itself only has one real
+    // variant. The customer-facing OUT/ADD state reads variant.stock,
+    // so that must reflect the real quantity, not 0.
+    const fakePartners = [{ _id: "fp-1" }];
+    mockPartnerFind.mockReturnValueOnce({
+      limit: () => ({ lean: async () => fakePartners }),
+    });
+    mockLedgerFind.mockReturnValueOnce({
+      lean: async () => [
+        { franchisePartnerId: "fp-1", productId: "prod-glow", variantSku: "", quantity: 3 },
+      ],
+    });
+
+    const products = [
+      {
+        _id: "prod-glow",
+        name: "Glow Mask",
+        stock: -2,
+        variants: [{ sku: "glowm-001-apul", name: "1 BOX", stock: 0 }],
+      },
+    ];
+
+    await resolveCatalogStockForProducts(products, { lat: 19.07, lng: 72.87 });
+
+    expect(products[0].variants[0].stock).toBe(3);
+    expect(products[0].stock).toBe(3);
+  });
+
   it("treats a product the resolved franchise never stocked as unavailable (0), not the Hub's number", async () => {
     const fakePartners = [{ _id: "fp-1" }];
 

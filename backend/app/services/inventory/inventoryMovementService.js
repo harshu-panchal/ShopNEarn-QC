@@ -258,6 +258,7 @@ export async function reserveFranchiseStockForItems({
   items,
   franchisePartnerId,
   orderId,
+  publicOrderId = null,
   session,
 }) {
   for (const item of items || []) {
@@ -270,7 +271,7 @@ export async function reserveFranchiseStockForItems({
       quantity: qty,
       session,
       type: FRANCHISE_STOCK_TYPES.FULFILLMENT,
-      note: `Order #${orderId} placed — franchise stock reserved`,
+      note: `Order #${publicOrderId || orderId} placed — franchise stock reserved`,
       orderId,
       variantSku: item.variantSku || item.sku || "",
     });
