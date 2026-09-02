@@ -91,30 +91,26 @@ export function resolveFirstDirectPairIncomeAmount(
 }
 
 /**
- * Mirror of client PHP `calculateBinaryIncome`.
- * First pair requires 2:1 or 1:2; only after that opener do 1:1 pairs count.
+ * Every pair requires a 2:1 (or 1:2) volume ratio — there is no 1:1
+ * exception after the opener. Each iteration takes 2 from whichever
+ * leg currently has more (ties break toward left — arbitrary but
+ * deterministic) and 1 from the other, until neither leg has enough
+ * to open another pair.
  */
 export function calculateBinaryPairs(leftActive, rightActive) {
   let left = Math.max(0, Number(leftActive) || 0);
   let right = Math.max(0, Number(rightActive) || 0);
   let pairs = 0;
 
-  if (left >= 2 && right >= 1) {
-    left -= 2;
-    right -= 1;
+  while ((left >= 2 && right >= 1) || (right >= 2 && left >= 1)) {
+    if (left >= right && left >= 2 && right >= 1) {
+      left -= 2;
+      right -= 1;
+    } else {
+      right -= 2;
+      left -= 1;
+    }
     pairs += 1;
-    const extraPairs = Math.min(left, right);
-    pairs += extraPairs;
-    left -= extraPairs;
-    right -= extraPairs;
-  } else if (right >= 2 && left >= 1) {
-    right -= 2;
-    left -= 1;
-    pairs += 1;
-    const extraPairs = Math.min(left, right);
-    pairs += extraPairs;
-    left -= extraPairs;
-    right -= extraPairs;
   }
 
   return {

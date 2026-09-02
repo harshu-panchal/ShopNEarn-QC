@@ -1,6 +1,7 @@
 /**
  * Team-based binary pair matching display helpers.
- * Mirrors backend `mlmBinaryPairIncomeService` (2:1 opener, then 1:1).
+ * Mirrors backend `mlmBinaryPairIncomeService` — every pair needs a
+ * 2:1 (or 1:2) volume ratio, no 1:1 exception after the first.
  */
 
 export function teamLegWeakerSide(binary = {}) {
@@ -44,6 +45,6 @@ export function buildBinaryPairHint(binary, formatINR) {
 
   return (
     `Grow active Plan A members on your ${growLeg}. ` +
-    `Next team match pays ${nextAmount}. Team first pair needs 2:1 or 1:2 volume, then 1:1.${capNote}`
+    `Next team match pays ${nextAmount}. Every pair needs 2:1 or 1:2 volume.${capNote}`
   );
 }
