@@ -507,6 +507,16 @@ export async function computeAndCreditBinaryTeamPairIncome({
     }
   }
 
+  // A zero-benefit trigger (e.g. a joining plan snapshot that never got
+  // its benefit fields backfilled) would make every pair in this batch
+  // resolve to ₹0 and `continue` past silently — yet `pairsCompleted`
+  // below would still advance past them, permanently forfeiting a pair
+  // that was never actually paid. Bail out with NO state mutation
+  // instead, so the pair-index stays genuinely pending for the next
+  // activation (from any downline) to evaluate and credit properly.
+  // Mirrors the `dailyPairCap <= 0` early return just above.
+  if (!isTopup && pairScale <= 0) return [];
+
   const today = todayIstDateString();
   const tracker = sponsor.binaryDailyPairTracker || {};
   const pairsPaidToday =
