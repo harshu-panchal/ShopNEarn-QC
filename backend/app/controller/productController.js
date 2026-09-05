@@ -32,6 +32,7 @@ import {
   resolveCatalogStockForProducts,
   resolveFranchiseCatalogScope,
 } from "../services/franchise/franchiseStockResolver.js";
+import { getMlmConfig } from "../services/mlm/mlmConfigService.js";
 
 // Phase 3 P3-5: when search term is reasonably specific and the env flag
 // is enabled, prefer Mongo's `name + tags` text index over case-insensitive
@@ -787,6 +788,47 @@ export const getSellerProducts = async (req, res) => {
   }
 };
 
+async function applyBvDefaults(productData) {
+  try {
+    const mlmConfig = await getMlmConfig();
+    const defaultPct = Number(mlmConfig?.defaultBvPercentage ?? 50);
+
+    const priceToUse = Number(
+      productData.salePrice && Number(productData.salePrice) > 0
+        ? productData.salePrice
+        : productData.price || 0,
+    );
+
+    if (productData.bv === undefined || productData.bv === null || productData.bv === "") {
+      productData.bv = Number(((priceToUse * defaultPct) / 100).toFixed(2));
+    } else {
+      productData.bv = Math.max(0, Number(productData.bv));
+    }
+
+    if (Array.isArray(productData.variants)) {
+      productData.variants = productData.variants.map((v) => {
+        const vPrice = Number(
+          v.salePrice && Number(v.salePrice) > 0
+            ? v.salePrice
+            : v.price || priceToUse,
+        );
+        let vBv = v.bv;
+        if (vBv === undefined || vBv === null || vBv === "") {
+          vBv = Number(((vPrice * defaultPct) / 100).toFixed(2));
+        } else {
+          vBv = Math.max(0, Number(vBv));
+        }
+        return {
+          ...v,
+          bv: vBv,
+        };
+      });
+    }
+  } catch (err) {
+    logger.error("Error applying BV defaults to product", { scope: "applyBvDefaults", error: err });
+  }
+}
+
 /* ===============================
    CREATE PRODUCT
 ================================ */
@@ -911,6 +953,7 @@ export const createProduct = async (req, res) => {
             : makeProductSku(productData.name, idx + 1),
       }));
     }
+    await applyBvDefaults(productData);
     syncMasterStockFromVariants(productData);
 
     let moderationUpdate = {};
@@ -1074,6 +1117,7 @@ export const updateProduct = async (req, res) => {
             : makeProductSku(skuBaseName, idx + 1),
       }));
     }
+    await applyBvDefaults(productData);
     syncMasterStockFromVariants(productData);
 
     let moderationUpdate = {};

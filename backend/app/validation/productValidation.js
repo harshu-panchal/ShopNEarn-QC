@@ -13,6 +13,7 @@ export const createProductSchema = Joi.object({
   price: Joi.number().min(0).required(),
   salePrice: Joi.number().min(0).optional(),
   stock: Joi.number().integer().min(0).required(),
+  bv: Joi.number().min(0).allow(null, "").optional(),
   unit: trimmedString.optional(),
   category: objectIdLike.required(),
   subCategory: objectIdLike.optional(),
@@ -22,11 +23,15 @@ export const createProductSchema = Joi.object({
   variants: Joi.array()
     .items(
       Joi.object({
-        slot: trimmedString.required(),
-        price: Joi.number().min(0).required(),
-        stock: Joi.number().integer().min(0).required(),
+        slot: trimmedString.optional(),
+        name: trimmedString.optional(),
+        sku: trimmedString.optional(),
+        price: Joi.number().min(0).optional(),
+        salePrice: Joi.number().min(0).optional(),
+        stock: Joi.number().integer().min(0).optional(),
+        bv: Joi.number().min(0).allow(null, "").optional(),
         unit: trimmedString.optional(),
-      }),
+      }).unknown(true),
     )
     .optional(),
   brand: trimmedString.max(100).optional(),

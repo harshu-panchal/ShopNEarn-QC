@@ -968,19 +968,33 @@ export async function computeAndCreditRepurchaseBonusChain({
 
   const pb = order.paymentBreakdown || {};
   const orderValue = roundCurrency((pb.grandTotal || 0) + (pb.walletAmount || 0));
-  // Repurchase bonus is not earned on the portion of the order paid out of
-  // the customer's shopping wallet — that balance is itself seed/reward
-  // money (joining package, premium upgrade, milestone rewards), not new
-  // spend, so it must not re-generate more bonus. Online checkouts record
-  // the shopping-wallet portion in `walletSplit.shopping`; POS sales pay
-  // for the whole order out of one bucket (`posPaymentMethod`) and never
-  // populate `walletSplit`, so a shopping-wallet POS sale excludes the
-  // full order value instead.
+  // Repurchase bonus is calculated based on Business Volume (BV). Purchases paid
+  // via Shopping Wallet do not generate BV/commission, while Earning Wallet,
+  // COD, Online, and non-shopping POS payment methods earn BV.
   const shoppingWalletUsed =
     order.posPaymentMethod === FRANCHISE_POS_PAYMENT_METHOD.SHOPPING_WALLET
       ? orderValue
       : roundCurrency(pb.walletSplit?.shopping || 0);
-  const baseAmount = roundCurrency(orderValue - shoppingWalletUsed);
+
+  const totalBV = Number(order.totalBV || 0);
+  let baseAmount = 0;
+
+  if (totalBV > 0) {
+    if (orderValue > 0 && shoppingWalletUsed > 0) {
+      if (shoppingWalletUsed >= orderValue) {
+        baseAmount = 0;
+      } else {
+        const eligibleRatio = (orderValue - shoppingWalletUsed) / orderValue;
+        baseAmount = roundCurrency(totalBV * eligibleRatio);
+      }
+    } else {
+      baseAmount = roundCurrency(totalBV);
+    }
+  } else {
+    // Fallback for legacy orders without BV
+    baseAmount = roundCurrency(orderValue - shoppingWalletUsed);
+  }
+
   if (baseAmount <= 0) return [];
 
   // Walk the upline. `getUplineChain` returns ACTIVE memberships only —
@@ -1014,10 +1028,11 @@ export async function computeAndCreditRepurchaseBonusChain({
       sourceUserId: downlineUserId,
       sourceOrderId: order._id,
       bucket: "pending",
-      description: `Repurchase bonus L${level} (${ratePercent}% of ₹${baseAmount})`,
+      description: `Repurchase bonus L${level} (${ratePercent}% of ${totalBV > 0 ? "BV " : ""}₹${baseAmount})`,
       meta: {
         sourceOrderPublicId: order.orderId,
         downlineUserId: String(downlineUserId),
+        totalBV,
       },
       idempotencyKey,
       correlationId,

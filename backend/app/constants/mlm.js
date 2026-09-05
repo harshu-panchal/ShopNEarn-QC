@@ -323,8 +323,11 @@ export const MLM_DEFAULTS = Object.freeze({
   // joining-payment refunds. Set to 0 to release immediately.
   planAPairBonusReleaseCooldownDays: 7,
 
+  // Default Business Volume (BV) percentage of selling price if not explicitly set on product/variant.
+  defaultBvPercentage: 50,
+
   // Plan B: Repurchase Bonus on every paid+delivered downline order.
-  // Base = grandTotal. Walked 6 levels deep via sponsorChain.
+  // Base = BV (Business Volume) of order. Walked 6 levels deep via sponsorChain.
   repurchaseBonusLevels: [
     { level: 1, ratePercent: 6 },
     { level: 2, ratePercent: 5 },

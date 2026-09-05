@@ -321,7 +321,7 @@ export async function hydrateOrderItems(
     .filter(Boolean);
 
   const productQuery = Product.find({ _id: { $in: productIds } })
-    .select("_id name salePrice price mainImage headerId sellerId status approvalStatus stock variants")
+    .select("_id name salePrice price bv mainImage headerId sellerId status approvalStatus stock variants")
     .lean();
   if (session) productQuery.session(session);
   const products = await productQuery;
@@ -366,11 +366,23 @@ export async function hydrateOrderItems(
       ? serverUnitPrice
       : normalizeLinePrice(item.price) || serverUnitPrice;
 
+    const resolvedBv = Math.max(
+      0,
+      Number(
+        resolvedVariant && resolvedVariant.bv != null
+          ? resolvedVariant.bv
+          : product.bv != null
+            ? product.bv
+            : 0,
+      ),
+    );
+
     return {
       productId,
       productName: item.name || product.name,
       quantity,
       price: inferredUnitPrice,
+      bv: resolvedBv,
       image: item.image || product.mainImage,
       headerCategoryId: String(product.headerId),
       sellerId: String(product.sellerId),
