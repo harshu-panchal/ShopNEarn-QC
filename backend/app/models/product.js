@@ -113,6 +113,11 @@ const productSchema = new mongoose.Schema(
             enum: ["seller", "admin"],
             default: null,
         },
+        bv: {
+            type: Number,
+            default: null,
+            min: 0,
+        },
         variants: [
             {
                 name: String,
@@ -120,6 +125,11 @@ const productSchema = new mongoose.Schema(
                 salePrice: Number,
                 stock: Number,
                 sku: String,
+                bv: {
+                    type: Number,
+                    default: null,
+                    min: 0,
+                },
             }
         ],
         isFeatured: {

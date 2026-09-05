@@ -34,6 +34,7 @@ const AddProduct = () => {
     description: "",
     price: "",
     salePrice: "",
+    bv: "",
     stock: "",
     lowStockAlert: 5,
     category: "",
@@ -51,6 +52,7 @@ const AddProduct = () => {
         name: "",
         price: "",
         salePrice: "",
+        bv: "",
         stock: "",
       },
     ],
@@ -149,6 +151,9 @@ const AddProduct = () => {
       data.append("price", effectivePrice);
       data.append("salePrice", firstVariant.salePrice || 0);
       data.append("stock", effectiveStock);
+      if (formData.bv !== "" && formData.bv !== null && formData.bv !== undefined) {
+        data.append("bv", Number(formData.bv));
+      }
 
       // Category IDs
       data.append("headerId", formData.header);
@@ -338,6 +343,20 @@ const AddProduct = () => {
                     placeholder="e.g. Amul"
                   />
                 </div>
+                <div className="space-y-1.5 flex flex-col">
+                  <label className="text-[10px] sm:text-xs font-bold text-emerald-600 uppercase tracking-widest ml-1">
+                    Business Volume (BV)
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.bv}
+                    onChange={(e) =>
+                      setFormData({ ...formData, bv: e.target.value })
+                    }
+                    className="w-full px-4 py-2.5 bg-emerald-50/60 border border-emerald-100 rounded-md text-sm font-semibold outline-none ring-emerald-500/10 focus:ring-2 transition-all"
+                    placeholder="Optional (Auto 50% of price)"
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -433,6 +452,22 @@ const AddProduct = () => {
                         }}
                         placeholder="450"
                         className="w-full px-3 py-2 bg-brand-50 ring-1 ring-brand-100 border-none rounded-xl text-xs font-bold text-brand-700 outline-none focus:ring-2 focus:ring-brand-200"
+                      />
+                    </div>
+                    <div className="col-span-6 md:col-span-2 space-y-1">
+                      <label className="text-[8px] font-bold text-emerald-600 uppercase tracking-widest ml-1">
+                        BV
+                      </label>
+                      <input
+                        type="number"
+                        value={variant.bv || ""}
+                        onChange={(e) => {
+                          const newVariants = [...formData.variants];
+                          newVariants[index].bv = e.target.value;
+                          setFormData({ ...formData, variants: newVariants });
+                        }}
+                        placeholder="Auto 50%"
+                        className="w-full px-3 py-2 bg-emerald-50/60 ring-1 ring-emerald-100 border-none rounded-xl text-xs font-bold text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-200"
                       />
                     </div>
                     <div className="col-span-6 md:col-span-2 space-y-1">

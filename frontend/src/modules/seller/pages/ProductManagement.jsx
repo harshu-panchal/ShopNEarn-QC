@@ -210,6 +210,7 @@ const ProductManagement = () => {
     description: "",
     price: "",
     salePrice: "",
+    bv: "",
     stock: "",
     lowStockAlert: 5,
     category: "",
@@ -222,7 +223,7 @@ const ProductManagement = () => {
     mainImage: null,
     galleryImages: [],
     variants: [
-      { id: Date.now(), name: "", price: "", salePrice: "", stock: "", sku: "" },
+      { id: Date.now(), name: "", price: "", salePrice: "", bv: "", stock: "", sku: "" },
     ],
   });
 
@@ -323,6 +324,9 @@ const ProductManagement = () => {
       data.append("description", formData.description);
       data.append("price", Number(effectivePrice));
       data.append("salePrice", Number(formData.salePrice) || 0);
+      if (formData.bv !== "" && formData.bv !== null && formData.bv !== undefined) {
+        data.append("bv", Number(formData.bv));
+      }
       data.append("stock", Number(effectiveStock));
       data.append("headerId", formData.header);
       data.append("categoryId", formData.category);
@@ -478,6 +482,7 @@ const ProductManagement = () => {
         description: item.description || "",
         price: initialPrice,
         salePrice: item.salePrice || "",
+        bv: item.bv !== undefined && item.bv !== null ? item.bv : "",
         stock: initialStock,
         lowStockAlert: item.lowStockAlert || 5,
         header: headerVal,
@@ -491,12 +496,13 @@ const ProductManagement = () => {
         mainImageFile: null,
         galleryImages: item.galleryImages || [],
         galleryFiles: [],
-        variants: (item.variants && item.variants.length > 0) ? item.variants.map(v => ({ ...v, id: v._id || Date.now() })) : [
+        variants: (item.variants && item.variants.length > 0) ? item.variants.map(v => ({ ...v, id: v._id || Date.now(), bv: v.bv !== undefined && v.bv !== null ? v.bv : "" })) : [
           {
             id: Date.now(),
             name: "",
             price: initialPrice || "",
             salePrice: item.salePrice || "",
+            bv: item.bv !== undefined && item.bv !== null ? item.bv : "",
             stock: initialStock || "",
             sku: item.sku || "",
           },
@@ -511,6 +517,7 @@ const ProductManagement = () => {
         description: "",
         price: "",
         salePrice: "",
+        bv: "",
         stock: "",
         lowStockAlert: 5,
         header: "",
@@ -528,6 +535,7 @@ const ProductManagement = () => {
             name: "",
             price: "",
             salePrice: "",
+            bv: "",
             stock: "",
             sku: "",
           },
@@ -1156,6 +1164,23 @@ const ProductManagement = () => {
                             placeholder="e.g. Amul"
                           />
                         </div>
+                        <div className="space-y-1.5 flex flex-col">
+                          <label className="text-[10px] sm:text-xs font-bold text-emerald-600 uppercase tracking-widest ml-1">
+                            Business Volume (BV)
+                          </label>
+                          <input
+                            type="number"
+                            value={formData.bv}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                bv: e.target.value,
+                              })
+                            }
+                            className="w-full px-4 py-2.5 bg-emerald-50/60 border border-emerald-100 rounded-xl text-sm font-semibold outline-none ring-emerald-500/10 focus:ring-2"
+                            placeholder="Optional (Auto 50% of price)"
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1340,6 +1365,14 @@ const ProductManagement = () => {
                                 news[i].salePrice = e.target.value;
                                 setFormData({ ...formData, variants: news });
                               }} placeholder="Sale" className="w-full bg-brand-50/50 px-3 py-2 rounded-xl text-xs ring-1 ring-brand-100 text-brand-700 outline-none" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[8px] font-bold text-emerald-600 uppercase tracking-widest ml-1">BV</label>
+                              <input type="number" value={v.bv || ''} onChange={e => {
+                                const news = [...formData.variants];
+                                news[i].bv = e.target.value;
+                                setFormData({ ...formData, variants: news });
+                              }} placeholder="Auto 50%" className="w-full bg-emerald-50/50 px-3 py-2 rounded-xl text-xs ring-1 ring-emerald-100 text-emerald-700 outline-none" />
                             </div>
                             <div className="space-y-1">
                               <label className="text-[8px] font-bold text-slate-600 uppercase tracking-widest ml-1">Stock</label>

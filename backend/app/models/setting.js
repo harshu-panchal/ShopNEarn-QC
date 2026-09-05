@@ -367,6 +367,12 @@ const settingSchema = new mongoose.Schema(
                 min: 0,
                 max: 365,
             },
+            defaultBvPercentage: {
+                type: Number,
+                default: MLM_DEFAULTS.defaultBvPercentage,
+                min: 0,
+                max: 100,
+            },
             repurchaseBonusLevels: {
                 type: [
                     {

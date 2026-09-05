@@ -96,6 +96,7 @@ function mapOrderItemsForPersistence(hydratedItems = []) {
     name: item.productName,
     quantity: item.quantity,
     price: item.price,
+    bv: Math.max(0, Number(item.bv || 0)),
     variantSlot: String(item.variantSku || item.variantSlot || "").trim() || undefined,
     image: item.image || "",
   }));
@@ -650,6 +651,10 @@ export async function placeOrderAtomic({
 
       const orderItemsForKindCheck = mapOrderItemsForPersistence(entry.items);
       const orderKind = detectOrderKind(orderItemsForKindCheck);
+      const orderTotalBV = orderItemsForKindCheck.reduce(
+        (sum, item) => sum + Math.max(0, Number(item.bv || 0)) * Math.max(0, Number(item.quantity || 0)),
+        0,
+      );
 
       const order = new Order({
         _id: orderObjectId,
@@ -657,6 +662,7 @@ export async function placeOrderAtomic({
         customer: customerId,
         seller: entry.sellerId,
         items: orderItemsForKindCheck,
+        totalBV: orderTotalBV,
         address: normalizedAddress,
         // MLM Phase 2+: tag consumed by settleDeliveredOrder to fire
         // home-shopping bonus chains.

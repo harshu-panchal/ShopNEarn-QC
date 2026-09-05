@@ -46,8 +46,16 @@ const orderSchema = new mongoose.Schema(
         },
         variantSlot: String,
         image: String,
+        bv: {
+          type: Number,
+          default: 0,
+        },
       },
     ],
+    totalBV: {
+      type: Number,
+      default: 0,
+    },
     address: {
       type: {
         type: String,
