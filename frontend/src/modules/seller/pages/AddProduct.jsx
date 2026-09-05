@@ -84,20 +84,52 @@ const AddProduct = () => {
 
   const handleSave = async () => {
     // Validate required fields
-    if (!formData.name) {
+    if (!formData.name?.trim()) {
       toast.error("Please fill in the Product Title");
       return;
     }
 
-    // Validate all three category levels are selected
-    if (!formData.header || !formData.category || !formData.subcategory) {
-      toast.error("Please select all three category levels: Main Group, Specific Category, and Sub-Category");
+    if (!formData.header) {
+      toast.error("Please select a Main Group under Groups tab");
       return;
     }
 
+    if (!formData.category) {
+      toast.error("Please select a Specific Category under Groups tab");
+      return;
+    }
+
+    const selectedHeader = categories.find((h) => String(h._id || h.id) === String(formData.header));
+    const selectedCat = selectedHeader?.children?.find((c) => String(c._id || c.id) === String(formData.category));
+    const subcategoriesList = selectedCat?.children || [];
+
+    let finalSubcategory = formData.subcategory;
+    if (subcategoriesList.length > 0) {
+      if (!finalSubcategory) {
+        toast.error("Please select a Sub-Category under Groups tab");
+        return;
+      }
+    } else {
+      if (!finalSubcategory) {
+        finalSubcategory = formData.category;
+      }
+    }
+
     const firstVariant = formData.variants[0] || {};
-    if (!firstVariant.price || !firstVariant.stock) {
-      toast.error("Main variant must have price and stock");
+    const effectivePrice = firstVariant.price !== undefined && firstVariant.price !== null && firstVariant.price !== ""
+      ? firstVariant.price
+      : formData.price;
+    const effectiveStock = firstVariant.stock !== undefined && firstVariant.stock !== null && firstVariant.stock !== ""
+      ? firstVariant.stock
+      : formData.stock;
+
+    if (effectivePrice === "" || effectivePrice === null || effectivePrice === undefined || isNaN(Number(effectivePrice)) || Number(effectivePrice) < 0) {
+      toast.error("Main variant must have a valid price");
+      return;
+    }
+
+    if (effectiveStock === "" || effectiveStock === null || effectiveStock === undefined || isNaN(Number(effectiveStock)) || Number(effectiveStock) < 0) {
+      toast.error("Main variant must have a valid stock quantity");
       return;
     }
 
@@ -114,14 +146,14 @@ const AddProduct = () => {
       data.append("status", formData.status);
 
       // Map top-level price/stock from first variant for indexing/listing
-      data.append("price", firstVariant.price);
+      data.append("price", effectivePrice);
       data.append("salePrice", firstVariant.salePrice || 0);
-      data.append("stock", firstVariant.stock);
+      data.append("stock", effectiveStock);
 
       // Category IDs
       data.append("headerId", formData.header);
       data.append("categoryId", formData.category);
-      data.append("subcategoryId", formData.subcategory);
+      data.append("subcategoryId", finalSubcategory);
 
       // Tags
       data.append("tags", formData.tags);

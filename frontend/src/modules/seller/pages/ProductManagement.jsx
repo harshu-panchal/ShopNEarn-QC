@@ -267,9 +267,53 @@ const ProductManagement = () => {
 
   const handleSave = async () => {
     try {
-      if (!formData.name || !formData.price || !formData.stock || !formData.header || !formData.category || !formData.subcategory) {
-        toast.error("Please fill all required fields, including categories");
+      if (!formData.name?.trim()) {
+        toast.error("Please enter a Product Title");
         return;
+      }
+
+      const effectivePrice = (formData.price !== "" && formData.price !== null && formData.price !== undefined)
+        ? formData.price
+        : formData.variants?.[0]?.price;
+
+      const effectiveStock = (formData.stock !== "" && formData.stock !== null && formData.stock !== undefined)
+        ? formData.stock
+        : formData.variants?.[0]?.stock;
+
+      if (effectivePrice === "" || effectivePrice === null || effectivePrice === undefined || isNaN(Number(effectivePrice)) || Number(effectivePrice) < 0) {
+        toast.error("Please enter a valid price (or variant price)");
+        return;
+      }
+
+      if (effectiveStock === "" || effectiveStock === null || effectiveStock === undefined || isNaN(Number(effectiveStock)) || Number(effectiveStock) < 0) {
+        toast.error("Please enter a valid stock quantity (or variant stock)");
+        return;
+      }
+
+      if (!formData.header) {
+        toast.error("Please select a Main Group (Header) under Groups tab");
+        return;
+      }
+
+      if (!formData.category) {
+        toast.error("Please select a Specific Category under Groups tab");
+        return;
+      }
+
+      const selectedHeader = categories.find(h => String(h._id || h.id) === String(formData.header));
+      const selectedCat = selectedHeader?.children?.find(c => String(c._id || c.id) === String(formData.category));
+      const subcategoriesList = selectedCat?.children || [];
+
+      let finalSubcategory = formData.subcategory;
+      if (subcategoriesList.length > 0) {
+        if (!finalSubcategory) {
+          toast.error("Please select a Sub-Category under Groups tab");
+          return;
+        }
+      } else {
+        if (!finalSubcategory) {
+          finalSubcategory = formData.category;
+        }
       }
 
       const data = new FormData();
@@ -277,12 +321,12 @@ const ProductManagement = () => {
       data.append("slug", formData.slug);
       data.append("sku", formData.sku);
       data.append("description", formData.description);
-      data.append("price", Number(formData.price));
+      data.append("price", Number(effectivePrice));
       data.append("salePrice", Number(formData.salePrice) || 0);
-      data.append("stock", Number(formData.stock));
+      data.append("stock", Number(effectiveStock));
       data.append("headerId", formData.header);
       data.append("categoryId", formData.category);
-      data.append("subcategoryId", formData.subcategory);
+      data.append("subcategoryId", finalSubcategory);
       data.append("status", formData.status);
       data.append("brand", formData.brand);
       data.append("weight", formData.weight);
@@ -395,18 +439,50 @@ const ProductManagement = () => {
 
   const openEditModal = (item = null) => {
     if (item) {
+      let headerVal = item.headerId?._id || (typeof item.headerId === "string" ? item.headerId : "");
+      let categoryVal = item.categoryId?._id || (typeof item.categoryId === "string" ? item.categoryId : "");
+      let subcategoryVal = item.subcategoryId?._id || (typeof item.subcategoryId === "string" ? item.subcategoryId : "");
+
+      if (categories && categories.length > 0) {
+        if (subcategoryVal) {
+          for (const h of categories) {
+            for (const c of (h.children || [])) {
+              if ((c.children || []).some((sc) => String(sc._id || sc.id) === String(subcategoryVal))) {
+                if (!categoryVal) categoryVal = String(c._id || c.id);
+                if (!headerVal) headerVal = String(h._id || h.id);
+              }
+            }
+          }
+        }
+        if (categoryVal) {
+          for (const h of categories) {
+            if ((h.children || []).some((c) => String(c._id || c.id) === String(categoryVal))) {
+              if (!headerVal) headerVal = String(h._id || h.id);
+            }
+          }
+        }
+      }
+
+      const initialPrice = (item.price !== undefined && item.price !== null && item.price !== "")
+        ? item.price
+        : (item.variants?.[0]?.price ?? "");
+
+      const initialStock = (item.stock !== undefined && item.stock !== null && item.stock !== "")
+        ? item.stock
+        : (item.variants?.[0]?.stock ?? "");
+
       setFormData({
         name: item.name || "",
         slug: item.slug || "",
         sku: item.sku || "",
         description: item.description || "",
-        price: item.price || "",
+        price: initialPrice,
         salePrice: item.salePrice || "",
-        stock: item.stock || "",
+        stock: initialStock,
         lowStockAlert: item.lowStockAlert || 5,
-        header: item.headerId?._id || item.headerId || "",
-        category: item.categoryId?._id || item.categoryId || "",
-        subcategory: item.subcategoryId?._id || item.subcategoryId || "",
+        header: headerVal,
+        category: categoryVal,
+        subcategory: subcategoryVal,
         status: item.status || "active",
         tags: Array.isArray(item.tags) ? item.tags.join(", ") : item.tags || "",
         weight: item.weight || "",
@@ -419,9 +495,9 @@ const ProductManagement = () => {
           {
             id: Date.now(),
             name: "",
-            price: item.price || "",
+            price: initialPrice || "",
             salePrice: item.salePrice || "",
-            stock: item.stock || "",
+            stock: initialStock || "",
             sku: item.sku || "",
           },
         ],
@@ -437,8 +513,9 @@ const ProductManagement = () => {
         salePrice: "",
         stock: "",
         lowStockAlert: 5,
-        category: "",
         header: "",
+        category: "",
+        subcategory: "",
         status: "active",
         tags: "",
         weight: "",

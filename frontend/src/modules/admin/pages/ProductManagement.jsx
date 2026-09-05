@@ -144,8 +144,47 @@ const ProductManagement = () => {
             return toast.error('Only product editing is allowed for admins');
         }
 
-        if (!formData.name || !formData.price || !formData.stock || !formData.header || !formData.categoryId || !formData.subcategoryId) {
-            return toast.error('Please fill all required fields, including categories');
+        if (!formData.name?.trim()) {
+            return toast.error('Please enter a Product Title');
+        }
+
+        const effectivePrice = (formData.price !== '' && formData.price !== null && formData.price !== undefined)
+            ? formData.price
+            : formData.variants?.[0]?.price;
+
+        const effectiveStock = (formData.stock !== '' && formData.stock !== null && formData.stock !== undefined)
+            ? formData.stock
+            : formData.variants?.[0]?.stock;
+
+        if (effectivePrice === '' || effectivePrice === null || effectivePrice === undefined || isNaN(Number(effectivePrice)) || Number(effectivePrice) < 0) {
+            return toast.error('Please enter a valid price (or variant price)');
+        }
+
+        if (effectiveStock === '' || effectiveStock === null || effectiveStock === undefined || isNaN(Number(effectiveStock)) || Number(effectiveStock) < 0) {
+            return toast.error('Please enter a valid stock quantity (or variant stock)');
+        }
+
+        if (!formData.header) {
+            return toast.error('Please select a Main Group (Header) under Groups tab');
+        }
+
+        if (!formData.categoryId) {
+            return toast.error('Please select a Specific Category under Groups tab');
+        }
+
+        const selectedHeader = categories.find(h => String(h._id || h.id) === String(formData.header));
+        const selectedCat = selectedHeader?.children?.find(c => String(c._id || c.id) === String(formData.categoryId));
+        const subcategoriesList = selectedCat?.children || [];
+
+        let finalSubcategoryId = formData.subcategoryId;
+        if (subcategoriesList.length > 0) {
+            if (!finalSubcategoryId) {
+                return toast.error('Please select a Sub-Category under Groups tab');
+            }
+        } else {
+            if (!finalSubcategoryId) {
+                finalSubcategoryId = formData.categoryId;
+            }
         }
 
         setIsSaving(true);
@@ -155,14 +194,14 @@ const ProductManagement = () => {
             data.append('slug', formData.slug);
             data.append('sku', formData.sku);
             data.append('description', formData.description);
-            data.append('price', Number(formData.price));
+            data.append('price', Number(effectivePrice));
             data.append('salePrice', Number(formData.salePrice) || 0);
-            data.append('stock', Number(formData.stock));
+            data.append('stock', Number(effectiveStock));
             data.append('lowStockAlert', Number(formData.lowStockAlert) || 5);
             data.append('unit', formData.unit);
             data.append('headerId', formData.header);
             data.append('categoryId', formData.categoryId);
-            data.append('subcategoryId', formData.subcategoryId);
+            data.append('subcategoryId', finalSubcategoryId);
             data.append('status', formData.status);
             data.append('isFeatured', formData.isFeatured);
             data.append('brand', formData.brand);
@@ -300,19 +339,51 @@ const ProductManagement = () => {
 
     const openModal = (item = null) => {
         if (item) {
+            let headerVal = item.headerId?._id || (typeof item.headerId === 'string' ? item.headerId : '');
+            let categoryVal = item.categoryId?._id || (typeof item.categoryId === 'string' ? item.categoryId : '');
+            let subcategoryVal = item.subcategoryId?._id || (typeof item.subcategoryId === 'string' ? item.subcategoryId : '');
+
+            if (categories && categories.length > 0) {
+                if (subcategoryVal) {
+                    for (const h of categories) {
+                        for (const c of (h.children || [])) {
+                            if ((c.children || []).some(sc => String(sc._id || sc.id) === String(subcategoryVal))) {
+                                if (!categoryVal) categoryVal = String(c._id || c.id);
+                                if (!headerVal) headerVal = String(h._id || h.id);
+                            }
+                        }
+                    }
+                }
+                if (categoryVal) {
+                    for (const h of categories) {
+                        if ((h.children || []).some(c => String(c._id || c.id) === String(categoryVal))) {
+                            if (!headerVal) headerVal = String(h._id || h.id);
+                        }
+                    }
+                }
+            }
+
+            const initialPrice = (item.price !== undefined && item.price !== null && item.price !== '')
+                ? item.price
+                : (item.variants?.[0]?.price ?? '');
+
+            const initialStock = (item.stock !== undefined && item.stock !== null && item.stock !== '')
+                ? item.stock
+                : (item.variants?.[0]?.stock ?? '');
+
             setFormData({
                 name: item.name || '',
                 slug: item.slug || '',
                 sku: item.sku || '',
                 description: item.description || '',
-                price: item.price || '',
+                price: initialPrice,
                 salePrice: item.salePrice || item.discountPrice || '',
-                stock: item.stock || '',
+                stock: initialStock,
                 lowStockAlert: item.lowStockAlert || 5,
                 unit: item.unit || 'packet',
-                header: item.headerId?._id || item.headerId || '',
-                categoryId: item.categoryId?._id || item.categoryId || '',
-                subcategoryId: item.subcategoryId?._id || item.subcategoryId || '',
+                header: headerVal,
+                categoryId: categoryVal,
+                subcategoryId: subcategoryVal,
                 status: item.status || 'active',
                 isFeatured: item.isFeatured || false,
                 tags: Array.isArray(item.tags) ? item.tags.join(', ') : item.tags || '',
@@ -326,9 +397,9 @@ const ProductManagement = () => {
                     {
                         id: Date.now(),
                         name: 'Default',
-                        price: item.price || '',
+                        price: initialPrice || '',
                         salePrice: item.salePrice || item.discountPrice || '',
-                        stock: item.stock || '',
+                        stock: initialStock || '',
                         sku: item.sku || ''
                     }
                 ]
