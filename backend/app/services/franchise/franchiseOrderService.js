@@ -22,6 +22,7 @@ import { requireCanonicalOrderId } from "../../utils/orderLookup.js";
 import {
   decrementFranchiseStock,
   restoreFranchiseStock,
+  reserveFranchiseStockForItems,
 } from "../inventory/inventoryMovementService.js";
 import { FRANCHISE_STOCK_TYPES } from "../../constants/inventory.js";
 import { getHubSellerId } from "./franchiseConfigService.js";
@@ -173,13 +174,121 @@ export async function acceptFranchiseOrder({ franchisePartnerId, orderId }) {
 }
 
 /**
- * Single-nearest-franchise model: there is no second candidate to try.
- * A rejection (or acceptance timeout) always falls straight through to
- * the hub — attempts to reserve hub stock for the order and hands it
- * off to the standard seller workflow. If the hub ALSO can't cover the
- * order at this point (rare — stock moved between placement and
- * rejection), the order is cancelled cleanly; there is no further
- * fallback.
+ * Try to hand this order to the next-nearest active franchise partner
+ * (excluding every partner already tried) that still covers the full
+ * cart. Restores the previously-assigned partner's held stock and
+ * reserves the new candidate's stock atomically with the order update.
+ *
+ * Returns the updated order on success, or `null` when there's no
+ * covering candidate left — callers fall through to their existing hub
+ * logic unchanged in that case.
+ */
+async function tryCascadeToNextFranchisePartner(order, { excludePartnerIds = [] } = {}) {
+  const { resolveFranchisePartner } = await import("./franchiseOrderRoutingService.js");
+  // `normalizeAddressForFranchiseRouting` spreads the address with
+  // `{...address}` — on a Mongoose subdocument that silently drops
+  // fields (data lives off own-enumerable properties), so hand it a
+  // plain object.
+  const plainAddress =
+    typeof order.address?.toObject === "function"
+      ? order.address.toObject()
+      : order.address;
+  let candidate;
+  try {
+    candidate = await resolveFranchisePartner({
+      address: plainAddress,
+      customerId: order.customer,
+      hydratedItems: order.items,
+      excludePartnerIds,
+    });
+  } catch (err) {
+    // Self-routing block only makes sense at fresh placement time — in
+    // the cascade it just means there's no usable candidate left.
+    if (err?.code === "FRANCHISE_SELF_ROUTING_BLOCKED") return null;
+    throw err;
+  }
+  if (!candidate) return null;
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      if (order.franchiseStockConsumed) {
+        await restoreFranchiseStockForOrder(order, { session });
+      }
+
+      const items = (order.items || []).map((item) => ({
+        productId: item.product?._id || item.product,
+        quantity: item.quantity,
+        variantSku: item.variantSlot || "",
+      }));
+      await reserveFranchiseStockForItems({
+        items,
+        franchisePartnerId: candidate._id,
+        orderId: order._id,
+        publicOrderId: order.orderId,
+        session,
+      });
+
+      const now = new Date();
+      order.franchisePartnerId = candidate._id;
+      order.franchiseRoutedAt = now;
+      order.franchiseStatus = FRANCHISE_ORDER_STATUS.PENDING;
+      order.hubAcceptanceStatus = null;
+      order.workflowStatus = WORKFLOW_STATUS.FRANCHISE_PENDING;
+      order.status = legacyStatusFromWorkflow(WORKFLOW_STATUS.FRANCHISE_PENDING);
+      order.orderStatus = order.status;
+      order.franchisePendingExpiresAt = new Date(Date.now() + DEFAULT_SELLER_TIMEOUT_MS());
+      order.franchiseStockConsumed = true;
+
+      if (!Array.isArray(order.franchiseCandidates)) order.franchiseCandidates = [];
+      order.franchiseCandidates.push(candidate._id);
+      order.currentFranchiseIndex = order.franchiseCandidates.length - 1;
+
+      if (!Array.isArray(order.routedFranchiseHistory)) order.routedFranchiseHistory = [];
+      order.routedFranchiseHistory.push({
+        franchisePartnerId: candidate._id,
+        status: "PENDING",
+        routedAt: now,
+      });
+
+      await order.save({ session });
+    });
+  } catch (err) {
+    // Candidate's stock was covering when checked but got taken by a
+    // concurrent sale before this transaction — fall through to hub
+    // instead of failing the whole reroute.
+    if (err?.code === "INSUFFICIENT_FRANCHISE_STOCK") return null;
+    throw err;
+  } finally {
+    await session.endSession();
+  }
+
+  emitOrderStatusUpdate(
+    order.orderId,
+    { workflowStatus: order.workflowStatus, franchiseStatus: order.franchiseStatus },
+    order.customer,
+  );
+  emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_STATUS_CHANGED, {
+    orderId: order.orderId,
+    customerId: order.customer,
+    userId: order.customer,
+    customerMessage: "Your order has been routed to another nearby Home Shoppy partner.",
+  });
+  await notifyFranchisePartnerNewOrder(candidate, order);
+
+  return order;
+}
+
+/**
+ * Cascading-franchise model: a rejection (or acceptance timeout) first
+ * tries the next-nearest active franchise partner that still covers the
+ * full cart (excluding every partner already tried on this order,
+ * including the current one). Only once no further covering candidate
+ * exists does the order fall through to the hub — reserving hub stock
+ * and handing it off to the standard seller workflow. If the hub ALSO
+ * can't cover the order at this point (rare — stock moved between
+ * placement and rejection), the order is cancelled cleanly; there is no
+ * further fallback.
  */
 export async function rerouteOrTransferFranchiseOrder(order, { currentPartnerId, reason = "", isTimeout = false } = {}) {
   const now = new Date();
@@ -194,6 +303,20 @@ export async function rerouteOrTransferFranchiseOrder(order, { currentPartnerId,
       currentHist.reason = String(reason || "").slice(0, 240);
     }
   }
+
+  const triedPartnerIds = [
+    ...new Set(
+      (order.routedFranchiseHistory || [])
+        .map((h) => h.franchisePartnerId)
+        .filter(Boolean)
+        .map((id) => String(id)),
+    ),
+  ];
+
+  const cascaded = await tryCascadeToNextFranchisePartner(order, {
+    excludePartnerIds: triedPartnerIds,
+  });
+  if (cascaded) return cascaded;
 
   const configuredHubId = await getHubSellerId();
   const { reserveStockForItems, computeStockReservationWindow } = await import(

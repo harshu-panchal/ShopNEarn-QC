@@ -15,11 +15,26 @@ import { distanceMeters } from "../../utils/geoUtils.js";
  * `excludeUserId` skips a partner whose OWN customer-facing account
  * placed the order (a franchise partner cannot be routed to themselves)
  * — used by order routing, not by catalog display.
+ *
+ * `excludePartnerIds` skips specific partners already tried on this
+ * order (rejected/timed-out) — lets a rejection cascade to the
+ * next-nearest partner instead of only ever considering the single
+ * closest one.
  */
-export async function findNearestFranchisePartner({ lat, lng, pincode, excludeUserId = null } = {}) {
+export async function findNearestFranchisePartner({
+  lat,
+  lng,
+  pincode,
+  excludeUserId = null,
+  excludePartnerIds = [],
+} = {}) {
   const baseFilter = { status: FRANCHISE_PARTNER_STATUS.ACTIVE };
   if (excludeUserId) {
     baseFilter.userId = { $ne: excludeUserId };
+  }
+  const excludeIds = (excludePartnerIds || []).filter(Boolean);
+  if (excludeIds.length > 0) {
+    baseFilter._id = { $nin: excludeIds };
   }
 
   const numLat = Number(lat);
@@ -88,12 +103,19 @@ export async function findNearestFranchisePartner({ lat, lng, pincode, excludeUs
  * franchise candidate at all" (e.g. the self-routing-block check) don't
  * lose that information just because the hub happened to be closer.
  */
-export async function resolveNearestFulfillmentSource({ lat, lng, pincode, excludeUserId } = {}) {
+export async function resolveNearestFulfillmentSource({
+  lat,
+  lng,
+  pincode,
+  excludeUserId,
+  excludePartnerIds = [],
+} = {}) {
   const nearestFranchise = await findNearestFranchisePartner({
     lat,
     lng,
     pincode,
     excludeUserId,
+    excludePartnerIds,
   });
   if (!nearestFranchise) {
     return { type: "hub", franchisePartner: null, nearestFranchise: null };

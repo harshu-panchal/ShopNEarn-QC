@@ -87,8 +87,18 @@ async function partnerCoversFullStock(partner, required) {
  * When `hydratedItems` is omitted (legacy callers, e.g. delivery-fee
  * distance lookups with no cart context), nearest-partner semantics
  * apply with no stock check.
+ *
+ * `excludePartnerIds` skips partners already tried on this order (used
+ * by the reject/timeout cascade in `franchiseOrderService.js` to find
+ * the next-nearest alternative instead of only ever considering the
+ * single closest partner).
  */
-export async function resolveFranchisePartner({ address, customerId, hydratedItems } = {}) {
+export async function resolveFranchisePartner({
+  address,
+  customerId,
+  hydratedItems,
+  excludePartnerIds = [],
+} = {}) {
   const normalizedAddress = normalizeAddressForFranchiseRouting(address);
   const excludeCustomerId = customerId || null;
   const coords = extractDeliveryCoordinates(normalizedAddress);
@@ -99,6 +109,7 @@ export async function resolveFranchisePartner({ address, customerId, hydratedIte
     lng: coords?.lng,
     pincode,
     excludeUserId: excludeCustomerId,
+    excludePartnerIds,
   });
 
   if (type === "franchise" && nearest) {
@@ -117,6 +128,7 @@ export async function resolveFranchisePartner({ address, customerId, hydratedIte
       lat: coords?.lat,
       lng: coords?.lng,
       pincode,
+      excludePartnerIds,
     });
     if (
       nearestIncludingSelf &&
