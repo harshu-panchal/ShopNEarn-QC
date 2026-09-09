@@ -51,6 +51,9 @@ const CategoryProductsPage = () => {
                 params.lat = currentLocation.latitude;
                 params.lng = currentLocation.longitude;
             }
+            if (currentLocation?.pincode) {
+                params.pincode = currentLocation.pincode;
+            }
 
             // Fetch products and categories in parallel instead of sequentially
             const [prodRes, catRes] = await Promise.all([

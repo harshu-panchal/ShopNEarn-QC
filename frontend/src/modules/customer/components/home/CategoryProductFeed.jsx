@@ -72,9 +72,12 @@ const CategoryProductFeed = ({ activeCategory, location }) => {
         params.lat = location.latitude;
         params.lng = location.longitude;
       }
+      if (location?.pincode) {
+        params.pincode = location.pincode;
+      }
       return params;
     },
-    [activeCategory?._id, location?.latitude, location?.longitude]
+    [activeCategory?._id, location?.latitude, location?.longitude, location?.pincode]
   );
 
   const fetchPage = useCallback(

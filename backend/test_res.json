@@ -1,0 +1,125 @@
+{
+  "source": {
+    "type": "franchise",
+    "franchisePartner": {
+      "_id": "6a48d91f5916ef65cbf3efc9",
+      "userId": "6a48d8c45916ef65cbf3ef06",
+      "referralCode": "HS29EFC1",
+      "status": "active",
+      "territoryPincodes": [
+        "380007"
+      ],
+      "address": "169, 507, Corporate House, RNT Marg, Near Central Mall, Flim Colony, South Tukoganj, Indore, Madhya Pradesh 452001, India",
+      "locality": "Flim Colony",
+      "pincode": "452001",
+      "city": "Indore",
+      "state": "Madhya Pradesh",
+      "location": {
+        "type": "Point",
+        "coordinates": [
+          75.87196621742915,
+          22.717603091378606
+        ]
+      },
+      "hubSellerId": "6999782fd49e8099e8a7b11c",
+      "registrationPaymentId": "6a48d8f75916ef65cbf3ef96",
+      "registeredAt": "2026-07-04T09:57:51.983Z",
+      "displayName": "Ujjwal",
+      "phone": "+918770620342",
+      "deletedAt": null,
+      "deletedBy": null,
+      "updatedBy": "6a1c5f45681006eba33deb89",
+      "createdAt": "2026-07-04T09:57:51.984Z",
+      "updatedAt": "2026-08-05T10:11:17.699Z",
+      "__v": 1,
+      "hasCompletedFirstTopup": true
+    },
+    "nearestFranchise": {
+      "_id": "6a48d91f5916ef65cbf3efc9",
+      "userId": "6a48d8c45916ef65cbf3ef06",
+      "referralCode": "HS29EFC1",
+      "status": "active",
+      "territoryPincodes": [
+        "380007"
+      ],
+      "address": "169, 507, Corporate House, RNT Marg, Near Central Mall, Flim Colony, South Tukoganj, Indore, Madhya Pradesh 452001, India",
+      "locality": "Flim Colony",
+      "pincode": "452001",
+      "city": "Indore",
+      "state": "Madhya Pradesh",
+      "location": {
+        "type": "Point",
+        "coordinates": [
+          75.87196621742915,
+          22.717603091378606
+        ]
+      },
+      "hubSellerId": "6999782fd49e8099e8a7b11c",
+      "registrationPaymentId": "6a48d8f75916ef65cbf3ef96",
+      "registeredAt": "2026-07-04T09:57:51.983Z",
+      "displayName": "Ujjwal",
+      "phone": "+918770620342",
+      "deletedAt": null,
+      "deletedBy": null,
+      "updatedBy": "6a1c5f45681006eba33deb89",
+      "createdAt": "2026-07-04T09:57:51.984Z",
+      "updatedAt": "2026-08-05T10:11:17.699Z",
+      "__v": 1,
+      "hasCompletedFirstTopup": true
+    }
+  },
+  "originalStock": 0,
+  "originalVariants": [
+    {
+      "name": "1 BOTTLE",
+      "price": 60,
+      "salePrice": 60,
+      "stock": 0,
+      "sku": "biofr-001-a6d8",
+      "_id": "6a58b0aaabd5f76221d4c99c"
+    }
+  ],
+  "resolvedProduct": {
+    "_id": "6a58b0aaabd5f76221d4c99b",
+    "name": "BIO FRESH PURE HERBAL POWDER ( 1 BOTTLE)",
+    "slug": "bio-fresh-pure-herbal-powder-1-bottle-ccba3b",
+    "sku": "biofr-001-12dc",
+    "description": "BIO FRESH Pure Herbal Deo Talc is a premium herbal talcum powder designed to keep your skin fresh, dry, and comfortable throughout the day. Its herbal formula helps absorb excess sweat, reduce body odour, and provide a long-lasting cooling sensation. The refreshing fragrance leaves you feeling clean and confident, making it ideal for everyday use.",
+    "price": 60,
+    "salePrice": 59,
+    "stock": 1,
+    "lowStockAlert": 5,
+    "brand": "BIO FRESH",
+    "weight": "",
+    "tags": [
+      ""
+    ],
+    "mainImage": "https://res.cloudinary.com/dvjxvvpcx/image/upload/v1784197289/products/qa7fp4ikoyumzupcyghb.avif",
+    "galleryImages": [],
+    "headerId": "6a08448bbfdcdbe7aadc7707",
+    "categoryId": "6a2bacdd096a1573c50c3c08",
+    "subcategoryId": "6a2bcde3f3d52b37207c4a08",
+    "sellerId": "6999782fd49e8099e8a7b11c",
+    "status": "active",
+    "approvalStatus": "approved",
+    "approvalRequestedAt": null,
+    "approvalReviewedAt": null,
+    "approvalReviewedBy": null,
+    "approvalNote": "",
+    "lastSubmittedByRole": "seller",
+    "variants": [
+      {
+        "name": "1 BOTTLE",
+        "price": 60,
+        "salePrice": 60,
+        "stock": 1,
+        "sku": "biofr-001-a6d8",
+        "_id": "6a58b0aaabd5f76221d4c99c"
+      }
+    ],
+    "isFeatured": false,
+    "createdAt": "2026-07-16T10:21:30.891Z",
+    "updatedAt": "2026-08-06T08:23:41.126Z",
+    "__v": 0
+  }
+}

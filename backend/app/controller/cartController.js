@@ -1,5 +1,6 @@
 import Cart from "../models/cart.js";
 import Product from "../models/product.js";
+import User from "../models/customer.js";
 import handleResponse from "../utils/helper.js";
 import { getApprovedOrLegacyFilter } from "../services/productModerationService.js";
 import {
@@ -8,6 +9,46 @@ import {
 } from "../utils/productStockUtils.js";
 import { resolveCatalogStockForProducts } from "../services/franchise/franchiseStockResolver.js";
 import fs from "fs";
+
+async function resolveCustomerLocationParams(customerId, bodyLocation = {}) {
+  let { lat, lng, pincode } = bodyLocation || {};
+
+  const hasLat = Number.isFinite(Number(lat));
+  const hasLng = Number.isFinite(Number(lng));
+  const cleanPincode = String(pincode || "").trim();
+
+  if ((hasLat && hasLng) || cleanPincode) {
+    return { lat, lng, pincode: cleanPincode };
+  }
+
+  if (customerId) {
+    try {
+      const customer = await User.findById(customerId).select("addresses address pincode").lean();
+      if (customer) {
+        const primaryAddr = Array.isArray(customer.addresses) && customer.addresses.length > 0
+          ? (customer.addresses.find((a) => a.isDefault || a.isCurrent) || customer.addresses[0])
+          : null;
+
+        const resolvedPincode = String(primaryAddr?.pincode || customer.pincode || "").trim();
+        let resolvedLat = lat;
+        let resolvedLng = lng;
+
+        if (primaryAddr?.location && Number.isFinite(Number(primaryAddr.location.lat)) && Number.isFinite(Number(primaryAddr.location.lng))) {
+          resolvedLat = primaryAddr.location.lat;
+          resolvedLng = primaryAddr.location.lng;
+        }
+
+        return {
+          lat: resolvedLat,
+          lng: resolvedLng,
+          pincode: resolvedPincode,
+        };
+      }
+    } catch {}
+  }
+
+  return { lat, lng, pincode: cleanPincode };
+}
 
 function __debugLog(obj) {
   try {
@@ -108,8 +149,9 @@ export const addToCart = async (req, res) => {
     // nearest franchise partner's own ledger (see `resolveCatalogStockForProducts`),
     // not this product's raw hub-level `stock` field. Re-resolve the same way
     // here so "add to cart" agrees with what they just saw in the catalog.
-    __debugLog({ where: "addToCart:before-resolve", productId, variantSku: normalizedVariantSku, lat, lng, pincode, rawStock: customerVisibleProduct.stock, rawVariants: customerVisibleProduct.variants });
-    await resolveCatalogStockForProducts([customerVisibleProduct], { lat, lng, pincode });
+    const locParams = await resolveCustomerLocationParams(customerId, { lat, lng, pincode });
+    __debugLog({ where: "addToCart:before-resolve", productId, variantSku: normalizedVariantSku, locParams, rawStock: customerVisibleProduct.stock, rawVariants: customerVisibleProduct.variants });
+    await resolveCatalogStockForProducts([customerVisibleProduct], locParams);
     __debugLog({ where: "addToCart:after-resolve", resolvedStock: customerVisibleProduct.stock, resolvedVariants: customerVisibleProduct.variants });
 
     let cart = await Cart.findOne({ customerId });
@@ -182,7 +224,8 @@ export const updateQuantity = async (req, res) => {
         }
         // See addToCart — re-resolve franchise-ledger stock so this agrees
         // with what the customer saw while browsing.
-        await resolveCatalogStockForProducts([product], { lat, lng, pincode });
+        const updateLocParams = await resolveCustomerLocationParams(customerId, { lat, lng, pincode });
+        await resolveCatalogStockForProducts([product], updateLocParams);
         const available = resolveAvailableStock(product, normalizedVariantSku);
         if (nextQty > available) {
           return handleResponse(

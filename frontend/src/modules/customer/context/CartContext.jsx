@@ -36,11 +36,15 @@ export const CartProvider = ({ children }) => {
   const locationParams = useMemo(() => {
     const hasCoords =
       Number.isFinite(currentLocation?.latitude) && Number.isFinite(currentLocation?.longitude);
-    return {
-      lat: hasCoords ? currentLocation.latitude : undefined,
-      lng: hasCoords ? currentLocation.longitude : undefined,
-      pincode: currentLocation?.pincode || undefined,
-    };
+    const params = {};
+    if (hasCoords) {
+      params.lat = currentLocation.latitude;
+      params.lng = currentLocation.longitude;
+    }
+    if (currentLocation?.pincode) {
+      params.pincode = String(currentLocation.pincode).trim();
+    }
+    return params;
   }, [currentLocation?.latitude, currentLocation?.longitude, currentLocation?.pincode]);
 
   const [loading, setLoading] = useState(false);

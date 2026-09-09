@@ -263,11 +263,28 @@ export const LocationProvider = ({ children }) => {
       const { data } = await customerApi.getProfile();
       const profile = data?.result ?? data?.data ?? data;
       const raw = Array.isArray(profile?.addresses) ? profile.addresses : [];
-      setSavedAddresses(
-        raw
-          .map((addr, idx) => normalizeProfileAddress(profile, addr, idx))
-          .filter(Boolean),
-      );
+      const normalized = raw
+        .map((addr, idx) => normalizeProfileAddress(profile, addr, idx))
+        .filter(Boolean);
+      setSavedAddresses(normalized);
+
+      setCurrentLocation((prev) => {
+        if (!prev?.name && !prev?.pincode && normalized.length > 0) {
+          const primary = normalized.find((a) => a.isDefault || a.isCurrent) || normalized[0];
+          if (primary) {
+            return {
+              name: primary.address || primary.formattedAddress || primary.fullAddress || "",
+              time: "12-15 mins",
+              city: primary.city || "",
+              state: primary.state || "",
+              pincode: primary.pincode || "",
+              latitude: primary.location?.lat || null,
+              longitude: primary.location?.lng || null,
+            };
+          }
+        }
+        return prev;
+      });
     } catch {
       // If API fails, keep existing in-memory addresses.
     } finally {

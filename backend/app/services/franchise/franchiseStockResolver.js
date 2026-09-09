@@ -57,6 +57,10 @@ export async function findNearestFranchisePartner({ lat, lng, pincode, excludeUs
     if (territoryPartner) return territoryPartner;
   }
 
+  if (!hasCoords && !cleanPincode) {
+    return null;
+  }
+
   const [defaultPartner] = await FranchisePartner.find(baseFilter)
     .sort({ registeredAt: 1 })
     .limit(1)

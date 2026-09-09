@@ -24,7 +24,12 @@ export function getAvailableStock(product, variantSku = "") {
       const name = String(variant?.name || "").trim();
       return (sku && sku === normalized) || name === normalized;
     });
-    if (!hit) return 0;
+    if (!hit) {
+      if (variants.length === 1) {
+        return Math.max(0, Number(variants[0].stock || 0));
+      }
+      return masterStock;
+    }
     const variantStock = Math.max(0, Number(hit.stock || 0));
     return Math.min(variantStock, masterStock);
   }
