@@ -64,9 +64,15 @@ async function partnerCoversFullStock(partner, required) {
     .select("productId quantity")
     .lean();
 
+  // A product can have several ledger rows (per-variant entries, plus
+  // occasional master-level rows left over from a partial stock
+  // restore) — sum them per product rather than keeping only the last
+  // one seen, or genuinely-covered stock split across rows reads as 0.
   const stockByProduct = new Map();
   for (const row of rows) {
-    stockByProduct.set(String(row.productId), Number(row.quantity) || 0);
+    const key = String(row.productId);
+    const qty = Number(row.quantity) || 0;
+    stockByProduct.set(key, (stockByProduct.get(key) || 0) + qty);
   }
 
   for (const [productId, qty] of required) {
