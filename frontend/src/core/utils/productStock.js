@@ -42,11 +42,14 @@ export function isAtStockLimit(product, variantSku, quantity) {
   return Number(quantity || 0) >= available;
 }
 
-export function stockLimitToastMessage(product, variantSku, available) {
+export function stockLimitToastMessage(product, variantSku, available, alreadyInCart = 0) {
   const name = product?.name || "This product";
   const stock = available ?? getAvailableStock(product, variantSku);
   if (stock <= 0) {
     return `${name} is out of stock`;
+  }
+  if (alreadyInCart >= stock) {
+    return `You already have all ${stock} available unit(s) of ${name} in your cart`;
   }
   return `Only ${stock} unit(s) of ${name} available`;
 }

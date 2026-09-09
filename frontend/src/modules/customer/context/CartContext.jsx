@@ -164,7 +164,7 @@ export const CartProvider = ({ children }) => {
     const nextQty = (existingItem?.quantity || 0) + 1;
 
     if (nextQty > available) {
-      showToast(stockLimitToastMessage(product, variantSku, available), "error");
+      showToast(stockLimitToastMessage(product, variantSku, available, existingItem?.quantity || 0), "error");
       return false;
     }
 
@@ -276,7 +276,7 @@ export const CartProvider = ({ children }) => {
       const available = getAvailableStock(currentItem, normalizedVariantSku);
       if (newQty > available) {
         showToast(
-          stockLimitToastMessage(currentItem, normalizedVariantSku, available),
+          stockLimitToastMessage(currentItem, normalizedVariantSku, available, currentItem.quantity),
           "error",
         );
         return false;

@@ -64,9 +64,12 @@ export function syncMasterStockFromVariants(productData = {}) {
   return productData;
 }
 
-export function buildInsufficientStockMessage(available, productName = "Product") {
+export function buildInsufficientStockMessage(available, productName = "Product", alreadyInCart = 0) {
   if (available <= 0) {
     return `${productName} is out of stock`;
+  }
+  if (alreadyInCart >= available) {
+    return `You already have all ${available} available unit(s) of ${productName} in your cart`;
   }
   return `Only ${available} unit(s) of ${productName} available`;
 }

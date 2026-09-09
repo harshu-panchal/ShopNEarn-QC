@@ -8,7 +8,6 @@ import {
   resolveAvailableStock,
 } from "../utils/productStockUtils.js";
 import { resolveCatalogStockForProducts } from "../services/franchise/franchiseStockResolver.js";
-import fs from "fs";
 
 async function resolveCustomerLocationParams(customerId, bodyLocation = {}) {
   let { lat, lng, pincode } = bodyLocation || {};
@@ -48,15 +47,6 @@ async function resolveCustomerLocationParams(customerId, bodyLocation = {}) {
   }
 
   return { lat, lng, pincode: cleanPincode };
-}
-
-function __debugLog(obj) {
-  try {
-    fs.appendFileSync(
-      "./_cart_debug.log",
-      `${new Date().toISOString()} ${JSON.stringify(obj)}\n`,
-    );
-  } catch {}
 }
 
 const CART_POPULATE_FIELDS =
@@ -150,9 +140,7 @@ export const addToCart = async (req, res) => {
     // not this product's raw hub-level `stock` field. Re-resolve the same way
     // here so "add to cart" agrees with what they just saw in the catalog.
     const locParams = await resolveCustomerLocationParams(customerId, { lat, lng, pincode });
-    __debugLog({ where: "addToCart:before-resolve", productId, variantSku: normalizedVariantSku, locParams, rawStock: customerVisibleProduct.stock, rawVariants: customerVisibleProduct.variants });
     await resolveCatalogStockForProducts([customerVisibleProduct], locParams);
-    __debugLog({ where: "addToCart:after-resolve", resolvedStock: customerVisibleProduct.stock, resolvedVariants: customerVisibleProduct.variants });
 
     let cart = await Cart.findOne({ customerId });
 
@@ -164,13 +152,12 @@ export const addToCart = async (req, res) => {
     const currentQty = itemIndex > -1 ? Number(cart.items[itemIndex].quantity || 0) : 0;
     const available = resolveAvailableStock(customerVisibleProduct, normalizedVariantSku);
     const requestedTotal = currentQty + addQty;
-    __debugLog({ where: "addToCart:decision", available, requestedTotal, currentQty, addQty });
 
     if (requestedTotal > available) {
       return handleResponse(
         res,
         422,
-        buildInsufficientStockMessage(available, customerVisibleProduct.name),
+        buildInsufficientStockMessage(available, customerVisibleProduct.name, currentQty),
         { code: "INSUFFICIENT_STOCK" },
       );
     }
@@ -228,10 +215,11 @@ export const updateQuantity = async (req, res) => {
         await resolveCatalogStockForProducts([product], updateLocParams);
         const available = resolveAvailableStock(product, normalizedVariantSku);
         if (nextQty > available) {
+          const previousQty = Number(cart.items[itemIndex].quantity || 0);
           return handleResponse(
             res,
             422,
-            buildInsufficientStockMessage(available, product.name),
+            buildInsufficientStockMessage(available, product.name, previousQty),
             { code: "INSUFFICIENT_STOCK" },
           );
         }
