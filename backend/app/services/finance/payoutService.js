@@ -22,6 +22,16 @@ function payoutTypeToOwnerType(payoutType) {
   throw new Error(`Unsupported payout type: ${payoutType}`);
 }
 
+// `LEDGER_TRANSACTION_TYPE` has no `PAYOUT_QUEUED` member — that name only
+// exists on the unrelated `FINANCE_AUDIT_ACTION` enum (FinanceAuditLog's
+// `action` field, not LedgerEntry's `type`). Use the actual per-payout-type
+// ledger values instead.
+function payoutTypeToLedgerType(payoutType) {
+  if (payoutType === PAYOUT_TYPE.SELLER) return LEDGER_TRANSACTION_TYPE.SELLER_PAYOUT_PENDING;
+  if (payoutType === PAYOUT_TYPE.DELIVERY_PARTNER) return LEDGER_TRANSACTION_TYPE.RIDER_PAYOUT_PENDING;
+  throw new Error(`Unsupported payout type: ${payoutType}`);
+}
+
 async function createFinanceAuditLog(data, { session } = {}) {
   return await FinanceAuditLog.create([data], { session });
 }
@@ -96,7 +106,7 @@ export async function createPendingPayoutForOrder(
         walletId: wallet._id,
         actorType: ownerType,
         actorId: beneficiaryId,
-        type: LEDGER_TRANSACTION_TYPE.PAYOUT_QUEUED,
+        type: payoutTypeToLedgerType(payoutType),
         direction: LEDGER_DIRECTION.CREDIT,
         amount: roundCurrency(amount),
         description: `${payoutType} payout queued for order ${order.orderId}`,
