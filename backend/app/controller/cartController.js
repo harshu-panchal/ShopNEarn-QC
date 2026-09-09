@@ -6,6 +6,17 @@ import {
   buildInsufficientStockMessage,
   resolveAvailableStock,
 } from "../utils/productStockUtils.js";
+import { resolveCatalogStockForProducts } from "../services/franchise/franchiseStockResolver.js";
+import fs from "fs";
+
+function __debugLog(obj) {
+  try {
+    fs.appendFileSync(
+      "./_cart_debug.log",
+      `${new Date().toISOString()} ${JSON.stringify(obj)}\n`,
+    );
+  } catch {}
+}
 
 const CART_POPULATE_FIELDS =
   "name slug price salePrice mainImage stock status headerId categoryId subcategoryId sellerId variants";
@@ -83,7 +94,7 @@ export const getCart = async (req, res) => {
 export const addToCart = async (req, res) => {
   try {
     const customerId = req.user.id;
-    const { productId, quantity = 1, variantSku = "" } = req.body;
+    const { productId, quantity = 1, variantSku = "", lat, lng, pincode } = req.body;
     const normalizedVariantSku = String(variantSku || "").trim();
     const addQty = Math.max(1, Number(quantity) || 1);
     const customerVisibleProduct = await getCustomerVisibleProductById(productId, {
@@ -92,6 +103,14 @@ export const addToCart = async (req, res) => {
     if (!customerVisibleProduct) {
       return handleResponse(res, 404, "Product is not available for purchase");
     }
+
+    // Stock shown to the customer while browsing is resolved against their
+    // nearest franchise partner's own ledger (see `resolveCatalogStockForProducts`),
+    // not this product's raw hub-level `stock` field. Re-resolve the same way
+    // here so "add to cart" agrees with what they just saw in the catalog.
+    __debugLog({ where: "addToCart:before-resolve", productId, variantSku: normalizedVariantSku, lat, lng, pincode, rawStock: customerVisibleProduct.stock, rawVariants: customerVisibleProduct.variants });
+    await resolveCatalogStockForProducts([customerVisibleProduct], { lat, lng, pincode });
+    __debugLog({ where: "addToCart:after-resolve", resolvedStock: customerVisibleProduct.stock, resolvedVariants: customerVisibleProduct.variants });
 
     let cart = await Cart.findOne({ customerId });
 
@@ -103,6 +122,7 @@ export const addToCart = async (req, res) => {
     const currentQty = itemIndex > -1 ? Number(cart.items[itemIndex].quantity || 0) : 0;
     const available = resolveAvailableStock(customerVisibleProduct, normalizedVariantSku);
     const requestedTotal = currentQty + addQty;
+    __debugLog({ where: "addToCart:decision", available, requestedTotal, currentQty, addQty });
 
     if (requestedTotal > available) {
       return handleResponse(
@@ -138,7 +158,7 @@ export const addToCart = async (req, res) => {
 export const updateQuantity = async (req, res) => {
   try {
     const customerId = req.user.id;
-    const { productId, quantity, variantSku = "" } = req.body;
+    const { productId, quantity, variantSku = "", lat, lng, pincode } = req.body;
     const normalizedVariantSku = String(variantSku || "").trim();
     const nextQty = Math.max(0, Number(quantity) || 0);
 
@@ -160,6 +180,9 @@ export const updateQuantity = async (req, res) => {
         if (!product) {
           return handleResponse(res, 404, "Product is not available for purchase");
         }
+        // See addToCart — re-resolve franchise-ledger stock so this agrees
+        // with what the customer saw while browsing.
+        await resolveCatalogStockForProducts([product], { lat, lng, pincode });
         const available = resolveAvailableStock(product, normalizedVariantSku);
         if (nextQty > available) {
           return handleResponse(

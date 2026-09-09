@@ -4,6 +4,7 @@ import { useAuth } from "../../../core/context/AuthContext";
 import { getJSON, setJSON, remove as removeStorage, STORAGE_KEYS } from "@core/utils/storage";
 import { getAvailableStock, stockLimitToastMessage } from "@core/utils/productStock";
 import { useToast } from "@shared/components/ui/Toast";
+import { useLocation as useAppLocation } from "./LocationContext";
 
 const CartContext = createContext();
 
@@ -24,7 +25,23 @@ export const useCart = () => useContext(CartContext);
 export const CartProvider = ({ children }) => {
   const { isAuthenticated } = useAuth();
   const { showToast } = useToast();
+  const { currentLocation } = useAppLocation();
   const [cart, setCart] = useState(() => loadGuestCart());
+
+  // Same coordinates the catalog/product-detail fetches already use to
+  // resolve franchise-ledger stock — without these, "add to cart" checks
+  // stock against the raw hub-level Product.stock instead of the nearest
+  // franchise partner's actual quantity, and can wrongly reject an item
+  // the customer just saw as available.
+  const locationParams = useMemo(() => {
+    const hasCoords =
+      Number.isFinite(currentLocation?.latitude) && Number.isFinite(currentLocation?.longitude);
+    return {
+      lat: hasCoords ? currentLocation.latitude : undefined,
+      lng: hasCoords ? currentLocation.longitude : undefined,
+      pincode: currentLocation?.pincode || undefined,
+    };
+  }, [currentLocation?.latitude, currentLocation?.longitude, currentLocation?.pincode]);
 
   const [loading, setLoading] = useState(false);
   const pendingRequestsRef = React.useRef(0);
@@ -181,6 +198,7 @@ export const CartProvider = ({ children }) => {
           productId: id,
           variantSku,
           quantity: 1,
+          ...locationParams,
         });
         pendingRequestsRef.current -= 1;
         await syncCart(response.data.result.items);
@@ -198,7 +216,7 @@ export const CartProvider = ({ children }) => {
     }
 
     return true;
-  }, [cart, isAuthenticated, showToast]);
+  }, [cart, isAuthenticated, showToast, locationParams]);
 
   const removeFromCart = useCallback(async (productId, variantSku = "") => {
     const normalizedProductId = String(productId ?? "");
@@ -277,6 +295,7 @@ export const CartProvider = ({ children }) => {
           productId: normalizedProductId,
           quantity: newQty,
           variantSku: normalizedVariantSku,
+          ...locationParams,
         });
         pendingRequestsRef.current -= 1;
         await syncCart(response.data.result.items);
@@ -294,7 +313,7 @@ export const CartProvider = ({ children }) => {
     }
 
     return true;
-  }, [isAuthenticated, showToast, removeFromCart]);
+  }, [isAuthenticated, showToast, removeFromCart, locationParams]);
 
   const clearCart = useCallback(async () => {
     if (isAuthenticated) {
