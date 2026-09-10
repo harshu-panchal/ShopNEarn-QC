@@ -173,6 +173,11 @@ export async function creditBonusToEarningsWallet({
   // Rebuild ledger + commission rows without mutating wallet balances.
   historyOnly = false,
   ledgerRunningBalances = null,
+  // Repurchase bonus (per product update): every upline recipient earns
+  // it regardless of their own membership status (active, suspended, or
+  // registered_unpaid) — only "no membership row at all" still skips.
+  // Every other bonus type keeps the default active-only gate.
+  allowInactiveRecipient = false,
 }) {
   if (!recipientUserId) throw new Error("recipientUserId is required");
   if (!idempotencyKey) throw new Error("idempotencyKey is required");
@@ -188,7 +193,7 @@ export async function creditBonusToEarningsWallet({
   if (existing) return existing;
 
   const membership = await getMembershipByUserId(recipientUserId, { session });
-  if (!membership || membership.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) {
+  if (!membership || (!allowInactiveRecipient && membership.status !== MLM_MEMBERSHIP_STATUS.ACTIVE)) {
     // Skip credit but still record the attempt for audit. The skip
     // is silent because non-MLM-member is the expected state for
     // most customers; the mentor-royalty cascade may target them.
@@ -967,7 +972,18 @@ export async function computeAndCreditRepurchaseBonusChain({
   if (!order) return [];
 
   const pb = order.paymentBreakdown || {};
-  const orderValue = roundCurrency((pb.grandTotal || 0) + (pb.walletAmount || 0));
+  // `grandTotal + walletAmount` reconstructs the gross pre-discount value
+  // for a PARTIAL wallet redemption, where `grandTotal` is net of that
+  // redemption. A FULL wallet-prepaid order (`payment.method === "wallet"`,
+  // e.g. `isWalletPrepaid` checkout) is different: `grandTotal` already IS
+  // the full price and `walletAmount` is set equal to it (not a discount
+  // off it), so adding them double-counts and made 100%-shopping-wallet
+  // orders look like they had a non-wallet-funded remainder — paying full
+  // repurchase commission on an order that should earn none.
+  const isFullWalletPrepaid = order.payment?.method === "wallet";
+  const orderValue = isFullWalletPrepaid
+    ? roundCurrency(pb.grandTotal || 0)
+    : roundCurrency((pb.grandTotal || 0) + (pb.walletAmount || 0));
   // Repurchase bonus is calculated based on Business Volume (BV). Purchases paid
   // via Shopping Wallet do not generate BV/commission, while Earning Wallet,
   // COD, Online, and non-shopping POS payment methods earn BV.
@@ -997,11 +1013,17 @@ export async function computeAndCreditRepurchaseBonusChain({
 
   if (baseAmount <= 0) return [];
 
-  // Walk the upline. `getUplineChain` returns ACTIVE memberships only —
-  // the array is compacted around any suspended/terminated/unpaid member
-  // in the chain, so we key off each recipient's real `.uplineLevel`
-  // (their true L1/L2/.../L6 position), never their position in this array.
-  const upline = await getUplineChain(downlineUserId, maxLevel, { session });
+  // Walk the upline. Repurchase bonus pays every recipient in the chain
+  // regardless of their own membership status (active, suspended, or
+  // registered_unpaid) — `includeInactive` keeps the full chain instead
+  // of `getUplineChain`'s usual active-only filter. We still key off
+  // each recipient's real `.uplineLevel` (their true L1/L2/.../L6
+  // position), never their index in this array, since the array can
+  // still have gaps if a user was removed from the chain entirely.
+  const upline = await getUplineChain(downlineUserId, maxLevel, {
+    session,
+    includeInactive: true,
+  });
   if (upline.length === 0) return [];
 
   const events = [];
@@ -1009,8 +1031,6 @@ export async function computeAndCreditRepurchaseBonusChain({
     const level = recipient.uplineLevel;
     const ratePercent = levels.find((r) => Number(r.level) === level)?.ratePercent;
     if (!ratePercent || ratePercent <= 0) continue;
-
-    if (recipient.status !== MLM_MEMBERSHIP_STATUS.ACTIVE) continue;
 
     const bonusAmount = roundCurrency((baseAmount * Number(ratePercent)) / 100);
     if (bonusAmount <= 0) continue;
@@ -1037,6 +1057,7 @@ export async function computeAndCreditRepurchaseBonusChain({
       idempotencyKey,
       correlationId,
       session,
+      allowInactiveRecipient: true,
     });
     events.push(event);
   }

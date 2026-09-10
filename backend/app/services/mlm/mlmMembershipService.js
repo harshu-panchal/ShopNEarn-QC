@@ -679,7 +679,7 @@ export async function assignSponsor({
  * shift every member below a gap up one rate tier. `uplineLevel` is
  * the level to use for any rate-table lookup; array position is not.
  */
-export async function getUplineChain(userId, maxDepth, { session } = {}) {
+export async function getUplineChain(userId, maxDepth, { session, includeInactive = false } = {}) {
   const membership = await getMembershipByUserId(userId, { session });
   if (!membership) return [];
   const chain = (membership.sponsorChain || []).slice(
@@ -687,8 +687,12 @@ export async function getUplineChain(userId, maxDepth, { session } = {}) {
     Math.max(0, maxDepth || 0),
   );
   if (chain.length === 0) return [];
+  const query = { userId: { $in: chain } };
+  if (!includeInactive) {
+    query.status = MLM_MEMBERSHIP_STATUS.ACTIVE;
+  }
   const memberships = await MlmMembership.find(
-    { userId: { $in: chain }, status: MLM_MEMBERSHIP_STATUS.ACTIVE },
+    query,
     null,
     session ? { session } : {},
   );
