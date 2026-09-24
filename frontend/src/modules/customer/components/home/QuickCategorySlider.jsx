@@ -64,9 +64,13 @@ const QuickCategorySlider = ({ categories, onCategoryClick }) => {
                     style={{ backgroundColor: palette.glowColor }}
                   />
                   <img
-                    src={applyCloudinaryTransform(cat.image, "f_auto,q_auto,w_150")}
+                    src={applyCloudinaryTransform(cat.image || cat.icon || cat.mainImage, "f_auto,q_auto,w_150")}
                     alt={cat.name}
                     loading="lazy"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = "https://cdn-icons-png.flaticon.com/128/2321/2321831.png";
+                    }}
                     className="absolute left-1/2 top-2.5 md:top-3 z-10 h-[56px] w-[56px] md:h-[64px] md:w-[64px] -translate-x-1/2 object-contain drop-shadow-[0_5px_12px_rgba(0,0,0,0.10)] mix-blend-multiply group-hover/item:scale-110 transition-transform duration-500"
                   />
                   <div className="absolute inset-x-1.5 md:inset-x-2 bottom-1.5 z-20 text-center">

@@ -176,8 +176,17 @@ const FranchisePartnerDetail = () => {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h2 className="font-bold text-slate-900">Stock on hand</h2>
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 className="font-bold text-slate-900">Stock on hand</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Current inventory held by this franchise</p>
+          </div>
+          <Link
+            to={`/admin/franchise/partners/${id}/stock-trace`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors"
+          >
+            Full Unit Stock Trace →
+          </Link>
         </div>
         {(stock || []).length === 0 ? (
           <p className="p-6 text-sm text-slate-500">No stock purchased yet.</p>
@@ -187,13 +196,22 @@ const FranchisePartnerDetail = () => {
               <tr>
                 <th className="text-left px-4 py-3">Product</th>
                 <th className="text-right px-4 py-3">Quantity</th>
+                <th className="text-right px-4 py-3">Action</th>
               </tr>
             </thead>
             <tbody>
               {stock.map((s) => (
                 <tr key={s._id} className="border-t border-slate-100">
-                  <td className="px-4 py-3">{s.product?.name || "Product"}</td>
-                  <td className="px-4 py-3 text-right font-bold">{s.quantity}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900">{s.product?.name || "Product"}</td>
+                  <td className="px-4 py-3 text-right font-bold font-mono">{s.quantity}</td>
+                  <td className="px-4 py-3 text-right">
+                    <Link
+                      to={`/admin/franchise/partners/${id}/stock-trace?productId=${s.product?._id || s.product}`}
+                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors inline-block"
+                    >
+                      Trace Unit Provenance →
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>
