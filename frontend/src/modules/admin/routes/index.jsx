@@ -122,6 +122,7 @@ const FranchiseRegistrations = React.lazy(() => import("../pages/franchise/Franc
 const FranchiseTopUps = React.lazy(() => import("../pages/franchise/FranchiseTopUps"));
 const FranchisePartners = React.lazy(() => import("../pages/franchise/FranchisePartners"));
 const FranchisePartnerDetail = React.lazy(() => import("../pages/franchise/FranchisePartnerDetail"));
+const FranchiseStockTrace = React.lazy(() => import("../pages/franchise/FranchiseStockTrace"));
 const FranchiseSettings = React.lazy(() => import("../pages/franchise/FranchiseSettings"));
 const FranchiseDispatch = React.lazy(() => import("../pages/franchise/FranchiseDispatch"));
 const FranchiseStockOrders = React.lazy(() => import("../pages/franchise/FranchiseStockOrders"));
@@ -428,6 +429,7 @@ const AdminRoutes = () => {
         <Route path="/franchise/topups" element={withPermission("franchise:view", <FranchiseTopUps />)} />
         <Route path="/franchise/partners" element={withPermission("franchise:view", <FranchisePartners />)} />
         <Route path="/franchise/partners/:id" element={withPermission("franchise:view", <FranchisePartnerDetail />)} />
+        <Route path="/franchise/partners/:id/stock-trace" element={withPermission("franchise:view", <FranchiseStockTrace />)} />
         <Route path="/franchise/stock-orders" element={withPermission("franchise:view", <FranchiseStockOrders />)} />
         <Route path="/franchise/dispatch" element={withPermission("franchise:dispatch", <FranchiseDispatch />)} />
         <Route path="/franchise/settings" element={withPermission("franchise:settings", <FranchiseSettings />)} />

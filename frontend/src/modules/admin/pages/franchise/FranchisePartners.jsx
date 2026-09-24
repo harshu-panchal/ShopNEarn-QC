@@ -93,12 +93,20 @@ const FranchisePartners = () => {
               </td>
               <td className="px-4 py-3 text-xs whitespace-nowrap">{formatDate(row.registeredAt)}</td>
               <td className="px-4 py-3 text-right">
-                <Link
-                  to={`/admin/franchise/partners/${row._id}`}
-                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider"
-                >
-                  Manage →
-                </Link>
+                <div className="flex items-center justify-end gap-3">
+                  <Link
+                    to={`/admin/franchise/partners/${row._id}/stock-trace`}
+                    className="text-xs font-bold text-emerald-600 hover:text-emerald-800 uppercase tracking-wider"
+                  >
+                    Stock Trace →
+                  </Link>
+                  <Link
+                    to={`/admin/franchise/partners/${row._id}`}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider"
+                  >
+                    Manage →
+                  </Link>
+                </div>
               </td>
             </tr>
           ))

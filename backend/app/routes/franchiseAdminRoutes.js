@@ -21,6 +21,9 @@ import {
   listAdminStockOrders,
   dispatchAdminStockOrder,
   approveAdminStockOrderReceipt,
+  getPartnerStockTrace,
+  getPartnerProductTrace,
+  getPartnerStockOrders,
 } from "../controller/admin/franchiseAdminController.js";
 
 const router = express.Router();
@@ -58,5 +61,12 @@ router.post(
 router.get("/stock-orders", ...adminPermissionGuard("franchise:view"), listAdminStockOrders);
 router.post("/stock-orders/:orderId/dispatch", ...adminPermissionGuard("franchise:approve"), dispatchAdminStockOrder);
 router.post("/stock-orders/:orderId/approve-receipt", ...adminPermissionGuard("franchise:approve"), approveAdminStockOrderReceipt);
+
+// Per-partner stock trace: all movements + customer info
+router.get("/partners/:id/stock-trace", ...adminPermissionGuard("franchise:view"), getPartnerStockTrace);
+// Per-product drilldown within a partner
+router.get("/partners/:id/stock-trace/:productId", ...adminPermissionGuard("franchise:view"), getPartnerProductTrace);
+// Per-partner order-wise stock intake & deliveries (datewise)
+router.get("/partners/:id/stock-orders", ...adminPermissionGuard("franchise:view"), getPartnerStockOrders);
 
 export default router;

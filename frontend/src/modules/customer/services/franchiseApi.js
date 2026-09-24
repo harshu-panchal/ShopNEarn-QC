@@ -89,6 +89,13 @@ export const adminFranchiseApi = {
     axiosInstance.post(`/admin/franchise/stock-orders/${orderId}/dispatch`),
   approveStockOrderReceipt: (orderId) =>
     axiosInstance.post(`/admin/franchise/stock-orders/${orderId}/approve-receipt`),
+  // Stock trace endpoints
+  getPartnerStockTrace: (partnerId, params) =>
+    axiosInstance.get(`/admin/franchise/partners/${partnerId}/stock-trace`, { params }),
+  getPartnerProductTrace: (partnerId, productId) =>
+    axiosInstance.get(`/admin/franchise/partners/${partnerId}/stock-trace/${productId}`),
+  getPartnerStockOrders: (partnerId, params) =>
+    axiosInstance.get(`/admin/franchise/partners/${partnerId}/stock-orders`, { params }),
 };
 
 export default franchiseApi;

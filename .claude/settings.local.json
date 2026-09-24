@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --experimental-vm-modules node_modules/jest/bin/jest.js --testPathPatterns=\"sellerAuthController|phase0-payment-security|customer-soft-delete-signup\")"
+    ]
+  }
+}

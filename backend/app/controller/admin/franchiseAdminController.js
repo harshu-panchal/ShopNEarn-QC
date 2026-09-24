@@ -31,6 +31,11 @@ import {
   dispatchFranchiseStockOrder,
   approveFranchiseStockOrderReceipt,
 } from "../../services/franchise/franchiseStockService.js";
+import {
+  getAdminFranchiseStockTrace,
+  getAdminFranchiseProductTrace,
+  getAdminFranchiseStockOrders,
+} from "../../services/franchise/franchiseStockTraceService.js";
 
 export const getFranchiseAdminDashboard = async (req, res) => {
   try {
@@ -434,3 +439,47 @@ export const approveAdminStockOrderReceipt = async (req, res) => {
     return handleResponse(res, error.statusCode || 400, error.message);
   }
 };
+
+/**
+ * GET /api/admin/franchise/partners/:id/stock-trace
+ * Returns every FranchiseStockMovement for the partner, enriched with
+ * product info and the customer who consumed each unit (online / POS).
+ * Supports filters: page, limit, productId, type, startDate, endDate, channel
+ */
+export const getPartnerStockTrace = async (req, res) => {
+  try {
+    const result = await getAdminFranchiseStockTrace(req.params.id, req.query || {});
+    return handleResponse(res, 200, "Franchise stock trace", result);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * GET /api/admin/franchise/partners/:id/stock-trace/:productId
+ * Full chronological trace for a single product at a single franchise.
+ */
+export const getPartnerProductTrace = async (req, res) => {
+  try {
+    const result = await getAdminFranchiseProductTrace(req.params.id, req.params.productId);
+    return handleResponse(res, 200, "Product stock trace", result);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/**
+ * GET /api/admin/franchise/partners/:id/stock-orders
+ * Returns all stock orders and/or customer fulfillment orders for the partner,
+ * with full lifecycle timestamps (ordered, dispatched, delivered), line items,
+ * and datewise grouping.
+ */
+export const getPartnerStockOrders = async (req, res) => {
+  try {
+    const result = await getAdminFranchiseStockOrders(req.params.id, req.query || {});
+    return handleResponse(res, 200, "Franchise stock orders trace", result);
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
