@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   User,
@@ -15,14 +15,18 @@ import {
   IndianRupee,
   ChevronDown,
   ChevronUp,
+  Trash2,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import Button from "@/shared/components/ui/Button";
 import Card from "@/shared/components/ui/Card";
 import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
+import { deliveryApi } from "../services/deliveryApi";
 import axiosInstance from '@core/api/axios';
-import { useEffect } from 'react';
+import { toast } from "sonner";
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -30,6 +34,22 @@ const Profile = () => {
   const { settings } = useSettings();
   const appName = settings?.appName || "App";
   const [faqs, setFaqs] = useState([]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    try {
+      setIsDeleting(true);
+      await deliveryApi.deleteAccount();
+      toast.success("Account deleted successfully.");
+      await logout();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to delete account.");
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
 
   useEffect(() => {
     const fetchFaqs = async () => {
@@ -245,6 +265,48 @@ const Profile = () => {
             className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 py-6">
             <LogOut size={20} className="mr-2" /> Logout
           </Button>
+        </motion.div>
+
+        <motion.div variants={itemVariants}>
+          {!showDeleteConfirm ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="w-full py-3.5 rounded-xl border border-red-200 text-red-500 font-semibold bg-white hover:bg-red-50 transition-colors flex items-center justify-center gap-2 text-sm"
+            >
+              <Trash2 size={18} /> Delete Account
+            </button>
+          ) : (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={20} className="text-red-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-red-700 text-sm">Delete your delivery account?</p>
+                  <p className="text-xs text-red-500 mt-1 leading-relaxed">
+                    This permanently removes your account and all data. This cannot be undone.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={isDeleting}
+                  className="flex-1 py-2.5 rounded-lg border border-gray-200 bg-white text-gray-600 font-semibold text-sm hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <X size={15} /> Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={isDeleting}
+                  className="flex-1 py-2.5 rounded-lg bg-red-600 text-white font-bold text-sm hover:bg-red-700 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
+                >
+                  {isDeleting
+                    ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    : <Trash2 size={15} />}
+                  {isDeleting ? "Deleting…" : "Yes, Delete"}
+                </button>
+              </div>
+            </div>
+          )}
         </motion.div>
       </motion.div>
 
