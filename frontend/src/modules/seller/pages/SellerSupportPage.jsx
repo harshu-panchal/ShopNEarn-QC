@@ -4,6 +4,44 @@ import { MessageCircle, Phone, Mail, FileText, ChevronLeft, ChevronDown, Chevron
 import { useSettings } from '@core/context/SettingsContext';
 import axiosInstance from '@core/api/axios';
 
+const STATIC_FAQS = [
+    {
+        _id: 's1',
+        question: 'How do I add a new product to my store?',
+        answer: 'Go to Products → Add Product from your seller dashboard. Fill in the product name, category, price, and stock quantity. Upload at least one clear image and click Save. Your product will be live immediately after approval.',
+    },
+    {
+        _id: 's2',
+        question: 'How do I manage incoming orders?',
+        answer: 'All new orders appear under the Orders tab with a notification alert. You must confirm or reject an order within the stipulated time. Once confirmed, keep the item ready for pickup by the delivery partner.',
+    },
+    {
+        _id: 's3',
+        question: 'When will I receive my earnings?',
+        answer: 'Earnings from completed orders are credited to your seller wallet after the delivery is marked complete. You can request a withdrawal from the Money Request section once your wallet balance meets the minimum threshold.',
+    },
+    {
+        _id: 's4',
+        question: 'How do I request a withdrawal?',
+        answer: 'Navigate to Money Request in your seller dashboard. Enter the amount you wish to withdraw (within your available balance) and confirm. Settlements are transferred to your registered bank account within 2–5 business days.',
+    },
+    {
+        _id: 's5',
+        question: 'Why is my account pending approval?',
+        answer: 'New seller accounts go through a verification process where we review your submitted KYC documents (Aadhaar, PAN, GST, etc.). This typically takes 1–3 business days. You will be notified via SMS and email once approved.',
+    },
+    {
+        _id: 's6',
+        question: 'How do I update my store location or service area?',
+        answer: 'Go to Profile → Edit Profile and use the Map Picker to update your store location and service radius. Orders are assigned to you based on this radius, so keep it accurate for the best results.',
+    },
+    {
+        _id: 's7',
+        question: 'What should I do if an order has a problem?',
+        answer: 'If you experience an issue with an order (wrong item, customer dispute, delivery failure), sign in and raise a support ticket from the Help & Support section. Our team will investigate and resolve it within 24 hours.',
+    },
+];
+
 const SellerSupportPage = () => {
     const navigate = useNavigate();
     const { settings } = useSettings();
@@ -75,15 +113,9 @@ const SellerSupportPage = () => {
                         Frequently Asked Questions
                     </h2>
                     <div className="space-y-3">
-                        {faqs.length > 0 ? (
-                            faqs.map((faq) => (
-                                <FAQItem key={faq._id} question={faq.question} answer={faq.answer} />
-                            ))
-                        ) : (
-                            <div className="bg-white rounded-2xl border border-slate-100 px-5 py-4 text-sm text-slate-400 text-center">
-                                No FAQs available right now.
-                            </div>
-                        )}
+                        {(faqs.length > 0 ? faqs : STATIC_FAQS).map((faq) => (
+                            <FAQItem key={faq._id} question={faq.question} answer={faq.answer} />
+                        ))}
                     </div>
                 </div>
 

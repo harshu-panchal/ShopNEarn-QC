@@ -4,6 +4,44 @@ import { MessageCircle, Phone, Mail, FileText, ChevronLeft, ChevronDown, Chevron
 import { useSettings } from '@core/context/SettingsContext';
 import axiosInstance from '@core/api/axios';
 
+const STATIC_FAQS = [
+    {
+        _id: 'd1',
+        question: 'How do I accept and start a delivery?',
+        answer: 'When a new order is assigned, you will receive an alert on your dashboard. Tap the order to view pickup and drop details, then tap Accept. Navigate to the seller\'s location to pick up the package, and use the in-app map to reach the customer.',
+    },
+    {
+        _id: 'd2',
+        question: 'How are my earnings calculated?',
+        answer: 'Your earnings are based on a per-delivery rate that considers the order value and distance. Additional incentives may apply during peak hours or high-demand periods. You can view a full breakdown in the Earnings tab.',
+    },
+    {
+        _id: 'd3',
+        question: 'When and how will I receive my payment?',
+        answer: 'Completed delivery earnings are credited to your in-app wallet. You can request a withdrawal at any time from Profile → Money Request. Bank transfers are processed within 2–5 business days.',
+    },
+    {
+        _id: 'd4',
+        question: 'What if I cannot find the customer\'s location?',
+        answer: 'Use the in-app navigation for turn-by-turn directions. If you\'re still unable to locate the address, call the customer directly using the Call button on the active order screen. If the customer is unreachable, contact Delivery Support.',
+    },
+    {
+        _id: 'd5',
+        question: 'How do I handle a Cash on Delivery (COD) order?',
+        answer: 'For COD orders, collect the exact order amount from the customer at delivery. The collected amount will show as a COD balance in your app. You are required to deposit this amount to the platform as per the schedule shown in the COD Cash section.',
+    },
+    {
+        _id: 'd6',
+        question: 'What should I do if a package is damaged or lost?',
+        answer: 'Immediately report any damage or loss through the app by tapping Report Issue on the active order. Take photographs of the package and its condition. Do not attempt to resolve damage disputes with the customer directly — our support team will handle it.',
+    },
+    {
+        _id: 'd7',
+        question: 'How do I update my vehicle or bank account details?',
+        answer: 'Go to Profile → Vehicle Information to update your vehicle details. For bank account changes, go to Profile → Bank Account and submit a change request with a cancelled cheque or passbook copy for verification.',
+    },
+];
+
 const DeliverySupportPage = () => {
     const navigate = useNavigate();
     const { settings } = useSettings();
@@ -79,15 +117,9 @@ const DeliverySupportPage = () => {
                         Frequently Asked Questions
                     </h2>
                     <div className="space-y-3">
-                        {faqs.length > 0 ? (
-                            faqs.map((faq) => (
-                                <FAQItem key={faq._id} question={faq.question} answer={faq.answer} />
-                            ))
-                        ) : (
-                            <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 text-sm text-gray-400 text-center">
-                                No FAQs available right now.
-                            </div>
-                        )}
+                        {(faqs.length > 0 ? faqs : STATIC_FAQS).map((faq) => (
+                            <FAQItem key={faq._id} question={faq.question} answer={faq.answer} />
+                        ))}
                     </div>
                 </section>
 

@@ -14,6 +14,44 @@ import { getJSON, setJSON, STORAGE_KEYS } from '@core/utils/storage';
 const FAQ_CACHE_KEY = STORAGE_KEYS.FAQ_CACHE;
 const FAQ_CACHE_TTL_MS = 5 * 60 * 1000;
 
+const STATIC_FAQS = [
+    {
+        _id: 'c1',
+        question: 'How do I track my order?',
+        answer: 'Go to Orders in your profile and tap on the order you want to track. You will see real-time status updates from "Order Confirmed" through "Out for Delivery" to "Delivered". You can also call the delivery partner directly from the order detail screen.',
+    },
+    {
+        _id: 'c2',
+        question: 'How do I cancel an order?',
+        answer: 'You can cancel an order before it is picked up by the delivery partner. Open the order in My Orders, tap Cancel Order, and select a reason. Cancellations after pickup may not be possible. Refunds for cancelled paid orders are processed within 5–7 business days.',
+    },
+    {
+        _id: 'c3',
+        question: 'How long does a refund take?',
+        answer: 'Refunds for returned or cancelled orders are processed within 5–7 business days to your original payment method. If you paid via wallet, the refund is instant. You can track refund status under Orders → Order Detail → Refund Status.',
+    },
+    {
+        _id: 'c4',
+        question: 'How do I use my wallet balance?',
+        answer: 'Your wallet balance is automatically applied at checkout. You can view your wallet balance and transaction history under Profile → Wallet. Wallet credits are earned from cashback, referral rewards, and order refunds.',
+    },
+    {
+        _id: 'c5',
+        question: 'Can I change the delivery address after placing an order?',
+        answer: 'Address changes are possible only before the order is picked up by the delivery partner. Contact support immediately via the Chat option and provide your order ID. After pickup, address changes are not possible.',
+    },
+    {
+        _id: 'c6',
+        question: 'What if I received a wrong or damaged item?',
+        answer: 'If you received a wrong item or your order arrived damaged, raise a ticket immediately using the Raise Ticket option above. Provide your order ID and photos of the item. Our support team will arrange a replacement or refund within 24–48 hours.',
+    },
+    {
+        _id: 'c7',
+        question: 'How does the Refer & Earn programme work?',
+        answer: 'Share your unique referral link or code from Profile → Refer & Earn. When a friend signs up and places their first order using your code, both of you earn wallet credits. You can track your referral earnings and withdraw them from the MLM section.',
+    },
+];
+
 const SupportPage = () => {
     const navigate = useNavigate();
     const { showToast } = useToast();
@@ -116,19 +154,13 @@ const SupportPage = () => {
                 <div>
                     <h2 className="text-base font-semibold text-slate-800 mb-3 px-1">Frequently Asked Questions</h2>
                     <div className="space-y-3">
-                        {faqs.length > 0 ? (
-                            faqs.map((faq) => (
-                                <FAQItem
-                                    key={faq._id}
-                                    question={faq.question}
-                                    answer={faq.answer}
-                                />
-                            ))
-                        ) : (
-                            <div className="bg-white rounded-2xl shadow-[0_4px_10px_rgb(0,0,0,0.02)] border border-slate-100 px-5 py-4 text-sm text-slate-400 text-center">
-                                No FAQs available right now.
-                            </div>
-                        )}
+                        {(faqs.length > 0 ? faqs : STATIC_FAQS).map((faq) => (
+                            <FAQItem
+                                key={faq._id}
+                                question={faq.question}
+                                answer={faq.answer}
+                            />
+                        ))}
                     </div>
                 </div>
 
