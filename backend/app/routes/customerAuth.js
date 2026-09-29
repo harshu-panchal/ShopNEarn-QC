@@ -13,6 +13,7 @@ import {
     sendCustomerForgotPasswordOtp,
     verifyCustomerForgotPasswordOtp,
     resetCustomerForgotPassword,
+    deleteCustomerAccount,
 } from "../controller/customerAuthController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 import {
@@ -85,5 +86,8 @@ router.post(
 
 // Wallet
 router.get("/transactions", verifyToken, getCustomerTransactions);
+
+// Account deletion — permanently removes the customer record from the DB.
+router.delete("/account", verifyToken, deleteCustomerAccount);
 
 export default router;

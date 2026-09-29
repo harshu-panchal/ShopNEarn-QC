@@ -5,6 +5,7 @@ import {
   verifyDeliveryOTP,
   getDeliveryProfile,
   updateDeliveryProfile,
+  deleteDeliveryAccount,
 } from "../controller/deliveryAuthController.js";
 import {
   getDeliveryStats,
@@ -47,6 +48,9 @@ router.get(
 );
 router.post("/request-withdrawal", verifyToken, requestWithdrawal);
 router.post("/location", verifyToken, updateDeliveryLocation);
+
+// Account deletion
+router.delete("/account", verifyToken, allowRoles("delivery"), deleteDeliveryAccount);
 
 // NOTE: Delivery-completion OTP generation/validation lives on the
 // canonical workflow routes:

@@ -685,3 +685,18 @@ export const resetCustomerForgotPassword = async (req, res) => {
         );
     }
 };
+
+/* ===============================
+   DELETE ACCOUNT
+================================ */
+export const deleteCustomerAccount = async (req, res) => {
+    try {
+        const deleted = await Customer.findByIdAndDelete(req.user.id);
+        if (!deleted) {
+            return handleResponse(res, 404, "Account not found");
+        }
+        return handleResponse(res, 200, "Account deleted successfully");
+    } catch (error) {
+        return handleResponse(res, 500, error.message);
+    }
+};

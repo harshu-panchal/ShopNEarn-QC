@@ -239,3 +239,18 @@ export const updateDeliveryProfile = async (req, res) => {
         return handleResponse(res, 500, error.message);
     }
 };
+
+/* ===============================
+   DELETE ACCOUNT
+================================ */
+export const deleteDeliveryAccount = async (req, res) => {
+    try {
+        const deleted = await Delivery.findByIdAndDelete(req.user.id);
+        if (!deleted) {
+            return handleResponse(res, 404, "Account not found");
+        }
+        return handleResponse(res, 200, "Account deleted successfully");
+    } catch (error) {
+        return handleResponse(res, 500, error.message);
+    }
+};

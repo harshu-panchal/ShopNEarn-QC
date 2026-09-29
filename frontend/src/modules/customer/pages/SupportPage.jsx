@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { MessageCircle, Phone, Mail, ChevronDown, ChevronUp, FileText, ChevronLeft, PlusCircle, X, Send } from 'lucide-react';
 import { useToast } from '@shared/components/ui/Toast';
 import { useSettings } from '@core/context/SettingsContext';
+import { useAuth } from '@core/context/AuthContext';
 import { customerApi } from '../services/customerApi';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -17,6 +18,7 @@ const SupportPage = () => {
     const navigate = useNavigate();
     const { showToast } = useToast();
     const { settings } = useSettings();
+    const { isAuthenticated } = useAuth();
     const supportEmail = settings?.supportEmail || '';
     const supportEmailShort = supportEmail ? (supportEmail.length > 12 ? supportEmail.slice(0, 12) + '...' : supportEmail) : 'support@...';
     const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
@@ -91,13 +93,21 @@ const SupportPage = () => {
             <div className="max-w-2xl mx-auto px-4 pt-1 relative z-20 space-y-5">
                 {/* Contact Channels */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <ContactCard icon={MessageCircle} label="Chat Us" sub="Instant Support" to="/chat" />
-                    <ContactCard
-                        icon={PlusCircle}
-                        label="Raise Ticket"
-                        sub="Formal Request"
-                        onClick={() => setIsTicketModalOpen(true)}
-                    />
+                    {isAuthenticated ? (
+                        <ContactCard icon={MessageCircle} label="Chat Us" sub="Instant Support" to="/chat" />
+                    ) : (
+                        <ContactCard icon={MessageCircle} label="Chat Us" sub="Sign in to chat" to="/login" />
+                    )}
+                    {isAuthenticated ? (
+                        <ContactCard
+                            icon={PlusCircle}
+                            label="Raise Ticket"
+                            sub="Formal Request"
+                            onClick={() => setIsTicketModalOpen(true)}
+                        />
+                    ) : (
+                        <ContactCard icon={PlusCircle} label="Raise Ticket" sub="Sign in to submit" to="/login" />
+                    )}
                     <ContactCard icon={Phone} label="Call Us" sub="+91 98765..." />
                     <ContactCard icon={Mail} label="Email Us" sub={supportEmailShort} />
                 </div>

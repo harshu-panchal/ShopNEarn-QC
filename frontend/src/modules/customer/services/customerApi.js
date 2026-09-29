@@ -33,6 +33,7 @@ export const customerApi = {
   // Body: { currentPassword, newPassword }
   changePassword: (data) =>
     axiosInstance.post("/customer/change-password", data),
+  deleteAccount: () => axiosInstance.delete("/customer/account"),
   getWalletTransactions: (params) =>
     getWithDedupe("/customer/transactions", params),
   getCategories: (params) =>

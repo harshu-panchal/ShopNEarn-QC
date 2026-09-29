@@ -6,6 +6,7 @@ export const deliveryApi = {
     axiosInstance.post("/delivery/send-signup-otp", data),
   verifyOtp: (data) => axiosInstance.post("/delivery/verify-otp", data),
   getProfile: () => axiosInstance.get("/delivery/profile"),
+  deleteAccount: () => axiosInstance.delete("/delivery/account"),
   updateProfile: (data) => axiosInstance.put("/delivery/profile", data),
   getStats: () => axiosInstance.get("/delivery/stats"),
   getEarnings: () => axiosInstance.get("/delivery/earnings"),

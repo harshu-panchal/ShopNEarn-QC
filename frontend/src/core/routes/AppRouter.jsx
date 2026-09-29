@@ -98,6 +98,15 @@ const SellerModule = lazy(() => import('../../modules/seller/routes/index'));
 const AdminModule = lazy(() => import('../../modules/admin/routes/index'));
 const DeliveryModule = lazy(() => import('../../modules/delivery/routes/index'));
 
+// Public standalone legal / support pages for seller and delivery portals.
+// These live outside the ProtectedRoute so unauthenticated users can access
+// them. Static paths take precedence over the seller/* and delivery/*
+// wildcards in React Router v6, so these intercept the URL for everyone.
+const SellerLegalPage = lazy(() => import('../../modules/seller/pages/SellerLegalPage'));
+const SellerSupportPage = lazy(() => import('../../modules/seller/pages/SellerSupportPage'));
+const DeliveryLegalPage = lazy(() => import('../../modules/delivery/pages/DeliveryLegalPage'));
+const DeliverySupportPage = lazy(() => import('../../modules/delivery/pages/DeliverySupportPage'));
+
 import CustomerLayout from '../../modules/customer/components/layout/CustomerLayout';
 
 /** Old `/franchise/*` bookmarks → `/mlm/franchise/*` inside MlmLayout. */
@@ -185,6 +194,26 @@ const AppRouter = () => {
                         </Suspense>
                     ),
                 },
+                // Public seller pages — accessible without login.
+                // Must be declared before the seller/* wildcard so React Router
+                // v6 specificity rules resolve them here rather than inside the
+                // protected SellerModule.
+                {
+                    path: 'seller/privacy',
+                    element: (
+                        <Suspense fallback={<div className="flex h-screen items-center justify-center font-outfit">Loading…</div>}>
+                            <SellerLegalPage slug="privacy-policy" />
+                        </Suspense>
+                    ),
+                },
+                {
+                    path: 'seller/support',
+                    element: (
+                        <Suspense fallback={<div className="flex h-screen items-center justify-center font-outfit">Loading…</div>}>
+                            <SellerSupportPage />
+                        </Suspense>
+                    ),
+                },
                 {
                     path: 'seller/*',
                     element: (
@@ -203,6 +232,23 @@ const AppRouter = () => {
                                 <AdminModule />
                             </RoleGuard>
                         </ProtectedRoute>
+                    ),
+                },
+                // Public delivery pages — accessible without login.
+                {
+                    path: 'delivery/privacy',
+                    element: (
+                        <Suspense fallback={<div className="flex h-screen items-center justify-center font-outfit">Loading…</div>}>
+                            <DeliveryLegalPage slug="privacy-policy" />
+                        </Suspense>
+                    ),
+                },
+                {
+                    path: 'delivery/support',
+                    element: (
+                        <Suspense fallback={<div className="flex h-screen items-center justify-center font-outfit">Loading…</div>}>
+                            <DeliverySupportPage />
+                        </Suspense>
                     ),
                 },
                 {
@@ -238,7 +284,7 @@ const AppRouter = () => {
                         { path: 'transactions', element: <ProtectedRoute><OrderTransactionsPage /></ProtectedRoute> },
                         { path: 'addresses', element: <ProtectedRoute><AddressesPage /></ProtectedRoute> },
                         { path: 'settings', element: <ProtectedRoute><SettingsPage /></ProtectedRoute> },
-                        { path: 'support', element: <ProtectedRoute><SupportPage /></ProtectedRoute> },
+                        { path: 'support', element: <SupportPage /> },
                         { path: 'chat', element: <ProtectedRoute><ChatPage /></ProtectedRoute> },
                         { path: 'checkout', element: <ProtectedRoute><CheckoutPage /></ProtectedRoute> },
                         { path: 'payment-status', element: <PaymentStatusPage /> },

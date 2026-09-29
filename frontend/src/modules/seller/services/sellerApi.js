@@ -51,6 +51,7 @@ export const sellerApi = {
       params: { since: JSON.stringify(sinceByKey || {}) },
     }),
   getProfile: () => axiosInstance.get("/seller/profile"),
+  deleteAccount: () => axiosInstance.delete("/seller/account"),
   updateProfile: (data) => axiosInstance.put("/seller/profile", data),
 
   // Stock / Inventory

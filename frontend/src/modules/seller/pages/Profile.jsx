@@ -13,19 +13,25 @@ import {
   Globe,
   MapPin,
   CheckCircle,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { sellerApi } from "../services/sellerApi";
+import { useAuth } from "@core/context/AuthContext";
 import { toast } from "sonner";
 import Card from "@shared/components/ui/Card";
 import Button from "@shared/components/ui/Button";
 import MapPicker from "../../../shared/components/MapPicker";
 
 const SellerProfile = () => {
+  const { logout } = useAuth();
   const [profile, setProfile] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isMapOpen, setIsMapOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     shopName: "",
@@ -71,6 +77,20 @@ const SellerProfile = () => {
       radius: location.radius,
       address: location.address,
     }));
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      setIsDeleting(true);
+      await sellerApi.deleteAccount();
+      toast.success("Account deleted successfully.");
+      await logout();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to delete account.");
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
   };
 
   const handleChange = (e) => {
@@ -460,6 +480,59 @@ const SellerProfile = () => {
             </div>
           </Card>
         </div>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="px-4 pb-6">
+        <Card className="border border-red-200 overflow-hidden">
+          <div className="px-5 py-3 bg-red-50 border-b border-red-100">
+            <h3 className="text-xs font-bold text-red-500 uppercase tracking-wider">Danger Zone</h3>
+          </div>
+          <div className="p-4">
+            {!showDeleteConfirm ? (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full py-3 text-red-600 font-bold bg-red-50 rounded-xl flex items-center justify-center gap-2 hover:bg-red-100 transition-colors text-sm border border-red-200"
+              >
+                <Trash2 size={18} /> Delete Account
+              </button>
+            ) : (
+              <div className="bg-red-50 rounded-xl p-4 space-y-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle size={20} className="text-red-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-red-700 text-sm">Delete your seller account?</p>
+                    <p className="text-xs text-red-500 mt-1 leading-relaxed">
+                      This will permanently remove your account and all data. This cannot be undone.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    disabled={isDeleting}
+                    className="flex-1 border-slate-200 text-slate-600 text-sm"
+                  >
+                    Cancel
+                  </Button>
+                  <button
+                    onClick={handleDeleteAccount}
+                    disabled={isDeleting}
+                    className="flex-1 py-2 rounded-lg bg-red-600 text-white font-bold text-sm hover:bg-red-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    {isDeleting ? (
+                      <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Trash2 size={15} />
+                    )}
+                    {isDeleting ? 'Deleting…' : 'Yes, Delete'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
       </div>
 
       {isMapOpen && (

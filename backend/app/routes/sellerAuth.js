@@ -8,7 +8,7 @@ import {
     verifyForgotPasswordOtp,
     resetForgotPassword,
 } from "../controller/sellerAuthController.js";
-import { getSellerProfile, updateSellerProfile, requestWithdrawal, getNearbySellers } from "../controller/sellerController.js";
+import { getSellerProfile, updateSellerProfile, requestWithdrawal, getNearbySellers, deleteSellerAccount } from "../controller/sellerController.js";
 import { getSellerStats, getSellerEarnings } from "../controller/sellerStatsController.js";
 import { getSellerWalletSummaryController } from "../controller/adminFinanceController.js";
 import { getSellerNavBadges } from "../controller/navBadgeController.js";
@@ -92,5 +92,8 @@ router.get("/earnings", verifyToken, allowRoles("seller"), getSellerEarnings);
 router.get("/wallet/summary", verifyToken, allowRoles("seller"), getSellerWalletSummaryController);
 router.get("/nav-badges", verifyToken, allowRoles("seller"), getSellerNavBadges);
 router.post("/request-withdrawal", verifyToken, allowRoles("seller"), requestWithdrawal);
+
+// Account deletion
+router.delete("/account", verifyToken, allowRoles("seller"), deleteSellerAccount);
 
 export default router;
