@@ -11,6 +11,7 @@ import {
   listPartners,
   getPartnerDetail,
   patchPartnerTerritory,
+  patchPartnerStatus,
   adjustWallet,
   updateFranchiseSettings,
   getFranchiseSettings,
@@ -49,6 +50,7 @@ router.post("/topups/:id/reject", ...adminPermissionGuard("franchise:reject"), r
 router.get("/partners", ...adminPermissionGuard("franchise:view"), listPartners);
 router.get("/partners/:id", ...adminPermissionGuard("franchise:view"), getPartnerDetail);
 router.patch("/partners/:id/territory", ...adminPermissionGuard("franchise:adjust"), patchPartnerTerritory);
+router.patch("/partners/:id/status", ...adminPermissionGuard("franchise:adjust"), patchPartnerStatus);
 router.post("/partners/:id/adjust-wallet", ...adminPermissionGuard("franchise:adjust"), adjustWallet);
 
 router.get("/orders", ...adminPermissionGuard("franchise:dispatch"), listFranchiseDispatchOrders);

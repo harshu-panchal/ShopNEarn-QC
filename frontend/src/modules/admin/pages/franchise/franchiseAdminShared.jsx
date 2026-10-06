@@ -112,6 +112,8 @@ export const StatusPill = ({ status }) => {
     CANCELLED: { label: "Cancelled", icon: AlertCircle, color: "bg-slate-100 text-slate-600" },
     active: { label: "Active", icon: CheckCircle2, color: "bg-emerald-100 text-emerald-800" },
     suspended: { label: "Suspended", icon: AlertCircle, color: "bg-amber-100 text-amber-800" },
+    terminated: { label: "Terminated", icon: XCircle, color: "bg-rose-100 text-rose-800" },
+    pending_payment: { label: "Pending Payment", icon: Clock, color: "bg-slate-100 text-slate-700" },
     REQUESTED: { label: "Awaiting Dispatch", icon: Clock, color: "bg-amber-100 text-amber-800" },
     DISPATCHED_PENDING_RECEIPT: { label: "Awaiting Receipt", icon: Clock, color: "bg-indigo-100 text-indigo-800" },
     DELIVERED: { label: "Delivered", icon: CheckCircle2, color: "bg-emerald-100 text-emerald-800" },

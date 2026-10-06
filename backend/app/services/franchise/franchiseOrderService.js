@@ -7,6 +7,7 @@ import {
   FRANCHISE_ORDER_STATUS,
   FRANCHISE_HUB_ACCEPTANCE_STATUS,
   FRANCHISE_SHIPMENT_STATUS,
+  ALL_FRANCHISE_PARTNER_STATUSES,
 } from "../../constants/franchise.js";
 import {
   WORKFLOW_STATUS,
@@ -14,6 +15,7 @@ import {
   legacyStatusFromWorkflow,
 } from "../../constants/orderWorkflow.js";
 import { ORDER_PAYMENT_STATUS } from "../../constants/finance.js";
+import { buildKey, delPattern } from "../cacheService.js";
 import { emitNotificationEvent } from "../../modules/notifications/notification.emitter.js";
 import { emitOrderStatusUpdate } from "../orderSocketEmitter.js";
 import { NOTIFICATION_EVENTS } from "../../modules/notifications/notification.constants.js";
@@ -912,6 +914,38 @@ export async function updateFranchisePartnerTerritory({
     : [];
   partner.updatedBy = adminId || null;
   await partner.save();
+  return partner;
+}
+
+export async function updateFranchisePartnerStatus({
+  franchisePartnerId,
+  status,
+  adminId,
+}) {
+  if (!ALL_FRANCHISE_PARTNER_STATUSES.includes(status)) {
+    const err = new Error("Invalid franchise partner status");
+    err.statusCode = 400;
+    throw err;
+  }
+  const partner = await FranchisePartner.findById(franchisePartnerId);
+  if (!partner) {
+    const err = new Error("Partner not found");
+    err.statusCode = 404;
+    throw err;
+  }
+  const statusChanged = partner.status !== status;
+  partner.status = status;
+  partner.updatedBy = adminId || null;
+  await partner.save();
+
+  // Franchise coverage (resolveFranchiseCatalogScope) narrows the cached
+  // customer product list to a specific partner's stock — stale entries
+  // would keep showing the old scope for up to CACHE_PRODUCT_LIST_TTL
+  // after an admin flips a partner active/inactive, so clear it eagerly.
+  if (statusChanged) {
+    await delPattern(buildKey("catalog", "productList") + ":*");
+  }
+
   return partner;
 }
 

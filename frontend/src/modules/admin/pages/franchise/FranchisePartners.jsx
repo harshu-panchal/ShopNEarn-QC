@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Search, X } from "lucide-react";
 import { adminFranchiseApi } from "../../../customer/services/franchiseApi";
+import { useToast } from "@shared/components/ui/Toast";
+import PermissionGate from "../../rbac/PermissionGate";
 import {
   PageShell,
   DataTable,
@@ -16,6 +18,8 @@ const FranchisePartners = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null);
+  const { showToast } = useToast();
 
   const load = async () => {
     setLoading(true);
@@ -26,6 +30,24 @@ const FranchisePartners = () => {
       setItems(res.data?.result?.items ?? res.data?.data?.items ?? []);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleStatus = async (row) => {
+    const nextStatus = row.status === "active" ? "suspended" : "active";
+    const verb = nextStatus === "suspended" ? "Deactivate" : "Activate";
+    if (!window.confirm(`${verb} partner "${row.userId?.name || row.displayName || row.referralCode}"?`)) {
+      return;
+    }
+    setStatusUpdatingId(row._id);
+    try {
+      await adminFranchiseApi.patchStatus(row._id, { status: nextStatus });
+      showToast(`Partner ${nextStatus === "suspended" ? "deactivated" : "activated"}`, "success");
+      await load();
+    } catch (error) {
+      showToast(error?.response?.data?.message || `Failed to ${verb.toLowerCase()} partner`, "error");
+    } finally {
+      setStatusUpdatingId(null);
     }
   };
 
@@ -94,6 +116,22 @@ const FranchisePartners = () => {
               <td className="px-4 py-3 text-xs whitespace-nowrap">{formatDate(row.registeredAt)}</td>
               <td className="px-4 py-3 text-right">
                 <div className="flex items-center justify-end gap-3">
+                  {(row.status === "active" || row.status === "suspended") && (
+                    <PermissionGate permission="franchise:adjust">
+                      <button
+                        type="button"
+                        disabled={statusUpdatingId === row._id}
+                        onClick={() => handleToggleStatus(row)}
+                        className={`text-xs font-bold uppercase tracking-wider disabled:opacity-50 ${
+                          row.status === "active"
+                            ? "text-rose-600 hover:text-rose-800"
+                            : "text-emerald-600 hover:text-emerald-800"
+                        }`}
+                      >
+                        {row.status === "active" ? "Deactivate" : "Activate"}
+                      </button>
+                    </PermissionGate>
+                  )}
                   <Link
                     to={`/admin/franchise/partners/${row._id}/stock-trace`}
                     className="text-xs font-bold text-emerald-600 hover:text-emerald-800 uppercase tracking-wider"

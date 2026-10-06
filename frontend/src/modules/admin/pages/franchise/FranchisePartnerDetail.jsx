@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ChevronLeft, Package, MapPin, Wallet } from "lucide-react";
 import { adminFranchiseApi } from "../../../customer/services/franchiseApi";
+import PermissionGate from "../../rbac/PermissionGate";
 import { PageShell, InfoBlock, StatusPill, formatINR, formatDate } from "./franchiseAdminShared";
 
 const FranchisePartnerDetail = () => {
@@ -11,6 +12,7 @@ const FranchisePartnerDetail = () => {
   const [pincodes, setPincodes] = useState("");
   const [adj, setAdj] = useState({ amount: "", direction: "CREDIT", reason: "" });
   const [saving, setSaving] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
 
   const load = () =>
     adminFranchiseApi.getPartner(id).then((res) => {
@@ -33,6 +35,22 @@ const FranchisePartnerDetail = () => {
 
   const { partner, wallet, stock, posStats } = data;
   const stockTotal = (stock || []).reduce((sum, s) => sum + Number(s.quantity || 0), 0);
+
+  const handleToggleStatus = async () => {
+    const nextStatus = partner.status === "active" ? "suspended" : "active";
+    const verb = nextStatus === "suspended" ? "deactivate" : "activate";
+    if (!window.confirm(`Are you sure you want to ${verb} this franchise partner?`)) return;
+    setStatusSaving(true);
+    try {
+      await adminFranchiseApi.patchStatus(id, { status: nextStatus });
+      toast.success(`Partner ${verb}d`);
+      await load();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || `Failed to ${verb} partner`);
+    } finally {
+      setStatusSaving(false);
+    }
+  };
 
   return (
     <PageShell
@@ -70,8 +88,24 @@ const FranchisePartnerDetail = () => {
           <div className="flex items-center gap-2 text-slate-500 text-xs uppercase font-bold tracking-wider">
             Status
           </div>
-          <div className="mt-3">
+          <div className="mt-3 flex items-center gap-3">
             <StatusPill status={partner.status} />
+            {(partner.status === "active" || partner.status === "suspended") && (
+              <PermissionGate permission="franchise:adjust">
+                <button
+                  type="button"
+                  disabled={statusSaving}
+                  onClick={handleToggleStatus}
+                  className={`text-xs font-bold uppercase tracking-wider disabled:opacity-50 ${
+                    partner.status === "active"
+                      ? "text-rose-600 hover:text-rose-800"
+                      : "text-emerald-600 hover:text-emerald-800"
+                  }`}
+                >
+                  {partner.status === "active" ? "Deactivate" : "Activate"}
+                </button>
+              </PermissionGate>
+            )}
           </div>
         </div>
       </div>

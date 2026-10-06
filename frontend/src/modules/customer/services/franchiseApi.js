@@ -80,6 +80,7 @@ export const adminFranchiseApi = {
   listPartners: (params) => axiosInstance.get("/admin/franchise/partners", { params }),
   getPartner: (id) => axiosInstance.get(`/admin/franchise/partners/${id}`),
   patchTerritory: (id, data) => axiosInstance.patch(`/admin/franchise/partners/${id}/territory`, data),
+  patchStatus: (id, data) => axiosInstance.patch(`/admin/franchise/partners/${id}/status`, data),
   adjustWallet: (id, data) => axiosInstance.post(`/admin/franchise/partners/${id}/adjust-wallet`, data),
   listDispatchOrders: (params) => axiosInstance.get("/admin/franchise/orders", { params }),
   assignOrderDelivery: (orderId, data) =>

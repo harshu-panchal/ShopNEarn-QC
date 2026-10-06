@@ -19,6 +19,7 @@ import {
 import {
   listAllFranchisePartners,
   updateFranchisePartnerTerritory,
+  updateFranchisePartnerStatus,
   setHubSellerFlags,
   listFranchiseOrdersForAdmin,
   assignFranchiseOrderDelivery,
@@ -221,6 +222,23 @@ export const patchPartnerTerritory = async (req, res) => {
       adminId: req.user?.id,
     });
     return handleResponse(res, 200, "Territory updated", { partner });
+  } catch (error) {
+    return handleResponse(res, error.statusCode || 400, error.message);
+  }
+};
+
+export const patchPartnerStatus = async (req, res) => {
+  try {
+    const { status } = req.body || {};
+    if (!status) {
+      return handleResponse(res, 400, "status is required");
+    }
+    const partner = await updateFranchisePartnerStatus({
+      franchisePartnerId: req.params.id,
+      status,
+      adminId: req.user?.id,
+    });
+    return handleResponse(res, 200, "Partner status updated", { partner });
   } catch (error) {
     return handleResponse(res, error.statusCode || 400, error.message);
   }
