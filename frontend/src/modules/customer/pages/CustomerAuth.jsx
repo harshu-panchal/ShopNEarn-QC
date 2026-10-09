@@ -881,7 +881,7 @@ const CustomerAuth = () => {
                                             <span className="text-[8px] text-gray-300">•</span>
                                             <button
                                                 type="button"
-                                                onClick={() => navigate('/privacy-policy')}
+                                                onClick={() => navigate('/privacy')}
                                                 className="text-[10px] font-black uppercase tracking-widest hover:text-gray-900 transition-colors"
                                                 style={{ color: activeCategory.theme }}
                                             >

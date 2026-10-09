@@ -121,6 +121,20 @@ export const DEFAULT_LEGAL_PAGE_TEMPLATES = Object.freeze([
 <p>Our customer support team is available Monday–Saturday, 9 AM to 9 PM.</p>
 `.trim(),
     },
+    {
+        slug: "wallet-terms",
+        title: "Wallet Terms",
+        content: `
+<h2>Wallet Terms</h2>
+<p>These terms govern the use of your in-app wallet, including how credits are earned, used, and withdrawn.</p>
+<h3>Earning Wallet Credits</h3>
+<p>Wallet credits may be earned from cashback, referral rewards, and order refunds.</p>
+<h3>Using Wallet Credits</h3>
+<p>Wallet balance is automatically applied at checkout, subject to any limits shown at the time of payment.</p>
+<h3>Validity &amp; Withdrawals</h3>
+<p>Wallet credits are non-transferable unless explicitly stated. Withdrawal eligibility and timelines may vary by credit type.</p>
+`.trim(),
+    },
 ]);
 
 /* ===========================================================

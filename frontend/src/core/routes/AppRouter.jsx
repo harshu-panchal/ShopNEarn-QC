@@ -43,6 +43,10 @@ const ChatPage = lazy(() => import('../../modules/customer/pages/ChatPage'));
 const TermsPage = lazy(() => import('../../modules/customer/pages/TermsPage'));
 const PrivacyPage = lazy(() => import('../../modules/customer/pages/PrivacyPage'));
 const AboutPage = lazy(() => import('../../modules/customer/pages/AboutPage'));
+const RefundPage = lazy(() => import('../../modules/customer/pages/RefundPage'));
+const ShippingPage = lazy(() => import('../../modules/customer/pages/ShippingPage'));
+const ContactPage = lazy(() => import('../../modules/customer/pages/ContactPage'));
+const WalletTermsPage = lazy(() => import('../../modules/customer/pages/WalletTermsPage'));
 const EditProfilePage = lazy(() => import('../../modules/customer/pages/EditProfilePage'));
 const AccountCredentialsPage = lazy(() => import('../../modules/customer/pages/AccountCredentialsPage'));
 const OrderDetailPage = lazy(() => import('../../modules/customer/pages/OrderDetailPage'));
@@ -275,6 +279,10 @@ const AppRouter = () => {
                         { path: 'terms', element: <TermsPage /> },
                         { path: 'privacy', element: <PrivacyPage /> },
                         { path: 'about', element: <AboutPage /> },
+                        { path: 'refund', element: <RefundPage /> },
+                        { path: 'shipping', element: <ShippingPage /> },
+                        { path: 'contact', element: <ContactPage /> },
+                        { path: 'wallet-terms', element: <WalletTermsPage /> },
                         { path: 'offers', element: <OffersPage /> },
                         { path: 'shop-by-store', element: <ShopByStorePage /> },
                         { path: 'wishlist', element: <ProtectedRoute><WishlistPage /></ProtectedRoute> },
