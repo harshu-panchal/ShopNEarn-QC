@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import Header from './Header';
 import Footer from './Footer';
 import BottomNav from './BottomNav';
 import MiniCart from '../shared/MiniCart';
@@ -14,7 +13,7 @@ import { toast } from 'sonner';
 import { ShieldCheck, Package } from 'lucide-react';
 import FranchiseOrderAlertOverlay from '../../pages/franchise/FranchiseOrderAlertOverlay';
 
-const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = false, showCart: showCartProp, showBottomNav: showBottomNavProp }) => {
+const CustomerLayout = ({ children, fullHeight = false, showCart: showCartProp, showBottomNav: showBottomNavProp }) => {
     const location = useLocation();
     const { isOpen: isProductDetailOpen } = useProductDetail();
     const { user, token } = useAuth();
@@ -80,7 +79,6 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
     // Route-based visibility logic
     const path = location.pathname.replace(/\/$/, '') || '/';
 
-    const hideHeaderRoutes = ['/', '/categories', '/orders', '/transactions', '/profile', '/profile/edit', '/account/credentials', '/wishlist', '/addresses', '/wallet', '/support', '/privacy', '/about', '/terms', '/checkout', '/search', '/chat', '/payment-status'];
     const hideBottomNavRoutes = ['/checkout', '/search', '/chat'];
     const hideCartRoutes = ['/checkout', '/search', '/chat'];
 
@@ -107,7 +105,6 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
       path.startsWith('/mlm/network/genealogy') || path.startsWith('/mlm/genealogy');
 
     // If props are passed, use them. Otherwise, use route-based logic.
-    const showHeader = showHeaderProp !== undefined ? showHeaderProp : (!hideHeaderRoutes.includes(path) && !path.startsWith('/category') && !path.startsWith('/orders') && !isDedicatedAppShell);
     const showBottomNav = showBottomNavProp !== undefined ? showBottomNavProp : (!hideBottomNavRoutes.includes(path) && !isDedicatedAppShell);
     const showCart = showCartProp !== undefined ? showCartProp : (!hideCartRoutes.includes(path) && !path.startsWith('/orders'));
     const effectiveFullHeight = fullHeight || fullViewportRoutes;
@@ -117,28 +114,12 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
     const showFooterMessage = showBottomNav && !hideFooterMessageRoutes.includes(path) && !path.startsWith('/category');
 
     // Hide elements on mobile only when product detail is open
-    // On desktop, we want to keep the header visible even if the modal is open
-    const finalShowHeaderMobile = showHeader && !isProductDetailOpen;
     const finalShowBottomNavMobile = showBottomNav && !isProductDetailOpen;
     const finalShowFooterMessageMobile = showFooterMessage && !isProductDetailOpen;
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-            {/* Header logic: Always show on desktop if showHeader is true. On mobile, hide if product detail is open. */}
-            {showHeader && (
-                <>
-                    <div className="hidden md:block">
-                        <Header />
-                    </div>
-                    {finalShowHeaderMobile && (
-                        <div className="block md:hidden">
-                            <Header />
-                        </div>
-                    )}
-                </>
-            )}
-
-            <main className={cn("flex-1 md:pb-0", !showHeader && "pt-0", !effectiveFullHeight && !isDedicatedAppShell && "pb-16", fullViewportRoutes && "flex flex-col")}>
+            <main className={cn("flex-1 md:pb-0 pt-0", !effectiveFullHeight && !isDedicatedAppShell && "pb-16", fullViewportRoutes && "flex flex-col")}>
                 {children}
             </main>
 
