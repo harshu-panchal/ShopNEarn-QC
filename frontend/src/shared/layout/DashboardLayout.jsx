@@ -7,7 +7,7 @@ import BottomNav from './BottomNav';
 import { sellerApi } from '@/modules/seller/services/sellerApi';
 import { useAuth } from "@core/context/AuthContext";
 import { motion, AnimatePresence } from 'framer-motion';
-import { BellRing, Check, X, Clock, Truck } from 'lucide-react';
+import { BellRing, Check, X, Clock, Truck, User, MapPin, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import SellerOrdersContext from '@/modules/seller/context/SellerOrdersContext';
@@ -440,7 +440,7 @@ const DashboardLayout = ({ children, navItems, title }) => {
                             initial={{ scale: 0.9, opacity: 0, y: 20 }}
                             animate={{ scale: 1, opacity: 1, y: 0 }}
                             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-100"
+                            className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto"
                         >
                             <div className="flex flex-col items-center text-center">
                                 <div className="h-20 w-20 bg-primary/10 rounded-full flex items-center justify-center mb-6 animate-bounce">
@@ -451,7 +451,79 @@ const DashboardLayout = ({ children, navItems, title }) => {
                                 <p className="text-slate-600 font-medium mb-6">
                                     You have a new order <span className="text-primary font-bold">#{newOrderAlert.orderId}</span> for <span className="text-slate-900 font-bold">₹{newOrderAlert.pricing?.total || newOrderAlert.total}</span>
                                 </p>
+                            </div>
 
+                            {(newOrderAlert.customer?.name || newOrderAlert.customer?.phone || newOrderAlert.address) && (
+                                <div className="w-full text-left bg-slate-50 rounded-2xl p-4 mb-4 border border-slate-100">
+                                    <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                                        <User className="h-3.5 w-3.5 text-primary" /> Customer
+                                    </h3>
+                                    <p className="text-sm font-bold text-slate-900">
+                                        {newOrderAlert.customer?.name || "Customer"}
+                                    </p>
+                                    {newOrderAlert.customer?.phone && (
+                                        <p className="text-xs font-semibold text-slate-600 mt-0.5">
+                                            {newOrderAlert.customer.phone}
+                                        </p>
+                                    )}
+                                    {newOrderAlert.address && (
+                                        <p className="text-xs font-medium text-slate-600 mt-2 leading-relaxed flex items-start gap-1.5">
+                                            <MapPin className="h-3.5 w-3.5 text-slate-400 mt-0.5 shrink-0" />
+                                            <span>
+                                                {[
+                                                    newOrderAlert.address.address,
+                                                    newOrderAlert.address.landmark,
+                                                    newOrderAlert.address.city,
+                                                ]
+                                                    .filter(Boolean)
+                                                    .join(", ")}
+                                            </span>
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            {Array.isArray(newOrderAlert.items) && newOrderAlert.items.length > 0 && (
+                                <div className="w-full text-left mb-6">
+                                    <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                                        <Package className="h-3.5 w-3.5 text-primary" /> Items ({newOrderAlert.items.length})
+                                    </h3>
+                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                        {newOrderAlert.items.map((item, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="flex items-center justify-between gap-3 bg-white ring-1 ring-slate-100 rounded-xl p-2.5"
+                                            >
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    {item.image ? (
+                                                        <img
+                                                            src={item.image}
+                                                            alt={item.name}
+                                                            className="h-10 w-10 rounded-lg object-cover ring-1 ring-slate-200 shrink-0"
+                                                        />
+                                                    ) : (
+                                                        <div className="h-10 w-10 rounded-lg bg-slate-100 shrink-0" />
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <p className="text-xs font-bold text-slate-900 truncate">
+                                                            {item.name}
+                                                        </p>
+                                                        <p className="text-[11px] font-semibold text-slate-500">
+                                                            {item.variantSlot ? `${item.variantSlot} · ` : ""}
+                                                            Qty {item.quantity} × ₹{item.price}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <p className="text-xs font-black text-slate-900 shrink-0">
+                                                    ₹{(item.price * item.quantity).toFixed(0)}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex flex-col items-center text-center">
                                 {timeLeft > 0 ? (
                                     <>
                                         {/* Timer Bar — width from real server deadline */}
