@@ -100,7 +100,6 @@ export function resolveWorkflowStatus(order) {
 export async function afterPlaceOrderV2(orderDoc) {
   if (orderDoc?.franchisePartnerId) return;
   const orderId = orderDoc.orderId;
-  await scheduleSellerTimeoutJob(orderId);
   emitToSeller(orderDoc.seller?.toString(), {
     event: "order:new",
     payload: {
@@ -153,7 +152,6 @@ export async function sellerAcceptAtomic(sellerId, orderId) {
       seller: sellerId,
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
-      sellerPendingExpiresAt: { $gt: now },
       $or: [
         { paymentMode: { $ne: "ONLINE" } },
         { paymentStatus: "PAID" },
@@ -225,14 +223,12 @@ export async function sellerAcceptAtomic(sellerId, orderId) {
  */
 export async function sellerRejectAtomic(sellerId, orderId) {
   orderId = await requireCanonicalOrderId(orderId);
-  const now = new Date();
   const cancelled = await cancelAndCompensateOrder({
     filter: {
       orderId,
       seller: sellerId,
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
-      sellerPendingExpiresAt: { $gt: now },
     },
     cancellationPatch: {
       workflowStatus: WORKFLOW_STATUS.CANCELLED,
@@ -405,49 +401,12 @@ export async function deliveryAcceptAtomic(deliveryId, orderId, idempotencyKey) 
   return { order: updated, duplicate: false };
 }
 
-export async function processSellerTimeoutJob({ orderId }) {
-  const now = new Date();
-  const order = await Order.findOne({ orderId, workflowVersion: { $gte: 2 } });
-  if (!order || order.workflowStatus !== WORKFLOW_STATUS.SELLER_PENDING) return;
-
-  if (order.sellerPendingExpiresAt && order.sellerPendingExpiresAt > now) {
-    return;
-  }
-
-  let updated;
-  try {
-    const cancelled = await cancelAndCompensateOrder({
-      filter: {
-        orderId,
-        workflowVersion: { $gte: 2 },
-        workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
-      },
-      cancellationPatch: {
-        workflowStatus: WORKFLOW_STATUS.CANCELLED,
-        status: "cancelled",
-        cancelledBy: "system",
-        cancelReason: "Seller timeout (60s)",
-      },
-      reason: "Seller timeout (60s)",
-      orderIdString: orderId,
-    });
-    updated = cancelled?.order;
-  } catch (err) {
-    if (err?.statusCode === 409) return;
-    throw err;
-  }
-
-  if (!updated) return;
-
-  emitOrderStatusUpdate(orderId, { workflowStatus: WORKFLOW_STATUS.CANCELLED }, updated.customer);
-  emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
-    orderId: updated.orderId,
-    customerId: updated.customer,
-    userId: updated.customer,
-    sellerId: updated.seller,
-    customerMessage: "Your order was cancelled because seller did not accept in time.",
-    sellerMessage: `Order #${updated.orderId} was cancelled due to timeout.`,
-  });
+// Seller acceptance has no auto-cancel timeout — orders stay in
+// SELLER_PENDING until the seller/admin accepts/rejects or the customer
+// cancels. Nothing schedules this job any more; kept as a no-op in case
+// a stale job from before this change is still queued.
+export async function processSellerTimeoutJob() {
+  return;
 }
 
 export async function processDeliveryTimeoutJob({ orderId, attempt }) {

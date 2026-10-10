@@ -576,9 +576,11 @@ export async function placeOrderAtomic({
       // the real Order _id — FranchiseStockMovement.order is an
       // ObjectId ref, not the human-readable public orderId string.
       const orderObjectId = new mongoose.Types.ObjectId();
-      const sellerPendingUntil = shouldStartSellerWorkflow
-        ? new Date(Date.now() + sellerTimeoutMs)
-        : null;
+      // Seller acceptance has no auto-cancel timeout — the order simply
+      // waits in SELLER_PENDING until the seller/admin acts or the
+      // customer cancels. sellerTimeoutMs is still used for the
+      // franchise-acceptance window below.
+      const sellerPendingUntil = null;
 
       let orderReservation;
       if (isFranchiseRoutedOrder) {

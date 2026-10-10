@@ -2,7 +2,6 @@ import dotenv from "dotenv";
 import Order from "../models/order.js";
 import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import {
-  processSellerTimeoutJob,
   processDeliveryTimeoutJob,
   processReturnPickupTimeoutJob,
 } from "../services/orderWorkflowService.js";
@@ -34,25 +33,9 @@ const autoCancelExpiredOrders = async () => {
   try {
     const now = new Date();
 
-    const v2Expired = await Order.find({
-      workflowVersion: { $gte: 2 },
-      workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
-      sellerPendingExpiresAt: { $lte: now },
-    })
-      .select("orderId")
-      .lean();
-
-    for (const row of v2Expired) {
-      try {
-        await processSellerTimeoutJob({ orderId: row.orderId });
-      } catch (err) {
-        logger.error('v2 seller timeout failed', {
-          jobName: 'orderAutoCancelJob',
-          orderId: row.orderId,
-          error: err.message
-        });
-      }
-    }
+    // Seller acceptance has no auto-cancel timeout any more — orders stay
+    // in SELLER_PENDING until the seller/admin acts or the customer
+    // cancels, so there is no seller-timeout reconciliation here.
 
     const v2DeliveryExpired = await Order.find({
       workflowVersion: { $gte: 2 },
@@ -189,64 +172,15 @@ const autoCancelExpiredOrders = async () => {
       }
     }
 
-    const legacyExpired = await Order.find({
-      $or: [
-        { workflowVersion: { $exists: false } },
-        { workflowVersion: { $lt: 2 } },
-      ],
-      status: "pending",
-      expiresAt: { $lte: now },
-    });
-
-    for (const order of legacyExpired) {
-      let updated = null;
-      try {
-        const cancelled = await cancelAndCompensateOrder({
-          filter: {
-            _id: order._id,
-            status: "pending",
-          },
-          cancellationPatch: {
-            status: "cancelled",
-            cancelledBy: "system",
-            cancelReason: "Seller timeout (60s)",
-          },
-          reason: "Seller timeout (60s)",
-          orderIdString: order.orderId,
-        });
-        updated = cancelled?.order;
-      } catch (e) {
-        if (e?.statusCode !== 409) {
-          logger.error('legacy compensation failed', {
-            jobName: 'orderAutoCancelJob',
-            orderId: order.orderId,
-            error: e.message
-          });
-        }
-        continue;
-      }
-
-      if (!updated) continue;
-
-      emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
-        orderId: updated.orderId,
-        customerId: updated.customer,
-        userId: updated.customer,
-        sellerId: updated.seller,
-        customerMessage:
-          "Your order was cancelled because it was not accepted in time.",
-        sellerMessage:
-          `Order #${updated.orderId} was cancelled because it was not accepted in time.`,
-      });
-    }
+    // Legacy (pre-v2) pending orders also no longer auto-cancel on a
+    // seller timeout — they stay "pending" until explicitly rejected or
+    // cancelled.
 
     const n =
-      v2Expired.length +
       v2DeliveryExpired.length +
       franchiseExpired.length +
       returnPickupExpired.length +
-      paymentExpiredOrders.length +
-      legacyExpired.length;
+      paymentExpiredOrders.length;
 
     const duration = Date.now() - startTime;
 
@@ -254,12 +188,10 @@ const autoCancelExpiredOrders = async () => {
       logger.info('Order auto-cancel job completed', {
         jobName: 'orderAutoCancelJob',
         duration,
-        v2SellerExpired: v2Expired.length,
         v2DeliveryExpired: v2DeliveryExpired.length,
         franchiseExpired: franchiseExpired.length,
         returnPickupExpired: returnPickupExpired.length,
         paymentExpired: paymentExpiredOrders.length,
-        legacyExpired: legacyExpired.length,
         total: n
       });
     }

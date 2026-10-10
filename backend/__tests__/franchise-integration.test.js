@@ -456,7 +456,8 @@ async function seedPartnerStock(fixture, quantity = 10) {
       expect(placement.order.workflowStatus).toBe(
         WORKFLOW_STATUS.SELLER_PENDING,
       );
-      expect(placement.order.sellerPendingExpiresAt).toBeTruthy();
+      // Seller acceptance has no auto-cancel timeout.
+      expect(placement.order.sellerPendingExpiresAt).toBeFalsy();
     });
 
     it("falls back to the hub seller when partner stock cannot cover the full quantity", async () => {

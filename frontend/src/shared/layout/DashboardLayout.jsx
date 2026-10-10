@@ -325,9 +325,17 @@ const DashboardLayout = ({ children, navItems, title }) => {
         setIsSidebarOpen(false);
     }, [location.pathname]);
 
-    // Timer: driven by server expiry (sellerPendingExpiresAt), not a local 60s from modal open
+    // Timer: driven by server expiry (sellerPendingExpiresAt). There is no
+    // auto-cancel any more, so an order without a server expiry just waits
+    // for the seller to act — no countdown is shown for it.
     useEffect(() => {
         if (!newOrderAlert) return undefined;
+
+        const hasExpiry = Boolean(newOrderAlert.sellerPendingExpiresAt ?? newOrderAlert.expiresAt);
+        if (!hasExpiry) {
+            setTimeLeft(0);
+            return undefined;
+        }
 
         const left = secondsLeftUntilSellerExpiry(newOrderAlert);
         if (left <= 0) {
@@ -444,25 +452,34 @@ const DashboardLayout = ({ children, navItems, title }) => {
                                     You have a new order <span className="text-primary font-bold">#{newOrderAlert.orderId}</span> for <span className="text-slate-900 font-bold">₹{newOrderAlert.pricing?.total || newOrderAlert.total}</span>
                                 </p>
 
-                                {/* Timer Bar — width from real server deadline */}
-                                <div className="w-full bg-slate-100 h-2 rounded-full mb-8 overflow-hidden">
-                                    <div
-                                        className={cn(
-                                            "h-full transition-[width] duration-1000 ease-linear",
-                                            timeLeft < 15 ? "bg-rose-500" : "bg-primary",
-                                        )}
-                                        style={{
-                                            width: `${acceptWindowTotalRef.current > 0 ? (timeLeft / acceptWindowTotalRef.current) * 100 : 0}%`,
-                                        }}
-                                    />
-                                </div>
+                                {timeLeft > 0 ? (
+                                    <>
+                                        {/* Timer Bar — width from real server deadline */}
+                                        <div className="w-full bg-slate-100 h-2 rounded-full mb-8 overflow-hidden">
+                                            <div
+                                                className={cn(
+                                                    "h-full transition-[width] duration-1000 ease-linear",
+                                                    timeLeft < 15 ? "bg-rose-500" : "bg-primary",
+                                                )}
+                                                style={{
+                                                    width: `${acceptWindowTotalRef.current > 0 ? (timeLeft / acceptWindowTotalRef.current) * 100 : 0}%`,
+                                                }}
+                                            />
+                                        </div>
 
-                                <div className="flex items-center gap-4 text-sm font-bold mb-8">
-                                    <Clock className={cn("h-4 w-4", timeLeft < 15 ? "text-rose-500 animate-pulse" : "text-slate-600")} />
-                                    <span className={timeLeft < 15 ? "text-rose-500" : "text-slate-600"}>
-                                        Accept within {timeLeft} {timeLeft === 1 ? "second" : "seconds"}
-                                    </span>
-                                </div>
+                                        <div className="flex items-center gap-4 text-sm font-bold mb-8">
+                                            <Clock className={cn("h-4 w-4", timeLeft < 15 ? "text-rose-500 animate-pulse" : "text-slate-600")} />
+                                            <span className={timeLeft < 15 ? "text-rose-500" : "text-slate-600"}>
+                                                Accept within {timeLeft} {timeLeft === 1 ? "second" : "seconds"}
+                                            </span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="flex items-center gap-4 text-sm font-bold mb-8">
+                                        <Clock className="h-4 w-4 text-slate-600" />
+                                        <span className="text-slate-600">Awaiting your response</span>
+                                    </div>
+                                )}
 
                                 <div className="grid grid-cols-2 gap-4 w-full">
                                     <button

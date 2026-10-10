@@ -361,7 +361,9 @@ export async function rerouteOrTransferFranchiseOrder(order, { currentPartnerId,
       order.workflowStatus = WORKFLOW_STATUS.SELLER_PENDING;
       order.status = legacyStatusFromWorkflow(WORKFLOW_STATUS.SELLER_PENDING);
       order.orderStatus = order.status;
-      order.sellerPendingExpiresAt = new Date(Date.now() + DEFAULT_SELLER_TIMEOUT_MS());
+      // Seller acceptance has no auto-cancel timeout — the hub seller
+      // just waits in SELLER_PENDING until they act or the customer cancels.
+      order.sellerPendingExpiresAt = null;
       order.stockReservation = computeStockReservationWindow(order.paymentMode);
 
       if (!Array.isArray(order.routedFranchiseHistory)) order.routedFranchiseHistory = [];
@@ -411,9 +413,6 @@ export async function rerouteOrTransferFranchiseOrder(order, { currentPartnerId,
   } finally {
     await session.endSession();
   }
-
-  const { scheduleSellerTimeoutJob } = await import("../orderWorkflowService.js");
-  await scheduleSellerTimeoutJob(order.orderId);
 
   emitOrderStatusUpdate(
     order.orderId,

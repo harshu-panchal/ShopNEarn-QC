@@ -291,7 +291,9 @@ async function moveOrderToSellerPendingAfterPayment(orderId) {
 
   const isFranchiseOrder = !!existing.franchisePartnerId;
   const now = new Date();
-  const sellerPendingUntil = new Date(now.getTime() + DEFAULT_SELLER_TIMEOUT_MS());
+  // Seller acceptance has no auto-cancel timeout — the order simply
+  // waits in SELLER_PENDING until the seller/admin acts or the customer
+  // cancels.
   // Franchise-acceptance timeout only starts once the franchise is
   // actually notified (payment captured) — mirrors the hub's own
   // sellerPendingExpiresAt window. Reconciled by orderAutoCancelJob.
@@ -314,8 +316,8 @@ async function moveOrderToSellerPendingAfterPayment(orderId) {
           }
         : {
             workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
-            sellerPendingExpiresAt: sellerPendingUntil,
-            expiresAt: sellerPendingUntil,
+            sellerPendingExpiresAt: null,
+            expiresAt: null,
           },
     },
     { new: true },
