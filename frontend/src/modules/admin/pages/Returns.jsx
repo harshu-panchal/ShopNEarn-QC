@@ -29,6 +29,20 @@ const Returns = () => {
   const [actionNote, setActionNote] = useState("");
   const [submittingAction, setSubmittingAction] = useState(false);
   const [assigningPickup, setAssigningPickup] = useState(false);
+  const [manualStatus, setManualStatus] = useState("");
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  // Matches the backend's forward-only guard (orderController.updateReturnStatus) —
+  // these are the only statuses a manual override is allowed to move between.
+  const MANUAL_STATUS_ORDER = {
+    return_pickup_assigned: 1,
+    return_in_transit: 2,
+    returned: 3,
+  };
+  const manualStatusOptions = (current) =>
+    Object.keys(MANUAL_STATUS_ORDER).filter(
+      (s) => MANUAL_STATUS_ORDER[s] >= (MANUAL_STATUS_ORDER[current] || 0),
+    );
 
   const tabs = [
     "All",
@@ -141,7 +155,27 @@ const Returns = () => {
 
   const openDetails = (ret) => {
     setSelectedReturn(ret);
+    setManualStatus(ret?.returnStatus || "");
     setIsDetailsOpen(true);
+  };
+
+  const handleManualStatusUpdate = async () => {
+    if (!selectedReturn || !manualStatus || manualStatus === selectedReturn.returnStatus) return;
+    try {
+      setUpdatingStatus(true);
+      await adminApi.updateReturnStatus(selectedReturn.orderId, { returnStatus: manualStatus });
+      showToast("Return status updated", "success");
+      setIsDetailsOpen(false);
+      await fetchReturns();
+    } catch (error) {
+      console.error("Failed to update return status", error);
+      showToast(
+        error.response?.data?.message || "Failed to update return status",
+        "error",
+      );
+    } finally {
+      setUpdatingStatus(false);
+    }
   };
 
   const handleApprove = async (orderId) => {
@@ -766,6 +800,35 @@ const Returns = () => {
                         QC Passed
                       </Button>
                     </>
+                  )}
+
+                  {/* Action: Manual status override (pickup/transit/returned only — */}
+                  {/* QC and refund stay behind their dedicated endpoints). */}
+                  {manualStatusOptions(selectedReturn.returnStatus).length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={manualStatus}
+                        onChange={(e) => setManualStatus(e.target.value)}
+                        className="text-xs font-bold border border-slate-200 rounded-lg px-2 py-2 bg-white text-slate-700"
+                      >
+                        {manualStatusOptions(selectedReturn.returnStatus).map((s) => (
+                          <option key={s} value={s}>
+                            {mapReturnStatusLabel(s)}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        variant="outline"
+                        className="text-xs font-bold"
+                        disabled={updatingStatus || manualStatus === selectedReturn.returnStatus}
+                        onClick={handleManualStatusUpdate}
+                      >
+                        {updatingStatus ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : null}
+                        Update Status
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
