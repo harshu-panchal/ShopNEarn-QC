@@ -90,4 +90,6 @@ export const sellerApi = {
     axiosInstance.put(`/orders/returns/${orderId}/reject`, data),
   assignReturnDelivery: (orderId, data) =>
     axiosInstance.put(`/orders/returns/${orderId}/assign-delivery`, data),
+  updateReturnStatus: (orderId, data) =>
+    axiosInstance.put(`/orders/return-status/${orderId}`, data),
 };
