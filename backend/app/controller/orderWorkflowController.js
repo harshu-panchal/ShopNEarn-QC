@@ -18,7 +18,7 @@ import {
   generateReturnDropOtp,
   validateReturnDropOtp,
 } from "../services/deliveryOtpService.js";
-import { emitToCustomer, emitToSeller } from "../services/orderSocketEmitter.js";
+import { emitToSeller } from "../services/orderSocketEmitter.js";
 import { sendSmsIndiaHubOtp } from "../services/smsIndiaHubService.js";
 import { creditWallet } from "../services/finance/walletService.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
@@ -278,44 +278,12 @@ export const getOrderRoute = async (req, res) => {
 export const requestReturnPickupOtp = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const result = await generateReturnPickupOtp(orderId);
+    // generateReturnPickupOtp already emits the OTP to the customer via
+    // socket (order:otp / delivery:otp:generated) and persists the OTP
+    // record itself — no further notification work is needed here.
+    const result = await generateReturnPickupOtp(orderId, req.user);
     if (!result.success) {
       return handleResponse(res, 400, result.error);
-    }
-
-    // ── Emit OTP to customer via Socket.IO/SMS ──────────────────────────────────
-    try {
-      const customerId = order.customer?.toString();
-      if (customerId) {
-        emitToCustomer(customerId, {
-          event: "return:pickup:otp",
-          payload: {
-            orderId,
-            otp: result.otp,
-            expiresAt: result.expiresAt,
-            message: `Your return pickup OTP is ${result.otp}. Show this to the delivery partner.`,
-          },
-        });
-
-        // ── Send SMS to customer (BACKGROUND) ──
-        setImmediate(async () => {
-          try {
-            const customerObj = await Customer.findById(customerId).lean();
-            const phone = customerObj?.phone || order.address?.phone;
-            if (phone) {
-              await sendSmsIndiaHubOtp({
-                phone,
-                otp: result.otp,
-                message: `Your return pickup OTP for order #${orderId} is ${result.otp}. Noyo-kart.`,
-              });
-            }
-          } catch (smsErr) {
-            console.warn("[requestReturnPickupOtp] SMS failed:", smsErr.message);
-          }
-        });
-      }
-    } catch (socketErr) {
-      console.warn("[requestReturnPickupOtp] Notification failed:", socketErr.message);
     }
 
     return handleResponse(res, 200, "Return pickup OTP sent to customer", {

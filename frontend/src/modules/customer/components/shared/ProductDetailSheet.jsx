@@ -336,7 +336,7 @@ const ProductDetailSheet = () => {
                         className="hidden md:flex fixed z-[230] top-[72px] bottom-[16px] left-[3%] right-[3%] lg:left-[6%] lg:right-[6%] xl:left-[12%] xl:right-[12%] bg-white rounded-3xl shadow-[0_40px_100px_rgba(0,0,0,0.25)] overflow-hidden"
                     >
                         {/* Parent flex container that holds both sides together so the whole modal scrolls */}
-                        <div className="flex w-full min-h-full">
+                        <div className="flex w-full h-full">
                                 {/* Left: Image Gallery — sticky to window so it doesn't scroll out of view if you want */}
                                 <div className="relative w-[42%] lg:w-[44%] flex-shrink-0 flex flex-col min-h-full sticky top-0" style={{ background: 'linear-gradient(145deg, #f9fafb 0%, #f1f8f2 50%, #fafbfc 100%)' }}>
                                     {/* Top bar with back + wishlist */}
@@ -436,8 +436,11 @@ const ProductDetailSheet = () => {
                                     )}
                                 </div>
 
-                                {/* Right: Product Info (scrollable naturally) */}
-                                <div className="flex-1 flex flex-col bg-white">
+                                {/* Right: Product Info (scrollable) */}
+                                <div
+                                    className="flex-1 flex flex-col bg-white overflow-y-auto"
+                                    style={{ overscrollBehavior: 'contain' }}
+                                >
                                     <div className="flex-1 px-7 py-6 lg:px-8 lg:py-7 space-y-3">
 
                                         {/* Top badges row */}
@@ -796,6 +799,7 @@ const ProductDetailSheet = () => {
                                 "flex-1 overflow-x-hidden no-scrollbar pb-24 bg-white",
                                 isExpanded ? "overflow-y-auto" : "overflow-y-hidden"
                             )}
+                            style={{ overscrollBehavior: 'contain' }}
                             onScroll={handleScroll}
                             onWheel={handleWheel}
                         >
