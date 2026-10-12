@@ -1255,7 +1255,7 @@ const OrderDetailPage = () => {
 
       {/* Return Request Modal */}
       {showReturnModal && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-[600] flex items-center justify-center px-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1265,7 +1265,7 @@ const OrderDetailPage = () => {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="relative z-10 w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 space-y-4"
+            className="relative z-10 w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 space-y-4 max-h-[85vh] overflow-y-auto overscroll-contain"
           >
             <h3 className="text-lg font-black text-slate-900">
               Request Return
