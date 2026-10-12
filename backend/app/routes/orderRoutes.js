@@ -250,7 +250,7 @@ router.put(
 router.put(
   "/return-status/:orderId",
   verifyToken,
-  allowRoles("admin", "delivery"),
+  allowRoles("admin", "seller", "delivery"),
   requireAdminPermissionIfAdmin("orders:returns"),
   updateReturnStatus,
 );

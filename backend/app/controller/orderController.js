@@ -1278,9 +1278,11 @@ export const updateReturnStatus = async (req, res) => {
 
     const isAssignedReturnDelivery =
       role === "delivery" && order.returnDeliveryBoy?.toString() === userId;
+    const isOwnerSeller =
+      role === "seller" && order.seller?.toString() === userId;
     const isAdmin = role === "admin";
 
-    if (!isAssignedReturnDelivery && !isAdmin) {
+    if (!isAssignedReturnDelivery && !isOwnerSeller && !isAdmin) {
       return handleResponse(
         res,
         403,
