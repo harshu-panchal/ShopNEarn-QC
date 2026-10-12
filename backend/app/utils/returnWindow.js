@@ -24,7 +24,7 @@ export function getReturnEligibilityDelayMinutes() {
 }
 
 export function getReturnWindowMinutes() {
-  return parsePositiveInt(process.env.RETURN_WINDOW_MINUTES, 2);
+  return parsePositiveInt(process.env.RETURN_WINDOW_MINUTES, 60);
 }
 
 /**
