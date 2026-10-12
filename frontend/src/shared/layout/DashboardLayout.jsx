@@ -7,12 +7,12 @@ import BottomNav from './BottomNav';
 import { sellerApi } from '@/modules/seller/services/sellerApi';
 import { useAuth } from "@core/context/AuthContext";
 import { motion, AnimatePresence } from 'framer-motion';
-import { BellRing, Check, X, Clock, Truck, User, MapPin, Package } from 'lucide-react';
+import { BellRing, Check, X, Clock, Truck, User, MapPin, Package, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import SellerOrdersContext from '@/modules/seller/context/SellerOrdersContext';
 import SellerEarningsContext, { defaultEarnings } from '@/modules/seller/context/SellerEarningsContext';
-import { getOrderSocket, onSellerOrderNew, onReturnDropOtp } from '@/core/services/orderSocket';
+import { getOrderSocket, onSellerOrderNew, onReturnDropOtp, onSellerReturnRequested } from '@/core/services/orderSocket';
 import { createSocketTokenReader } from '@core/utils/authStorage';
 import { STORAGE_KEYS } from '@core/utils/storage';
 import orderAlertSound from '@/assets/sounds/order_alert.mp3';
@@ -54,6 +54,9 @@ const DashboardLayout = ({ children, navItems, title }) => {
     const acceptWindowTotalRef = useRef(60);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [returnDropOtpAlert, setReturnDropOtpAlert] = useState(null); // { orderId, otp, expiresAt }
+    const [showReturnRejectInput, setShowReturnRejectInput] = useState(false);
+    const [returnRejectReason, setReturnRejectReason] = useState('');
+    const [isSubmittingReturnAction, setIsSubmittingReturnAction] = useState(false);
     const { user, logout, role } = useAuth();
     const location = useLocation();
     const navigate = useNavigate();
@@ -264,9 +267,32 @@ const DashboardLayout = ({ children, navItems, title }) => {
             audio.play().catch(() => { });
         });
 
+        const unsubscribeReturnRequested = onSellerReturnRequested(getToken, async (payload) => {
+            const orderId = payload?.orderId;
+            if (!orderId || shownReturnOrderIdsRef.current.has(orderId)) return;
+
+            setShownReturnOrderIds((prev) => new Set(prev).add(orderId));
+            shownReturnOrderIdsRef.current = new Set(shownReturnOrderIdsRef.current).add(orderId);
+
+            // The socket ping only carries orderId/reason — fetch the full
+            // return record (items, images, refund amount) for the popup.
+            let detail = payload;
+            try {
+                const res = await sellerApi.getReturnDetails(orderId);
+                detail = res?.data?.result || res?.data?.data || payload;
+            } catch (err) {
+                console.error("[DashboardLayout] Failed to load return details:", err);
+            }
+
+            setNewReturnAlert(detail);
+            const audio = new Audio(orderAlertSound);
+            audio.play().catch(() => { });
+        });
+
         return () => {
             unsubscribeSellerNew();
             unsubscribeDrop();
+            unsubscribeReturnRequested();
         };
     }, [role]);
 
@@ -394,6 +420,41 @@ const DashboardLayout = ({ children, navItems, title }) => {
                 error?.response?.data?.message ||
                 "Failed to update order";
             toast.error(msg);
+        }
+    };
+
+    const closeReturnAlert = () => {
+        setNewReturnAlert(null);
+        setShowReturnRejectInput(false);
+        setReturnRejectReason('');
+    };
+
+    const handleApproveReturnAlert = async (orderId) => {
+        try {
+            setIsSubmittingReturnAction(true);
+            await sellerApi.approveReturn(orderId, {});
+            toast.success(`Return #${orderId} approved`);
+            closeReturnAlert();
+            refreshOrders();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || "Failed to approve return");
+        } finally {
+            setIsSubmittingReturnAction(false);
+        }
+    };
+
+    const handleRejectReturnAlert = async (orderId) => {
+        if (!returnRejectReason.trim()) return;
+        try {
+            setIsSubmittingReturnAction(true);
+            await sellerApi.rejectReturn(orderId, { reason: returnRejectReason.trim() });
+            toast.error(`Return #${orderId} rejected`);
+            closeReturnAlert();
+            refreshOrders();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || "Failed to reject return");
+        } finally {
+            setIsSubmittingReturnAction(false);
         }
     };
 
@@ -570,6 +631,138 @@ const DashboardLayout = ({ children, navItems, title }) => {
                                     </button>
                                 </div>
                             </div>
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* Global Return Request Alert Modal */}
+                {newReturnAlert && (
+                    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                            className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto"
+                        >
+                            <div className="flex flex-col items-center text-center">
+                                <div className="h-20 w-20 bg-rose-50 rounded-full flex items-center justify-center mb-6 animate-bounce">
+                                    <RotateCcw className="h-10 w-10 text-rose-600" />
+                                </div>
+
+                                <h2 className="text-2xl font-black text-slate-900 mb-2">Return Request Received!</h2>
+                                <p className="text-slate-600 font-medium mb-6">
+                                    Order <span className="text-rose-600 font-bold">#{newReturnAlert.orderId}</span> has a return request
+                                    {newReturnAlert.returnRefundAmount ? (
+                                        <> for <span className="text-slate-900 font-bold">₹{newReturnAlert.returnRefundAmount}</span></>
+                                    ) : null}
+                                </p>
+                            </div>
+
+                            {(newReturnAlert.customer?.name || newReturnAlert.customer?.phone) && (
+                                <div className="w-full text-left bg-slate-50 rounded-2xl p-4 mb-4 border border-slate-100">
+                                    <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                                        <User className="h-3.5 w-3.5 text-rose-600" /> Customer
+                                    </h3>
+                                    <p className="text-sm font-bold text-slate-900">
+                                        {newReturnAlert.customer?.name || "Customer"}
+                                    </p>
+                                    {newReturnAlert.customer?.phone && (
+                                        <p className="text-xs font-semibold text-slate-600 mt-0.5">
+                                            {newReturnAlert.customer.phone}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="w-full text-left bg-slate-50 rounded-2xl p-4 mb-4 border border-slate-100">
+                                <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2">
+                                    Reason
+                                </h3>
+                                <p className="text-sm font-bold text-slate-900">
+                                    {newReturnAlert.returnReason || "No reason provided"}
+                                </p>
+                                {newReturnAlert.returnReasonDetail && (
+                                    <p className="text-xs text-slate-600 mt-1 italic">
+                                        {newReturnAlert.returnReasonDetail}
+                                    </p>
+                                )}
+                            </div>
+
+                            {Array.isArray(newReturnAlert.returnItems) && newReturnAlert.returnItems.length > 0 && (
+                                <div className="w-full text-left mb-6">
+                                    <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                                        <Package className="h-3.5 w-3.5 text-rose-600" /> Items ({newReturnAlert.returnItems.length})
+                                    </h3>
+                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                        {newReturnAlert.returnItems.map((item, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="flex items-center justify-between gap-3 bg-white ring-1 ring-slate-100 rounded-xl p-2.5"
+                                            >
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-bold text-slate-900 truncate">
+                                                        {item.name}
+                                                    </p>
+                                                    <p className="text-[11px] font-semibold text-slate-500">
+                                                        Qty {item.quantity} × ₹{item.price}
+                                                    </p>
+                                                </div>
+                                                <p className="text-xs font-black text-slate-900 shrink-0">
+                                                    ₹{(item.price * item.quantity).toFixed(0)}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {!showReturnRejectInput ? (
+                                <div className="grid grid-cols-2 gap-4 w-full">
+                                    <button
+                                        onClick={() => setShowReturnRejectInput(true)}
+                                        disabled={isSubmittingReturnAction}
+                                        className="flex items-center justify-center gap-2 py-4 rounded-2xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors disabled:opacity-50"
+                                    >
+                                        <X className="h-5 w-5" />
+                                        Reject
+                                    </button>
+                                    <button
+                                        onClick={() => handleApproveReturnAlert(newReturnAlert.orderId)}
+                                        disabled={isSubmittingReturnAction}
+                                        className="flex items-center justify-center gap-2 py-4 rounded-2xl bg-rose-600 text-white font-bold hover:bg-rose-700 shadow-xl shadow-rose-200/40 transition-all active:scale-95 disabled:opacity-50"
+                                    >
+                                        <Check className="h-5 w-5" />
+                                        Approve
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="w-full text-left space-y-3">
+                                    <textarea
+                                        autoFocus
+                                        rows={3}
+                                        value={returnRejectReason}
+                                        onChange={(e) => setReturnRejectReason(e.target.value)}
+                                        placeholder="Reason for rejecting this return..."
+                                        className="w-full rounded-2xl border border-slate-200 p-3 text-sm font-medium focus:ring-2 focus:ring-rose-500/20 outline-none"
+                                    />
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button
+                                            onClick={() => setShowReturnRejectInput(false)}
+                                            disabled={isSubmittingReturnAction}
+                                            className="py-3 rounded-2xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors disabled:opacity-50"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={() => handleRejectReturnAlert(newReturnAlert.orderId)}
+                                            disabled={isSubmittingReturnAction || !returnRejectReason.trim()}
+                                            className="py-3 rounded-2xl bg-rose-600 text-white font-bold hover:bg-rose-700 transition-colors disabled:opacity-50"
+                                        >
+                                            Confirm Reject
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </motion.div>
                     </div>
                 )}
