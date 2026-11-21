@@ -39,6 +39,42 @@ const CategoryProductsPage = () => {
             .catch(() => {});
     }, []);
 
+    // The category/subcategory sidebar filters the fetched product list
+    // client-side (so switching tabs is instant, with no extra request).
+    // That only works if we actually hold the WHOLE category in `products` —
+    // a single unpaginated request silently caps out at the backend's
+    // default page size (24), sorted newest-first, which can leave entire
+    // subcategories (older products) with zero items in view even though
+    // they have approved stock. So we page through the category here until
+    // every product is fetched, not just the first page.
+    const fetchAllCategoryProducts = async (baseParams) => {
+        const PAGE_LIMIT = 100; // backend-enforced max per page
+        const SAFETY_MAX_PAGES = 50; // guards against a runaway loop
+        let page = 1;
+        let totalPages = 1;
+        const all = [];
+
+        do {
+            const res = await customerApi.getProducts({ ...baseParams, limit: PAGE_LIMIT, page });
+            if (!res.data.success) break;
+
+            const rawResult = res.data.result;
+            const items = Array.isArray(res.data.results)
+                ? res.data.results
+                : Array.isArray(rawResult?.items)
+                ? rawResult.items
+                : Array.isArray(rawResult)
+                ? rawResult
+                : [];
+
+            all.push(...items);
+            totalPages = Number(rawResult?.totalPages) || 1;
+            page += 1;
+        } while (page <= totalPages && page <= SAFETY_MAX_PAGES);
+
+        return all;
+    };
+
     const fetchData = async () => {
         setIsLoading(true);
         try {
@@ -55,38 +91,26 @@ const CategoryProductsPage = () => {
                 params.pincode = currentLocation.pincode;
             }
 
-            // Fetch products and categories in parallel instead of sequentially
-            const [prodRes, catRes] = await Promise.all([
-                customerApi.getProducts(params),
+            // Fetch the full category product list and categories in parallel
+            // instead of sequentially.
+            const [dbProds, catRes] = await Promise.all([
+                fetchAllCategoryProducts(params),
                 customerApi.getCategories({ tree: true }),
             ]);
 
-            if (prodRes.data.success) {
-                const rawResult = prodRes.data.result;
-                const dbProds = Array.isArray(prodRes.data.results)
-                    ? prodRes.data.results
-                    : Array.isArray(rawResult?.items)
-                    ? rawResult.items
-                    : Array.isArray(rawResult)
-                    ? rawResult
-                    : [];
-
-                const formattedProds = dbProds.map(p => ({
-                    ...p,
-                    id: p._id,
-                    image:
-                      p.mainImage ||
-                      p.image ||
-                      "https://images.unsplash.com/photo-1550989460-0adf9ea622e2?auto=format&fit=crop&q=80&w=400&h=400",
-                    price: p.salePrice || p.price,
-                    originalPrice: p.price,
-                    weight: p.weight || "1 unit",
-                    deliveryTime: "8-15 mins"
-                }));
-                setProducts(Array.isArray(formattedProds) ? formattedProds : []);
-            } else {
-                setProducts([]);
-            }
+            const formattedProds = dbProds.map(p => ({
+                ...p,
+                id: p._id,
+                image:
+                  p.mainImage ||
+                  p.image ||
+                  "https://images.unsplash.com/photo-1550989460-0adf9ea622e2?auto=format&fit=crop&q=80&w=400&h=400",
+                price: p.salePrice || p.price,
+                originalPrice: p.price,
+                weight: p.weight || "1 unit",
+                deliveryTime: "8-15 mins"
+            }));
+            setProducts(Array.isArray(formattedProds) ? formattedProds : []);
 
             if (catRes.data.success) {
                 const tree = catRes.data.results || catRes.data.result || [];

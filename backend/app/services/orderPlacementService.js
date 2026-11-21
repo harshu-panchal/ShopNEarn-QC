@@ -1088,7 +1088,22 @@ export async function placeOrderAtomic({
         customerId,
         userId: customerId,
       });
-      if (order.seller && !(order.franchisePartnerId && franchisePartner)) {
+      // Audit fix: an ONLINE order still awaiting gateway payment has not
+      // been accepted into the seller workflow yet (workflowStatus stays
+      // CREATED until `moveOrderToSellerPendingAfterPayment` runs on a
+      // verified Razorpay capture/webhook). Notifying the seller here —
+      // before payment is confirmed — left a seller-facing "new order"
+      // alert (and a Pending order in the admin dashboard) for checkouts
+      // the customer went on to cancel or abandon at the gateway. The
+      // franchise branch below already gated on `!awaitingGatewayPayment`;
+      // this mirrors it for the regular seller path. Capture flips this
+      // notification on for real via `handleOrderSideEffectsFromPaymentStatus`
+      // in paymentService.js.
+      if (
+        order.seller &&
+        !(order.franchisePartnerId && franchisePartner) &&
+        !awaitingGatewayPayment
+      ) {
         emitNotificationEvent(NOTIFICATION_EVENTS.NEW_ORDER, {
           orderId: order.orderId,
           checkoutGroupId,

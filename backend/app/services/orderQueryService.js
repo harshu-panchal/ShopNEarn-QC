@@ -86,6 +86,23 @@ function appendDateRange(query, { startDate, endDate }) {
   };
 }
 
+/**
+ * An ONLINE order still sitting in workflowStatus CREATED is awaiting
+ * Razorpay gateway payment — it has not been accepted into the seller/
+ * franchise workflow yet (see `moveOrderToSellerPendingAfterPayment` in
+ * paymentService.js, which only runs on a verified capture). Surfacing it
+ * to sellers/admin as a "Pending"/"New" order before payment is confirmed
+ * means a customer who abandons or cancels the Razorpay checkout still
+ * leaves behind what looks like a real order request. Exclude these from
+ * seller/admin order listings; they resolve into a real workflow state
+ * (SELLER_PENDING/FRANCHISE_PENDING) on payment capture, or get reaped by
+ * `orderAutoCancelJob` if abandoned.
+ */
+const AWAITING_GATEWAY_PAYMENT_FILTER = {
+  paymentMode: "ONLINE",
+  workflowStatus: WORKFLOW_STATUS.CREATED,
+};
+
 export function buildSellerOrdersQuery({
   role,
   userId,
@@ -97,6 +114,7 @@ export function buildSellerOrdersQuery({
   const withStatus = {
     ...base,
     ...normalizeSellerStatusFilter(statusParam),
+    $nor: [AWAITING_GATEWAY_PAYMENT_FILTER],
   };
   return appendDateRange(withStatus, { startDate, endDate });
 }
