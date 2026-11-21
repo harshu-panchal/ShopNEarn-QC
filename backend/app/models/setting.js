@@ -162,6 +162,15 @@ const settingSchema = new mongoose.Schema(
             default: 0,
             min: 0,
         },
+        /**
+         * Minimum product subtotal required to place an order.
+         * 0 disables the restriction.
+         */
+        minimumOrderValue: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
         handlingFeeStrategy: {
             type: String,
             enum: ALL_HANDLING_FEE_STRATEGIES,

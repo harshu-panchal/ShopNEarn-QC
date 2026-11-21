@@ -628,6 +628,22 @@ export async function buildCheckoutPricingSnapshot({
   }
   totalSubtotal = round2(totalSubtotal);
 
+  const minimumOrderValue = round2(
+    Number(deliverySettings.minimumOrderValue || 0),
+  );
+  if (minimumOrderValue > 0 && totalSubtotal < minimumOrderValue) {
+    const error = new Error(
+      `Minimum order value is ₹${minimumOrderValue.toLocaleString("en-IN")}. Add ₹${round2(
+        minimumOrderValue - totalSubtotal,
+      ).toLocaleString("en-IN")} more to place your order.`,
+    );
+    error.statusCode = 400;
+    error.code = "MINIMUM_ORDER_VALUE_NOT_MET";
+    error.minimumOrderValue = minimumOrderValue;
+    error.productSubtotal = totalSubtotal;
+    throw error;
+  }
+
   for (const sellerId of sellerIds) {
     const sellerItems = itemsBySeller.get(sellerId) || [];
     const distanceKm = await computeDistanceKmForSeller({

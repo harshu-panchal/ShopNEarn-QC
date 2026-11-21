@@ -34,6 +34,10 @@ const SlideToPay = ({
     const fillWidth = useTransform(x, [0, maxDrag], [0, containerWidth]);
 
     const handleDragEnd = async () => {
+        if (disabled || isLoading || isCompleted) {
+            controls.start({ x: 0 });
+            return;
+        }
         const currentX = x.get();
         if (currentX >= maxDrag * 0.9) {
             setIsCompleted(true);
@@ -63,7 +67,7 @@ const SlideToPay = ({
 
     return (
         <div
-            className="relative h-16 w-full rounded-full overflow-hidden select-none touch-none bg-linear-to-r from-primary via-primary to-primary shadow-[0_18px_45px_rgba(4,120,87,0.35)] border border-white/10"
+            className={`relative h-16 w-full rounded-full overflow-hidden select-none touch-none bg-linear-to-r from-primary via-primary to-primary shadow-[0_18px_45px_rgba(4,120,87,0.35)] border border-white/10 ${disabled ? "opacity-50 grayscale cursor-not-allowed" : ""}`}
             ref={(el) => el && setContainerWidth(el.offsetWidth)}
         >
             {/* Progress Fill */}
@@ -113,7 +117,7 @@ const SlideToPay = ({
             {/* Draggable Circle */}
             <motion.div
                 className="absolute left-1 top-1 bottom-1 w-14 h-14 bg-white rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing z-20 shadow-[0_6px_18px_rgba(15,118,110,0.35)] border border-brand-100"
-                drag={!isCompleted && !isLoading ? "x" : false}
+                drag={!isCompleted && !isLoading && !disabled ? "x" : false}
                 dragConstraints={{ left: 0, right: maxDrag }}
                 dragElastic={0.05}
                 dragMomentum={false}
@@ -123,7 +127,7 @@ const SlideToPay = ({
                 whileTap={{ scale: 0.95 }}
                 whileHover={{ scale: 1.05 }}
             >
-                {isLoading || isCompleted ? (
+                {(isLoading && !disabled) || isCompleted ? (
                     <motion.div
                         className="h-6 w-6 border-2 border-white border-t-transparent rounded-full animate-spin"
                     />

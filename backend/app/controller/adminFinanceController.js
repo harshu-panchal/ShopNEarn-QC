@@ -22,6 +22,7 @@ import {
   updateDeliverySettingsSchema,
 } from "../validation/financeValidation.js";
 import { validateBodySafe as validateWithJoi } from "../middleware/validate.js";
+import { invalidate } from "../services/cacheService.js";
 
 export const getAdminFinanceSummaryController = async (req, res) => {
   try {
@@ -170,6 +171,7 @@ export const updateDeliverySettingsController = async (req, res) => {
       return handleResponse(res, 400, validated.message);
     }
     const updated = await updateDeliveryFinanceSettings(validated.value);
+    await invalidate("cache:platform:settings:*");
     await createFinanceAuditLog({
       action: FINANCE_AUDIT_ACTION.DELIVERY_SETTINGS_UPDATED,
       actorType: OWNER_TYPE.ADMIN,

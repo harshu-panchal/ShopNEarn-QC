@@ -46,6 +46,7 @@ const ALLOWED_KEYS = [
   "deliveryPartnerRatePerKm",
   "fleetCommissionRatePerKm",
   "fixedDeliveryFee",
+  "minimumOrderValue",
   "handlingFeeStrategy",
   "codEnabled",
   "onlineEnabled",
@@ -116,6 +117,7 @@ const updateSettingsSchema = Joi.object({
   deliveryPartnerRatePerKm: Joi.number().min(0),
   fleetCommissionRatePerKm: Joi.number().min(0),
   fixedDeliveryFee: Joi.number().min(0),
+  minimumOrderValue: Joi.number().min(0),
   handlingFeeStrategy: Joi.string().valid(
     "highest_category_fee",
     "sum_of_category_fees",
@@ -149,7 +151,7 @@ export const getPublicSettings = async (req, res) => {
       async () => {
         const existing = await Setting.findOne(filter)
           .select(
-            "appName supportEmail supportPhone currencySymbol currencyCode timezone marqueeMessages logoUrl faviconUrl primaryColor secondaryColor companyName taxId address facebook twitter instagram linkedin youtube playStoreLink appStoreLink returnDeliveryCommission deliveryPricingMode pricingMode customerBaseDeliveryFee riderBasePayout baseDeliveryCharge baseDistanceCapacityKm incrementalKmSurcharge deliveryPartnerRatePerKm fleetCommissionRatePerKm fixedDeliveryFee handlingFeeStrategy codEnabled onlineEnabled lowStockAlertsEnabled productApproval createdAt",
+            "appName supportEmail supportPhone currencySymbol currencyCode timezone marqueeMessages logoUrl faviconUrl primaryColor secondaryColor companyName taxId address facebook twitter instagram linkedin youtube playStoreLink appStoreLink returnDeliveryCommission deliveryPricingMode pricingMode customerBaseDeliveryFee riderBasePayout baseDeliveryCharge baseDistanceCapacityKm incrementalKmSurcharge deliveryPartnerRatePerKm fleetCommissionRatePerKm fixedDeliveryFee minimumOrderValue handlingFeeStrategy codEnabled onlineEnabled lowStockAlertsEnabled productApproval createdAt",
           )
           .lean();
         return existing || null;

@@ -14,6 +14,7 @@ const DEFAULT_FINANCE_SETTINGS = {
   deliveryPartnerRatePerKm: 5,
   fixedDeliveryFee: 30,
   freeDeliveryThreshold: 0,
+  minimumOrderValue: 0,
   handlingFeeStrategy: HANDLING_FEE_STRATEGY.HIGHEST_CATEGORY_FEE,
   codEnabled: true,
   onlineEnabled: true,
@@ -58,6 +59,13 @@ export function normalizeFinanceSettings(raw = {}) {
     ? Math.max(0, roundCurrency(freeDeliveryThresholdRaw))
     : DEFAULT_FINANCE_SETTINGS.freeDeliveryThreshold;
 
+  const minimumOrderValueRaw = Number(
+    raw.minimumOrderValue ?? DEFAULT_FINANCE_SETTINGS.minimumOrderValue,
+  );
+  const minimumOrderValue = Number.isFinite(minimumOrderValueRaw)
+    ? Math.max(0, roundCurrency(minimumOrderValueRaw))
+    : DEFAULT_FINANCE_SETTINGS.minimumOrderValue;
+
   const handlingFeeStrategy =
     raw.handlingFeeStrategy || DEFAULT_FINANCE_SETTINGS.handlingFeeStrategy;
 
@@ -75,6 +83,7 @@ export function normalizeFinanceSettings(raw = {}) {
     fleetCommissionRatePerKm: deliveryPartnerRatePerKm,
     fixedDeliveryFee,
     freeDeliveryThreshold,
+    minimumOrderValue,
     handlingFeeStrategy,
     codEnabled: raw.codEnabled ?? DEFAULT_FINANCE_SETTINGS.codEnabled,
     onlineEnabled: raw.onlineEnabled ?? DEFAULT_FINANCE_SETTINGS.onlineEnabled,

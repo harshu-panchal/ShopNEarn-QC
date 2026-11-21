@@ -195,6 +195,36 @@ describe("free delivery threshold", () => {
     expect(snapshot.aggregateBreakdown.deliveryFeeCharged).toBe(20);
     expect(snapshot.freeDeliveryApplied).toBe(false);
   });
+
+  it("rejects checkout when product subtotal is below the minimum order value", async () => {
+    mockGetOrCreateFinanceSettings.mockResolvedValue({
+      deliveryPricingMode: "fixed_price",
+      customerBaseDeliveryFee: 20,
+      riderBasePayout: 20,
+      baseDistanceCapacityKm: 0.5,
+      incrementalKmSurcharge: 10,
+      deliveryPartnerRatePerKm: 5,
+      fixedDeliveryFee: 20,
+      freeDeliveryThreshold: 0,
+      minimumOrderValue: 700,
+      handlingFeeStrategy: "highest_category_fee",
+      codEnabled: true,
+      onlineEnabled: true,
+    });
+
+    await expect(
+      buildCheckoutPricingSnapshot({
+        orderItems: [{ product: "p1", quantity: 1 }],
+        address: {},
+        session: null,
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: "MINIMUM_ORDER_VALUE_NOT_MET",
+      minimumOrderValue: 700,
+      productSubtotal: 600,
+    });
+  });
 });
 
 void mockIsDigitalOnlyMlmCart;

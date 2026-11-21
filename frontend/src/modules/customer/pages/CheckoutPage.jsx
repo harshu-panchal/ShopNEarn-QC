@@ -129,6 +129,17 @@ const CheckoutPage = () => {
   }, [isAuthenticated]);
 
   const appName = settings?.appName || "App";
+  const minimumOrderValue = Math.max(
+    0,
+    Number(settings?.minimumOrderValue || 0),
+  );
+  const productSubtotal = Number(cartTotal || 0);
+  const meetsMinimumOrderValue =
+    minimumOrderValue <= 0 || productSubtotal >= minimumOrderValue;
+  const minimumOrderShortfall = Math.max(
+    0,
+    minimumOrderValue - productSubtotal,
+  );
   const {
     savedAddresses: locationSavedAddresses,
     addressesLoaded,
@@ -850,7 +861,12 @@ const CheckoutPage = () => {
 
   // Debounced checkoutPreview — fires 400 ms after last dependency change
   useEffect(() => {
-    if (!isAuthenticated || cart.length === 0 || !hasValidCheckoutAddress) {
+    if (
+      !isAuthenticated ||
+      cart.length === 0 ||
+      !hasValidCheckoutAddress ||
+      !meetsMinimumOrderValue
+    ) {
       setPricingPreview(null);
       setIsFranchiseHubCart(false);
       return;
@@ -927,6 +943,7 @@ const CheckoutPage = () => {
     currentAddress,
     currentLocation,
     hasValidCheckoutAddress,
+    meetsMinimumOrderValue,
   ]);
 
   // Recommended products — only re-fetches when the set of product IDs changes
@@ -953,6 +970,14 @@ const CheckoutPage = () => {
   }, [cartProductIdKey]);
 
   const handlePlaceOrder = async () => {
+    if (!meetsMinimumOrderValue) {
+      showToast(
+        `Minimum order value is ₹${minimumOrderValue.toLocaleString("en-IN")}. Add ₹${minimumOrderShortfall.toLocaleString("en-IN")} more to place your order.`,
+        "error",
+      );
+      return;
+    }
+
     if (!hasValidCheckoutAddress) {
       showToast("Add or confirm a delivery address to continue.", "error");
       return;
@@ -1352,6 +1377,11 @@ const CheckoutPage = () => {
                   Add or confirm a delivery address to continue.
                 </p>
               )}
+              {!meetsMinimumOrderValue && (
+                <p className="mb-3 text-center text-xs font-bold text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+                  Minimum order is ₹{minimumOrderValue.toLocaleString("en-IN")}. Add ₹{minimumOrderShortfall.toLocaleString("en-IN")} more.
+                </p>
+              )}
               <SlideToPay
                 amount={finalAmountToPay}
                 onSuccess={handlePlaceOrder}
@@ -1361,6 +1391,7 @@ const CheckoutPage = () => {
                   !pricingPreview ||
                   !hasValidCheckoutAddress
                 }
+                disabled={!meetsMinimumOrderValue}
                 text={finalAmountToPay === 0 ? "Place Free Order" : "Order Now"}
               />
               <p className="text-center text-[10px] text-slate-400 font-bold mt-4 uppercase tracking-widest">
@@ -1379,6 +1410,11 @@ const CheckoutPage = () => {
               Add or confirm a delivery address to continue.
             </p>
           )}
+          {!meetsMinimumOrderValue && (
+            <p className="mb-2 text-center text-[11px] font-bold text-red-700">
+              Minimum order is ₹{minimumOrderValue.toLocaleString("en-IN")}. Add ₹{minimumOrderShortfall.toLocaleString("en-IN")} more.
+            </p>
+          )}
           <SlideToPay
             amount={finalAmountToPay}
             onSuccess={handlePlaceOrder}
@@ -1388,6 +1424,7 @@ const CheckoutPage = () => {
               !pricingPreview ||
               !hasValidCheckoutAddress
             }
+            disabled={!meetsMinimumOrderValue}
             text={finalAmountToPay === 0 ? "Place Free Order" : "Slide to Pay"}
           />
         </div>

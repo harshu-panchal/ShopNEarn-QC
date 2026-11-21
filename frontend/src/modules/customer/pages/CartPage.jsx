@@ -13,13 +13,18 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@shared/components/ui/Toast';
+import { useSettings } from '@core/context/SettingsContext';
 import { applyCloudinaryTransform } from '@/core/utils/imageUtils';
 import { getAvailableStock } from '@/core/utils/productStock';
 
 const CartPage = () => {
     const { cart, removeFromCart, updateQuantity, cartTotal, clearCart } = useCart();
     const { showToast } = useToast();
+    const { settings } = useSettings();
     const itemCount = cart.reduce((count, item) => count + item.quantity, 0);
+    const minimumOrderValue = Math.max(0, Number(settings?.minimumOrderValue || 0));
+    const minimumOrderShortfall = Math.max(0, minimumOrderValue - Number(cartTotal || 0));
+    const meetsMinimumOrderValue = minimumOrderShortfall === 0;
     const [emptyBoxData, setEmptyBoxData] = useState(null);
 
     // Dynamically load empty-box Lottie when cart is empty
@@ -184,11 +189,22 @@ const CartPage = () => {
                                         </div>
                                     </div>
 
-                                    <Link to="/checkout" className="block">
-                                        <Button className="h-14 w-full rounded-full bg-brand-400 text-slate-950 hover:bg-brand-300 text-base font-black flex items-center justify-center gap-2 shadow-[0_18px_35px_rgba(16,185,129,0.3)] transition-all">
-                                            Place Order <ArrowRight size={18} />
-                                        </Button>
-                                    </Link>
+                                    {meetsMinimumOrderValue ? (
+                                        <Link to="/checkout" className="block">
+                                            <Button className="h-14 w-full rounded-full bg-brand-400 text-slate-950 hover:bg-brand-300 text-base font-black flex items-center justify-center gap-2 shadow-[0_18px_35px_rgba(16,185,129,0.3)] transition-all">
+                                                Place Order <ArrowRight size={18} />
+                                            </Button>
+                                        </Link>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            <Button disabled className="h-14 w-full rounded-full text-base font-black flex items-center justify-center gap-2">
+                                                Minimum order ₹{minimumOrderValue.toLocaleString('en-IN')}
+                                            </Button>
+                                            <p className="text-center text-xs font-bold text-amber-200">
+                                                Add ₹{minimumOrderShortfall.toLocaleString('en-IN')} more to continue.
+                                            </p>
+                                        </div>
+                                    )}
 
                                     <div className="grid grid-cols-2 gap-3 text-xs font-bold uppercase tracking-[0.16em] text-white/55">
                                         <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
