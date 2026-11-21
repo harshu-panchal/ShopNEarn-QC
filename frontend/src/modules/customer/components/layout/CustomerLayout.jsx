@@ -88,7 +88,7 @@ const CustomerLayout = ({ children, fullHeight = false, showCart: showCartProp, 
     // page's sticky title bar). Showing the storefront BottomNav
     // underneath duplicates the nav surface and wastes the bottom
     // ~70 px of every MLM screen, so we suppress it across the
-    // section. The `pb-16` gutter on `<main>` (which existed only
+    // section. The responsive bottom-nav gutter on `<main>` (which exists only
     // to clear the BottomNav) is dropped for the same reason —
     // each MLM page already manages its own bottom padding.
     const isMlmRoute = path.startsWith('/mlm');
@@ -96,7 +96,7 @@ const CustomerLayout = ({ children, fullHeight = false, showCart: showCartProp, 
     const isDedicatedAppShell = isMlmRoute || isFranchiseRoute;
 
     // Pages that manage their own full-viewport height (genealogy tree
-    // canvas, etc.) must NOT receive the default `pb-16` mobile-nav
+    // canvas, etc.) must NOT receive the responsive mobile-nav
     // gutter from <main> — they pad themselves internally. They also
     // hide the desktop <Footer> because the page already fills the
     // viewport and a trailing footer would push total page height
@@ -119,7 +119,12 @@ const CustomerLayout = ({ children, fullHeight = false, showCart: showCartProp, 
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-            <main className={cn("flex-1 md:pb-0 pt-0", !effectiveFullHeight && !isDedicatedAppShell && "pb-16", fullViewportRoutes && "flex flex-col")}>
+            <main className={cn(
+                "flex-1 pt-0 md:pb-0",
+                !effectiveFullHeight && !isDedicatedAppShell && finalShowBottomNavMobile &&
+                    "pb-[calc(var(--customer-bottom-nav-height)+env(safe-area-inset-bottom,0px))]",
+                fullViewportRoutes && "flex flex-col"
+            )}>
                 {children}
             </main>
 

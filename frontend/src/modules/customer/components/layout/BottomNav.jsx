@@ -14,7 +14,10 @@ const BottomNav = () => {
     const location = useLocation();
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-[500] bg-white border-t border-gray-100 flex items-center justify-around h-[70px] md:hidden shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 pb-[env(safe-area-inset-bottom)]">
+        <nav
+            aria-label="Primary navigation"
+            className="fixed inset-x-0 bottom-0 z-[500] hidden h-[calc(var(--customer-bottom-nav-height)+env(safe-area-inset-bottom,0px))] grid-cols-4 border-t border-gray-100 bg-white px-[clamp(4px,2vw,16px)] pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_30px_rgba(0,0,0,0.06)] max-md:grid"
+        >
             {navItems.map((item) => {
                 const isActive = location.pathname === item.path ||
                     (item.path !== '/' && location.pathname.startsWith(item.path));
@@ -23,13 +26,14 @@ const BottomNav = () => {
                     <Link
                         key={item.path}
                         to={item.path}
-                        className="flex-1 flex flex-col items-center justify-center h-full relative group transition-all"
+                        aria-current={isActive ? 'page' : undefined}
+                        className="group relative flex h-full min-w-0 items-center justify-center px-1 transition-all"
                     >
                         {isActive && (
-                            <div className="absolute inset-y-2 inset-x-2 bg-primary/5 rounded-[20px] -z-10 transition-opacity duration-300" />
+                            <div className="pointer-events-none absolute inset-x-[clamp(2px,1.5vw,10px)] inset-y-[clamp(5px,1.5vw,8px)] -z-10 rounded-[clamp(14px,4vw,20px)] bg-primary/5 transition-opacity duration-300" />
                         )}
 
-                        <div className="flex flex-col items-center justify-center relative">
+                        <div className="relative flex min-w-0 flex-col items-center justify-center">
                             <div
                                 className={cn(
                                     "transition-transform duration-300",
@@ -37,10 +41,9 @@ const BottomNav = () => {
                                 )}
                             >
                                 <item.icon
-                                    size={24}
                                     strokeWidth={isActive ? 2.5 : 2}
                                     className={cn(
-                                        "transition-colors duration-300",
+                                        "size-[clamp(20px,5.75vw,24px)] shrink-0 transition-colors duration-300",
                                         isActive ? "text-primary" : "text-gray-400"
                                     )}
                                 />
@@ -48,10 +51,9 @@ const BottomNav = () => {
 
                             <span
                                 className={cn(
-                                    "text-[10px] font-bold tracking-tight mt-1 transition-all duration-300",
+                                    "mt-[clamp(2px,1vw,4px)] max-w-full truncate whitespace-nowrap text-[clamp(9px,2.5vw,10px)] font-bold leading-none tracking-tight transition-all duration-300",
                                     isActive ? "text-primary" : "text-gray-400"
                                 )}
-                                style={{ transform: isActive ? "translateY(1px)" : "translateY(0)" }}
                             >
                                 {item.label}
                             </span>
@@ -59,12 +61,12 @@ const BottomNav = () => {
 
                         {/* Top Accent Line for Active State */}
                         {isActive && (
-                            <div className="absolute -top-[1px] w-8 h-[3px] bg-primary rounded-full transition-opacity duration-300" />
+                            <div className="absolute -top-px h-[3px] w-[clamp(24px,8vw,32px)] rounded-full bg-primary transition-opacity duration-300" />
                         )}
                     </Link>
                 );
             })}
-        </div>
+        </nav>
     );
 };
 

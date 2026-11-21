@@ -49,6 +49,9 @@
 
   /* Cart pill fill — overridden on Home by MainLocationHeader */
   --customer-mini-cart-color: #0284c7;
+
+  /* Content height only; device safe-area padding is added separately. */
+  --customer-bottom-nav-height: clamp(3.75rem, 16vw, 4.375rem);
 }
 
 body {
