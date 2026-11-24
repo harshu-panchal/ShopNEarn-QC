@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { HiOutlineSearch } from 'react-icons/hi';
-import { CornerDownLeft, ArrowRight, Search as SearchIcon } from 'lucide-react';
+import { CornerDownLeft, ArrowRight, Search as SearchIcon, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { adminApi } from '@/modules/admin/services/adminApi';
 
@@ -129,6 +129,7 @@ const AdminSearch = ({ navItems }) => {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const wrapRef = useRef(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
@@ -263,7 +264,10 @@ const AdminSearch = ({ navItems }) => {
   // Close when clicking outside.
   useEffect(() => {
     const onDown = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+        setMobileOpen(false);
+      }
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -301,6 +305,7 @@ const AdminSearch = ({ navItems }) => {
         ? `${item.path}?q=${encodeURIComponent(item.query)}`
         : item.path;
     setOpen(false);
+    setMobileOpen(false);
     setQuery('');
     inputRef.current?.blur();
     navigate(target);
@@ -319,9 +324,18 @@ const AdminSearch = ({ navItems }) => {
       go(results[active]);
     } else if (e.key === 'Escape') {
       setOpen(false);
+      setMobileOpen(false);
       inputRef.current?.blur();
     }
   };
+
+  // On phones the box is a full-width bar that slides in over the header.
+  useEffect(() => {
+    if (mobileOpen) {
+      setOpen(true);
+      inputRef.current?.focus();
+    }
+  }, [mobileOpen]);
 
   const groupOf = (r) =>
     r.type === 'page'
@@ -331,7 +345,28 @@ const AdminSearch = ({ navItems }) => {
         : `Search "${query.trim()}" in`;
 
   return (
-    <div ref={wrapRef} className="relative w-full md:w-[400px] group hidden md:block">
+    <>
+      <button
+        type="button"
+        aria-label="Search"
+        onClick={() => setMobileOpen(true)}
+        className="md:hidden ml-auto p-2.5 bg-gray-100/80 rounded-xl text-gray-600 hover:text-primary transition-all"
+      >
+        <HiOutlineSearch className="h-5 w-5" />
+      </button>
+      {mobileOpen && (
+        <div className="md:hidden fixed inset-0 z-[59] bg-slate-900/40" onClick={() => setMobileOpen(false)} />
+      )}
+    <div
+      ref={wrapRef}
+      className={cn(
+        'relative w-full md:w-[400px] group',
+        mobileOpen
+          ? 'fixed inset-x-0 top-0 z-[60] bg-white p-3 shadow-lg md:static md:p-0 md:shadow-none md:bg-transparent md:z-auto'
+          : 'hidden md:block',
+      )}
+    >
+      <div className="relative">
       <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-primary transition-all duration-300 pointer-events-none" />
       <input
         ref={inputRef}
@@ -348,15 +383,24 @@ const AdminSearch = ({ navItems }) => {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
-        className="w-full pl-10 pr-4 py-2 bg-gray-100/50 border border-transparent rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-primary/10 focus:border-primary/20 transition-all duration-500 outline-none"
+        className="w-full pl-10 pr-10 md:pr-4 py-2.5 md:py-2 bg-gray-100/50 border border-transparent rounded-xl text-base md:text-xs font-medium focus:bg-white focus:ring-2 focus:ring-primary/10 focus:border-primary/20 transition-all duration-500 outline-none"
       />
+      <button
+        type="button"
+        aria-label="Close search"
+        onClick={() => { setMobileOpen(false); setOpen(false); }}
+        className="md:hidden absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-500"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      </div>
 
       {open && (
         <div
           id="admin-search-list"
           ref={listRef}
           role="listbox"
-          className="absolute left-0 right-0 top-full mt-2 max-h-[420px] overflow-y-auto rounded-2xl bg-white border border-gray-100 shadow-2xl shadow-black/10 z-50 py-2"
+          className="absolute left-0 right-0 top-full md:mt-2 max-h-[70vh] md:max-h-[420px] md:rounded-2xl rounded-b-2xl overflow-y-auto bg-white border border-gray-100 shadow-2xl shadow-black/10 z-50 py-2"
         >
           {results.length === 0 && (
             <p className="px-4 py-6 text-center text-xs font-semibold text-gray-400">
@@ -424,6 +468,7 @@ const AdminSearch = ({ navItems }) => {
         </div>
       )}
     </div>
+    </>
   );
 };
 
