@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { adminApi } from '../services/adminApi';
 
+import useUrlSearchQuery from '@/modules/admin/hooks/useUrlSearchQuery';
 const PendingSellers = () => {
     const navigate = useNavigate();
     const [pendingSellers, setPendingSellers] = useState([]);
@@ -34,6 +35,7 @@ const PendingSellers = () => {
         avgReviewTimeHours: 24
     });
     const [searchTerm, setSearchTerm] = useState('');
+    useUrlSearchQuery(setSearchTerm);
     const [isLoading, setIsLoading] = useState(true);
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
     const [viewingSeller, setViewingSeller] = useState(null);

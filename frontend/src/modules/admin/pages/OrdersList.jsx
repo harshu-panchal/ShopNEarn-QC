@@ -24,6 +24,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useToast } from '@shared/components/ui/Toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import useUrlSearchQuery from '@/modules/admin/hooks/useUrlSearchQuery';
 import {
     getLegacyStatusFromOrder,
     getOrderStatusLabel,
@@ -36,6 +37,7 @@ const OrdersList = () => {
     const navigate = useNavigate();
     const { showToast } = useToast();
     const [searchTerm, setSearchTerm] = useState('');
+    useUrlSearchQuery(setSearchTerm);
     const [dateRange, setDateRange] = useState('All Time');
     const [orders, setOrders] = useState([]);
     const [summary, setSummary] = useState({

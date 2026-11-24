@@ -22,9 +22,11 @@ import Pagination from '@shared/components/ui/Pagination';
 import { adminApi } from '../services/adminApi';
 import { toast } from 'sonner';
 
+import useUrlSearchQuery from '@/modules/admin/hooks/useUrlSearchQuery';
 const CustomerManagement = () => {
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
+    useUrlSearchQuery(setSearchTerm);
     const [filterStatus, setFilterStatus] = useState('all');
     const [isExporting, setIsExporting] = useState(false);
     const [customers, setCustomers] = useState([]);

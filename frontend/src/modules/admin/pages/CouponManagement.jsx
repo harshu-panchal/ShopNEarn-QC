@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { adminApi } from '../services/adminApi';
 
+import useUrlSearchQuery from '@/modules/admin/hooks/useUrlSearchQuery';
 const CouponManagement = () => {
     const { showToast } = useToast();
     const today = new Date().toISOString().split('T')[0];
@@ -29,6 +30,7 @@ const CouponManagement = () => {
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [editingCoupon, setEditingCoupon] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+    useUrlSearchQuery(setSearchTerm);
     const [statusFilter, setStatusFilter] = useState('all');
     const [isLoading, setIsLoading] = useState(false);
 

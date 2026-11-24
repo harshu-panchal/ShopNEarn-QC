@@ -25,6 +25,7 @@ import { useAuth } from '@core/context/AuthContext';
 import { joinTicketRoom, leaveTicketRoom, onTicketCreated, onTicketMessage } from '@/core/services/orderSocket';
 import { useSupportUnread } from '@core/context/SupportUnreadContext';
 
+import useUrlSearchQuery from '@/modules/admin/hooks/useUrlSearchQuery';
 const SupportTickets = () => {
     const { showToast } = useToast();
     const { token } = useAuth();
@@ -42,6 +43,7 @@ const SupportTickets = () => {
     const [reply, setReply] = useState('');
     const [menuOpen, setMenuOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    useUrlSearchQuery(setSearchTerm);
     const [loading, setLoading] = useState(true);
     const [tickets, setTickets] = useState([]);
     const [page, setPage] = useState(1);

@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import Pagination from '@shared/components/ui/Pagination';
 import { adminApi } from '../services/adminApi';
 
+import useUrlSearchQuery from '@/modules/admin/hooks/useUrlSearchQuery';
 const ActiveDeliveryBoys = () => {
     const [riders, setRiders] = useState([]);
     const [page, setPage] = useState(1);
@@ -36,6 +37,7 @@ const ActiveDeliveryBoys = () => {
     const [total, setTotal] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    useUrlSearchQuery(setSearchTerm);
     const [statusFilter, setStatusFilter] = useState('all');
     const [selectedRider, setSelectedRider] = useState(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);

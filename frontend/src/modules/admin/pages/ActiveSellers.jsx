@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { adminApi } from "../services/adminApi";
 
+import useUrlSearchQuery from '@/modules/admin/hooks/useUrlSearchQuery';
 const SORT_OPTIONS = [
   { value: "recent", label: "Newest first" },
   { value: "oldest", label: "Oldest first" },
@@ -104,6 +105,7 @@ const ActiveSellers = () => {
   const [stats, setStats] = useState(emptyStats);
   const [categories, setCategories] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  useUrlSearchQuery(setSearchTerm);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortBy, setSortBy] = useState("recent");

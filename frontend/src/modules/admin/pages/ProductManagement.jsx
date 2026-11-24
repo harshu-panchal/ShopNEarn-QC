@@ -27,6 +27,7 @@ import Pagination from '@shared/components/ui/Pagination';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
+import useUrlSearchQuery from '@/modules/admin/hooks/useUrlSearchQuery';
 const ProductManagement = () => {
     const [products, setProducts] = useState([]);
     const [categories, setCategories] = useState([]); // All categories for dropdowns
@@ -37,6 +38,7 @@ const ProductManagement = () => {
     const [isSaving, setIsSaving] = useState(false);
 
     const [searchTerm, setSearchTerm] = useState('');
+    useUrlSearchQuery(setSearchTerm);
     const [filterCategory, setFilterCategory] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all'); // Added filterStatus
     const [filterApprovalStatus, setFilterApprovalStatus] = useState('all');
